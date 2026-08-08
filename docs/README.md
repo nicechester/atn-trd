@@ -1,7 +1,7 @@
 # atn-trd — Architecture & Implementation Spec
 
 Autonomous, LLM-driven stock research and paper-trading app. A scheduler fires a
-**daily** decision cycle; a LangGraph agent (backed by Disney Jedai) researches
+**daily** decision cycle; a LangGraph agent (backed by Google Gemini on GCP) researches
 watchlist symbols across four data sources, produces auditable per-symbol
 assessments and a portfolio-level decision set; a deterministic risk engine
 converts decisions into orders; a `PaperBroker` simulates fills against fetched
@@ -10,7 +10,7 @@ everything. Ships as one Docker container.
 
 **Phase 1** is a self-contained, shippable milestone: workspace skeleton, SQLite
 persistence + migrations, settings service, and a complete configuration UI
-working end-to-end — including live "Test connection" calls to Jedai and each
+working end-to-end — including live "Test connection" calls to Gemini and each
 data source. **No trading logic ships in Phase 1.** Phase 1 is validated before
 Phase 2 starts.
 
@@ -29,7 +29,7 @@ Phase 2 starts.
 - Two phases, in order: **configure** (Phase 1), then **autonomously trade** (Phase 2).
 - **Daily** decision cadence — explicitly not intraday/minute-level.
 - **Broker**: undecided real broker; v1 ships only a `PaperBroker` (ticker/price data only, no account needed) behind a `Broker` interface that a real adapter can later implement.
-- **LLM backend fixed to Jedai** (Disney's internal OpenAI-compatible gateway, Claude via Bedrock/LiteLLM), no fallback chain — reusing lexchat's `authTokenProvider.ts`/`jedaiChatModel.ts` pattern. Because it's OpenAI-compatible, swapping the backing model/gateway later only means changing `baseURL` + token logic, not the agent code.
+- **LLM backend fixed to Google Gemini on GCP** — using `@langchain/google-genai` with proper credential management (API key or service account). Credentials are UI-managed and persisted in settings.
 - **v1 data sources**, exactly four: news headlines, company fundamentals, macro indicators, options/derivatives trends. Social sentiment, SEC filings, and deep options-flow are deferred.
 - **Single Docker container** for v1 (web + API + scheduler in one process), with module boundaries kept clean enough to split later if needed.
 - Portfolio/trade history is modeled from day one to support a later SPY buy-and-hold benchmark comparison (stretch goal for the UI itself).
