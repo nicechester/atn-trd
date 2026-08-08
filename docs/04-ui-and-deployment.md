@@ -21,11 +21,10 @@ through the API. No trading logic required.
    (news: Finnhub | Yahoo), API-key entry using a write-only `SecretField`
    (shows `••••••` + "Set"/"Not set" + Clear, never echoes the value), and a
    **Test connection** button hitting `healthCheck()`.
-5. **Settings → LLM (Jedai)** — base URL, model, temperature, timeout
-   seconds, OAuth token URL, client id, client secret (`SecretField`), scope
-   (default `RETURN_ALL_CLIENT_SCOPES`), Disney-internal-headers toggle, and
-   a **Test** button that runs a one-token completion and reports latency or
-   the gateway error body.
+5. **Settings → LLM (Gemini)** — Gemini API key or GCP service account JSON
+   (`SecretField`), model selection (e.g., `gemini-pro`), temperature, timeout
+   seconds, and a **Test** button that runs a one-token completion and reports
+   latency or any API errors.
 6. **Settings → Schedule** — timezone, a friendly builder ("weekdays at
    HH:MM") that emits cron plus an advanced raw-cron field, **next 5 runs
    preview**, skip-holidays toggle.
@@ -50,19 +49,18 @@ runtime copies `node_modules`, `server/dist`, and the Vite build output into
 
 **Process supervision: none needed — one Node process.** Express and the
 croner scheduler run in the same process. The agent cycle is entirely
-I/O-bound (HTTP to Jedai and data APIs), so it will not block the event loop
+I/O-bound (HTTP to Gemini API and data APIs), so it will not block the event loop
 meaningfully; adding s6-overlay or supervisord would be pure overhead here.
-`tini` is PID 1 for signal handling. Static serving mirrors lexchat's
-`index.ts`: `express.static(staticRoot)` plus a catch-all `GET *` that skips
-`/api` and non-GET and returns `index.html`; in dev, the Vite middleware is
-mounted in-process behind `ATN_VITE_DEV=1`.
+`tini` is PID 1 for signal handling. Static serving: `express.static(staticRoot)`
+plus a catch-all `GET *` that skips `/api` and non-GET and returns `index.html`;
+in dev, the Vite middleware is mounted in-process behind `ATN_VITE_DEV=1`.
 
 - Volume `/data` (`ATN_DATA_DIR=/data`) holding `atn.db` + WAL files.
   Migrations run on boot before the server listens.
 - `HEALTHCHECK` → `GET /api/health`.
 - `EXPOSE 8080`; `PORT` overridable.
 - Env: `ATN_ENC_KEY` (required), `ATN_DATA_DIR`, `ATN_ROLE`, `PORT`, plus
-  optional bootstrap fallbacks `JEDAI_*`, `FINNHUB_API_KEY`, `FRED_API_KEY`.
+  optional bootstrap fallbacks `GOOGLE_API_KEY`, `FINNHUB_API_KEY`, `FRED_API_KEY`.
 
 **The condition that would force a split:** if a cycle becomes CPU-bound
 (local backtesting, large numeric work) or needs to restart independently of

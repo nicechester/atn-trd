@@ -50,12 +50,11 @@ not).
 
 ## Key reference files (patterns to copy, not to modify)
 
-- `/Users/chester.kim/workspace/lexicon/agents/lexchat/server/src/authTokenProvider.ts` — copy verbatim
-- `/Users/chester.kim/workspace/lexicon/agents/lexchat/server/src/jedaiChatModel.ts` — copy, adapt env → settings config object
 - `/Users/chester.kim/workspace/lexicon/agents/lexchat/server/src/agent.ts` — `createReactAgent` + `streamEvents` shape
 - `/Users/chester.kim/workspace/lexicon/agents/lexchat/server/src/agentCollector.ts` — collector pattern for the audit trail
 - `/Users/chester.kim/workspace/lexicon/agents/lexchat/server/src/secretBox.ts` — AES-256-GCM envelope
 - `/Users/chester.kim/workspace/lexicon/agents/lexchat/server/src/index.ts` (lines 382–426) — Vite-dev vs static serving in one process
+- LangChain Gemini integration: use `@langchain/google-genai` `ChatGoogleGenerativeAI` with credential injection from settings
 
 Nothing has been written to `/Users/chester.kim/workspace/trashcan/atn-trd`
 outside of `docs/` yet — implementation is pending review.
