@@ -19,7 +19,7 @@ programmer agents first and validated before Phase 2 starts.
    deps (add `croner`, `yahoo-finance2`; drop MCP/Atlassian deps).
 3. `[senior]` `shared/src/settings.ts`: the complete zod `SettingsSchema` +
    `DEFAULT_SETTINGS`, covering trading, watchlist behavior, dataSources,
-   llm (Gemini/GCP), schedule, risk, paper. Include the `minIntervalHours` cron
+   llm (OpenAI), schedule, risk, paper. Include the `minIntervalHours` cron
    refinement from doc 03. Every field needs a `.default()` so old docs
    upgrade cleanly. Also `shared/src/domain.ts` and `api.ts`.
 4. `[senior]` `server/src/db/index.ts` (open, WAL, foreign_keys pragma) +
@@ -51,11 +51,11 @@ programmer agents first and validated before Phase 2 starts.
     `datasources/prices/yahooPrices.ts` + `services/symbolService.ts`
     (validate symbol via `quote()`), and `routes/watchlist.ts` +
     `POST /api/symbols/validate`. This is the Phase 1 vertical slice.
-11. `[senior]` `llm/geminiChatModel.ts` — use `@langchain/google-genai`'s
-    `ChatGoogleGenerativeAI`, taking an explicit config object (Gemini API key
-    or GCP service account) with env fallback. Add `routes/llm.ts` →
+11. `[senior]` `llm/openaiChatModel.ts` — use `@langchain/openai`'s
+    `ChatOpenAI`, taking an explicit config object (OpenAI API key)
+    with env fallback. Add `routes/llm.ts` →
     `POST /api/llm/test` doing a minimal completion and surfacing any API
-    errors. Handle token refresh and rate limiting.
+    errors. Handle rate limiting.
 12. `[senior]` Stub the four connectors with real `isConfigured()` +
     `healthCheck()` (a cheap real request each) and `fetch()` implemented
     for news/fundamentals/macro/options as described in doc 02 (full fetch
@@ -85,7 +85,7 @@ programmer agents first and validated before Phase 2 starts.
 
 **Phase 1 done means:** `docker build && docker run -v ./data:/data -e
 ATN_ENC_KEY=... -p 8080:8080`, open the UI, add a symbol and see it
-validated against a live quote, enter Gemini credentials and get a green
+validated against a live quote, enter OpenAI credentials and get a green
 Test, toggle and test each data source, set a schedule and see the next 5
 runs, restart the container and find everything persisted.
 

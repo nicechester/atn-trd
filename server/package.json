@@ -12,7 +12,7 @@
   "dependencies": {
     "@atn-trd/shared": "file:../shared",
     "@langchain/core": "^0.1.52",
-    "@langchain/google-genai": "^0.0.13",
+    "@langchain/openai": "^0.0.27",
     "@langchain/langgraph": "^0.0.33",
     "better-sqlite3": "^13.0.3",
     "croner": "^8.0.1",
