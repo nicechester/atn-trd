@@ -57,7 +57,15 @@ export function invalidateSettingsCache(): void {
 }
 
 export function updateSettings(patch: PatchSettingsRequest): Settings {
-  const validatedPatch = PatchSettingsRequestSchema.parse(patch);
+  let validatedPatch: PatchSettingsRequest;
+  try {
+    validatedPatch = PatchSettingsRequestSchema.parse(patch);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      throw new ValidationError("Invalid settings patch", err.issues);
+    }
+    throw err;
+  }
   const current = getSettings();
   const merged = deepMerge(current, validatedPatch);
 
