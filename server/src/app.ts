@@ -1,0 +1,73 @@
+import express, { Express, Request, Response, NextFunction } from 'express';
+import path from 'path';
+import { AppError, ValidationError } from './lib/errors.js';
+import { logger } from './lib/logger.js';
+
+interface AppOptions {
+  staticRoot?: string;
+  viteDevMiddleware?: express.Handler;
+}
+
+export function createApp(options: AppOptions = {}): Express {
+  const app = express();
+
+  // JSON body limit config
+  app.use(express.json({ limit: '10mb' }));
+
+  // Request logging
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    logger.debug('incoming request', {
+      method: req.method,
+      path: req.path,
+    });
+    next();
+  });
+
+  // API routes would be mounted here
+  // (placeholder for future route mounting)
+
+  // Static file serving
+  if (options.viteDevMiddleware) {
+    // Dev mode: use Vite middleware
+    app.use(options.viteDevMiddleware);
+  } else if (options.staticRoot) {
+    // Production mode: serve built static files
+    app.use(express.static(options.staticRoot));
+
+    // Catch-all for SPA: return index.html for non-API GET requests
+    app.get('*', (req: Request, res: Response) => {
+      if (!req.path.startsWith('/api')) {
+        res.sendFile(path.join(options.staticRoot!, 'index.html'));
+      } else {
+        res.status(404).json({ error: 'Not Found' });
+      }
+    });
+  }
+
+  // Error middleware: map typed errors to HTTP status codes
+  app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+    logger.error('request error', {
+      path: req.path,
+      method: req.method,
+      error: err.message,
+    });
+
+    if (err instanceof AppError) {
+      res.status(err.statusCode).json({
+        error: err.message,
+        code: err.code,
+        ...(err instanceof ValidationError && err.issues
+          ? { issues: err.issues }
+          : {}),
+      });
+    } else {
+      // Fallback for unexpected errors
+      res.status(500).json({
+        error: 'Internal Server Error',
+        code: 'INTERNAL_ERROR',
+      });
+    }
+  });
+
+  return app;
+}
