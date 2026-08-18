@@ -1,0 +1,17 @@
+{
+  "name": "atn-trd",
+  "version": "0.1.0",
+  "description": "Autonomous LLM-driven stock research and paper-trading app",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=shared && npm run build --workspace=web && npm run build --workspace=server",
+    "dev": "npm run dev --workspace=web -- & npm run dev --workspace=server",
+    "typecheck": "npm run typecheck --workspace=shared && npm run typecheck --workspace=web && npm run typecheck --workspace=server"
+  }
+}
