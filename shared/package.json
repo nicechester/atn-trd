@@ -1,0 +1,22 @@
+{
+  "name": "@atn-trd/shared",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./settings": "./dist/settings.js",
+    "./domain": "./dist/domain.js",
+    "./api": "./dist/api.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.2"
+  }
+}
