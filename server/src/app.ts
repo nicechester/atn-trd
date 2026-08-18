@@ -3,6 +3,8 @@ import path from 'path';
 import { AppError, ValidationError } from './lib/errors.js';
 import { logger } from './lib/logger.js';
 import { healthHandler } from './routes/health.js';
+import { getSettingsHandler, patchSettingsHandler } from './routes/settings.js';
+import { getSecretsHandler, putSecretHandler, deleteSecretHandler } from './routes/secrets.js';
 
 interface AppOptions {
   staticRoot?: string;
@@ -26,6 +28,11 @@ export function createApp(options: AppOptions = {}): Express {
 
   // API routes
   app.get('/api/health', healthHandler);
+  app.get('/api/settings', getSettingsHandler);
+  app.patch('/api/settings', patchSettingsHandler);
+  app.get('/api/secrets', getSecretsHandler);
+  app.put('/api/secrets/:name', putSecretHandler);
+  app.delete('/api/secrets/:name', deleteSecretHandler);
 
   // Static file serving
   if (options.viteDevMiddleware) {
