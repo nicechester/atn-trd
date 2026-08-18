@@ -38,8 +38,8 @@ export const SettingsSchema = z.object({
   }).default({}),
 
   llm: z.object({
-    provider: z.enum(['gemini']).default('gemini'),
-    model: z.string().default('gemini-1.5-pro'),
+    provider: z.enum(['openai']).default('openai'),
+    model: z.string().default('gpt-4-turbo'),
     temperature: z.number().min(0).max(2).default(0.7),
     timeoutMs: z.number().int().positive().default(30000),
   }).default({}),
@@ -94,8 +94,8 @@ export const DEFAULT_SETTINGS: Settings = {
     options: { provider: 'yahoo', enabled: true },
   },
   llm: {
-    provider: 'gemini',
-    model: 'gemini-1.5-pro',
+    provider: 'openai',
+    model: 'gpt-4-turbo',
     temperature: 0.7,
     timeoutMs: 30000,
   },
@@ -122,7 +122,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
 };
 
-function validateCronMinInterval(cron: string, minIntervalHours: number): boolean {
+function validateCronMinInterval(_cron: string, _minIntervalHours: number): boolean {
   // Placeholder: Would use croner library to validate in real implementation
   // For now, accept all cron expressions
   return true;

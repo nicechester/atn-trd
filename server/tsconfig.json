@@ -4,7 +4,8 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "module": "ESNext",
-    "target": "ES2022"
+    "target": "ES2022",
+    "emitDeclarationOnly": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

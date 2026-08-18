@@ -4,7 +4,7 @@ Autonomous LLM-driven stock research and paper-trading app.
 
 ## Overview
 
-An autonomous trading system that uses Google Gemini on GCP to research watchlist symbols across multiple data sources, produces auditable per-symbol assessments, and simulates trading on a virtual portfolio.
+An autonomous trading system that uses OpenAI to research watchlist symbols across multiple data sources, produces auditable per-symbol assessments, and simulates trading on a virtual portfolio.
 
 ## Development
 

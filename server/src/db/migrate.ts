@@ -23,7 +23,7 @@ export function runMigrations(db: Database.Database, migrationsDir: string): voi
   // Get applied versions
   const appliedStmt = db.prepare('SELECT version FROM schema_migrations ORDER BY version');
   const applied = new Set(
-    appliedStmt.all().map((row: { version: number }) => row.version)
+    (appliedStmt.all() as Array<{ version: number }>).map((row) => row.version)
   );
 
   // Run pending migrations

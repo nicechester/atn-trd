@@ -1,9 +1,9 @@
 // Set the environment variable BEFORE importing the module
 process.env.ATN_ENC_KEY = "test-encryption-key-12345";
 
-import { describe, it, before } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { secretBoxAvailable, seal, open } from "./secretBox.ts";
+import { secretBoxAvailable, seal, open } from "./secretBox";
 
 describe("secretBox", () => {
   describe("with ATN_ENC_KEY set", () => {
