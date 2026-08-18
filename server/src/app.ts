@@ -2,6 +2,7 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import path from 'path';
 import { AppError, ValidationError } from './lib/errors.js';
 import { logger } from './lib/logger.js';
+import { healthHandler } from './routes/health.js';
 
 interface AppOptions {
   staticRoot?: string;
@@ -23,8 +24,8 @@ export function createApp(options: AppOptions = {}): Express {
     next();
   });
 
-  // API routes would be mounted here
-  // (placeholder for future route mounting)
+  // API routes
+  app.get('/api/health', healthHandler);
 
   // Static file serving
   if (options.viteDevMiddleware) {
