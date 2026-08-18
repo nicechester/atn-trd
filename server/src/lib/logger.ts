@@ -41,7 +41,7 @@ function log(level: LogLevel, msg: string, meta?: Record<string, unknown>): void
     ts: new Date().toISOString(),
     level,
     msg,
-    ...(meta ? redact(meta) : {}),
+    ...(meta ? (redact(meta) as Record<string, unknown>) : {}),
   };
 
   const line = JSON.stringify(output);
@@ -71,7 +71,7 @@ export const logger = {
   },
 };
 
-class Logger {
+export class Logger {
   constructor(private bindings: Record<string, unknown>) {}
 
   info(msg: string, meta?: Record<string, unknown>): void {

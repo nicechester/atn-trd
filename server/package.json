@@ -10,15 +10,15 @@
     "test": "tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
-    "@atn-trd/shared": "workspace:*",
+    "@atn-trd/shared": "file:../shared",
     "@langchain/core": "^0.1.52",
     "@langchain/google-genai": "^0.0.13",
     "@langchain/langgraph": "^0.0.33",
-    "better-sqlite3": "^9.2.2",
+    "better-sqlite3": "^13.0.3",
     "croner": "^8.0.1",
     "express": "^4.18.2",
-    "zod": "^3.22.4",
-    "yahoo-finance2": "^2.11.4"
+    "yahoo-finance2": "^2.11.4",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",

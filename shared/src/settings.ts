@@ -122,7 +122,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
 };
 
-function validateCronMinInterval(cron: string, minIntervalHours: number): boolean {
+function validateCronMinInterval(_cron: string, _minIntervalHours: number): boolean {
   // Placeholder: Would use croner library to validate in real implementation
   // For now, accept all cron expressions
   return true;

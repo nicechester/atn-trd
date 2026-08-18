@@ -28,7 +28,6 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "baseUrl": ".",
     "paths": {
       "@shared/*": ["./shared/src/*"],
       "@server/*": ["./server/src/*"],
