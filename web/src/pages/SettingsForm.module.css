@@ -1,0 +1,11 @@
+.field { display: flex; flex-direction: column; gap: var(--spacing-xs); margin-bottom: var(--spacing-md); }
+.checkboxField { flex-direction: row; align-items: center; gap: var(--spacing-sm); }
+.label { font-size: 0.875rem; font-weight: 500; color: var(--color-text); }
+.hint { font-size: 0.75rem; color: var(--color-text-muted); margin-top: var(--spacing-xs); }
+.input { padding: var(--spacing-xs) var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: inherit; background: var(--color-surface); color: var(--color-text); width: 100%; max-width: 400px; }
+.select { padding: var(--spacing-xs) var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: inherit; background: var(--color-surface); color: var(--color-text); max-width: 400px; }
+.textarea { padding: var(--spacing-xs) var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: inherit; background: var(--color-surface); color: var(--color-text); width: 100%; max-width: 400px; resize: vertical; min-height: 100px; font-family: monospace; }
+.actions { margin-top: var(--spacing-xl); }
+.saveBtn { padding: var(--spacing-xs) var(--spacing-md); border-radius: var(--radius-sm); background: var(--color-primary); color: white; border: none; cursor: pointer; font-size: inherit; }
+.saveBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+.warning { color: var(--color-error, #f87171); font-size: 0.75rem; margin-top: var(--spacing-xs); }

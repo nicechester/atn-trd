@@ -17,7 +17,7 @@ export default function App(): JSX.Element {
           <main className={styles.main}>
             <Routes>
               <Route path="/" element={<DashboardPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/settings/*" element={<SettingsPage />} />
               <Route path="/secrets" element={<SecretsPage />} />
               <Route path="/datasources" element={<DataSourcesPage />} />
               <Route path="/llm" element={<LlmTestPage />} />
