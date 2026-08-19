@@ -32,6 +32,14 @@ if [ ! -d node_modules ]; then
   echo ""
 fi
 
+# Clear any stale server process from a previous run
+lsof -ti :8080 | xargs kill -9 2>/dev/null || true
+
+# Export .env vars so server picks up LLM_API_KEY, FRED_API_KEY, etc.
+set -a
+. .env
+set +a
+
 # Run dev servers
 echo -e "${GREEN}Starting dev servers (web + server)${NC}"
 echo -e "${YELLOW}Web: http://localhost:5173${NC}"

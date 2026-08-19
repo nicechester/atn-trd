@@ -181,38 +181,38 @@ function readLlmSettings(): Partial<{ model: string; temperature: number; timeou
 }
 
 /**
- * Key precedence: explicit config, then the encrypted secret store, then
- * `OPENAI_API_KEY`, then `LLM_API_KEY`. The env fallbacks are repeated here
- * rather than left to `resolveSecret` because the store throws when the
- * database isn't initialised (tests, CLI usage).
+ * Key precedence: explicit config → env vars (OPENAI_API_KEY, LLM_API_KEY)
+ * → encrypted secret store. Env vars win so that .env / Docker env overrides
+ * always take effect without touching the database.
  */
 export function resolveApiKey(explicit?: string): string | undefined {
   const fromConfig = explicit?.trim();
   if (fromConfig) return fromConfig;
 
-  let fromStore: string | undefined;
+  const fromEnv =
+    process.env.OPENAI_API_KEY?.trim() || process.env.LLM_API_KEY?.trim();
+  if (fromEnv) return fromEnv;
+
   try {
-    fromStore = resolveSecret('OPENAI_API_KEY');
+    const fromStore = resolveSecret('LLM_API_KEY')?.trim();
+    if (fromStore) return fromStore;
   } catch (err) {
-    log.debug('secret store unavailable for OPENAI_API_KEY', {
+    log.debug('secret store unavailable for LLM_API_KEY', {
       error: err instanceof Error ? err.message : String(err),
     });
   }
-  const candidate =
-    fromStore?.trim() || process.env.OPENAI_API_KEY?.trim() || process.env.LLM_API_KEY?.trim();
-  return candidate || undefined;
+  return undefined;
 }
 
 function resolveBaseUrl(explicit?: string): string | undefined {
-  const candidate =
-    explicit?.trim() || process.env.OPENAI_API_URL?.trim() || process.env.LLM_API_URL?.trim();
+  const candidate = process.env.LLM_API_URL?.trim() || explicit?.trim();
   return candidate || undefined;
 }
 
 export function resolveConfig(config: OpenAIChatModelConfig = {}): ResolvedChatModelConfig {
   const settings = readLlmSettings();
   return {
-    model: config.model ?? settings.model ?? DEFAULT_MODEL,
+    model: config.model ?? process.env.LLM_MODEL?.trim() ?? settings.model ?? DEFAULT_MODEL,
     temperature: config.temperature ?? settings.temperature ?? DEFAULT_TEMPERATURE,
     timeoutMs: config.timeoutMs ?? settings.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     maxRetries: config.maxRetries ?? DEFAULT_MAX_RETRIES,
@@ -493,6 +493,11 @@ export function createOpenAIChatModel(
     const apiKey = resolveApiKey(config.apiKey);
     if (!apiKey) throw new LlmNotConfiguredError();
 
+    log.debug('starting model call', {
+      model: resolved.model,
+      baseUrl: resolved.baseUrl ?? '(openai default)',
+    });
+
     const client = createClient(resolved, apiKey);
 
     // `withRetry` calls onRetry immediately before sleeping, so capturing the
@@ -506,6 +511,7 @@ export function createOpenAIChatModel(
         retryAfterMs = parseRetryAfterMs(error);
         log.warn('retrying model call', {
           model: resolved.model,
+          baseUrl: resolved.baseUrl ?? '(openai default)',
           attempt,
           delayMs: retryAfterMs ?? delayMs,
           status: statusOf(error),

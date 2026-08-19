@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    ports:
+      - "5173:8080"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      ATN_DATA_DIR: /data
+    volumes:
+      - atn-data:/data
+    restart: unless-stopped
+
+volumes:
+  atn-data:
