@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import { initializeDatabase, closeDatabase } from './db/index.js';
 import { runMigrations } from './db/migrate.js';
 import { createApp } from './app.js';
+import { startScheduler, stopScheduler } from './scheduler/index.js';
 import { logger } from './lib/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -57,8 +58,7 @@ async function main(): Promise<void> {
 
     // Start scheduler when role is 'all' or 'worker'
     if (ATN_ROLE === 'all' || ATN_ROLE === 'worker') {
-      logger.info('Scheduler startup placeholder (not yet implemented)');
-      // Scheduler initialization would go here in Phase 2
+      startScheduler();
     }
 
     // Graceful shutdown
@@ -66,6 +66,7 @@ async function main(): Promise<void> {
     signals.forEach((sig) => {
       process.on(sig, async () => {
         logger.info('Received signal, shutting down', { signal: sig });
+        stopScheduler();
         closeDatabase();
         process.exit(0);
       });
