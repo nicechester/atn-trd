@@ -18,21 +18,26 @@ export function SecretField({
 }: SecretFieldProps): JSX.Element {
   const [value, setValue] = useState('');
   const [loading, setLoading] = useState<'set' | 'clear' | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSet = async () => {
+    setLoading('set');
     try {
-      setLoading('set');
       await onSet(value);
       setValue('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to set key');
     } finally {
       setLoading(null);
     }
   };
 
   const handleClear = async () => {
+    setLoading('clear');
     try {
-      setLoading('clear');
       await onClear();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear key');
     } finally {
       setLoading(null);
     }
@@ -46,10 +51,11 @@ export function SecretField({
         type="password"
         className={styles.input}
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => { setValue(e.target.value); setError(null); }}
         placeholder="New value"
       />
       <button
+        type="button"
         className={styles.btnSet}
         onClick={handleSet}
         disabled={value.trim().length === 0 || loading !== null}
@@ -57,12 +63,14 @@ export function SecretField({
         {loading === 'set' ? 'Setting...' : 'Set'}
       </button>
       <button
+        type="button"
         className={styles.btnClear}
         onClick={handleClear}
         disabled={!isSet || loading !== null}
       >
         {loading === 'clear' ? 'Clearing...' : 'Clear'}
       </button>
+      {error && <span style={{ color: 'var(--color-error, red)', fontSize: '0.85em' }}>{error}</span>}
     </div>
   );
 }

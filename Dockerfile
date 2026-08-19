@@ -21,8 +21,12 @@ FROM node:24-alpine
 WORKDIR /app
 
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/shared ./shared
 COPY --from=builder /app/server ./server
+
+# Replace workspace symlink with real built shared package
+RUN rm -rf /app/node_modules/@atn-trd/shared && mkdir -p /app/node_modules/@atn-trd/shared
+COPY --from=builder /app/shared/dist /app/node_modules/@atn-trd/shared/dist
+COPY --from=builder /app/shared/package.json /app/node_modules/@atn-trd/shared/package.json
 
 ENV NODE_ENV=production
 ENV ATN_DATA_DIR=/data

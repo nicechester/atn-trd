@@ -36,7 +36,7 @@ export default function SettingsLlm(): JSX.Element {
           temperature: llm.temperature,
           timeoutSeconds: llm.timeoutMs / 1000,
         });
-        setApiKeyIsSet(secretsRes.data.some(s => s.name === 'LLM_API_KEY' && s.isSet));
+        setApiKeyIsSet(secretsRes.data.some((s: { name: string; isSet: boolean }) => s.name === 'LLM_API_KEY' && s.isSet));
       })
       .catch(err => addToast(err instanceof Error ? err.message : 'Failed to load LLM settings', 'error'));
   }, []);

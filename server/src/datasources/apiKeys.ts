@@ -9,23 +9,33 @@ import { logger } from '../lib/logger.js';
 const log = logger.child({ component: 'datasource-keys' });
 
 /**
- * Never throws. Precedence: env var → encrypted secret store. Env vars win so
- * that .env / Docker env overrides always take effect without touching the DB.
+ * Never throws. Precedence: encrypted secret store (DB) → env var. DB wins so
+ * a key set in the UI always takes effect; env is the fallback when no DB key
+ * is stored.
  */
 export function resolveApiKey(name: string): string | undefined {
-  const fromEnv = process.env[name]?.trim();
-  if (fromEnv) return fromEnv;
+  console.log(`[DEBUG] resolveApiKey('${name}') - Starting resolution (DB > ENV precedence)`);
 
   try {
     const fromStore = resolveSecret(name)?.trim();
-    return fromStore && fromStore.length > 0 ? fromStore : undefined;
+    console.log(`[DEBUG] resolveApiKey('${name}') - resolveSecret() returned:`, fromStore ? 'FOUND (length: ' + fromStore.length + ')' : 'NOT FOUND');
+    if (fromStore) {
+      console.log(`[DEBUG] resolveApiKey('${name}') - Returning from store`);
+      return fromStore;
+    }
   } catch (err) {
+    console.log(`[DEBUG] resolveApiKey('${name}') - Error from resolveSecret:`, err instanceof Error ? err.message : String(err));
     log.debug('secret store unavailable', {
       name,
       error: err instanceof Error ? err.message : String(err),
     });
-    return undefined;
   }
+
+  const fromEnv = process.env[name]?.trim();
+  console.log(`[DEBUG] resolveApiKey('${name}') - process.env fallback:`, fromEnv ? 'FOUND (length: ' + fromEnv.length + ')' : 'NOT FOUND');
+  const result = fromEnv || undefined;
+  console.log(`[DEBUG] resolveApiKey('${name}') - Final result:`, result ? 'FOUND' : 'NOT FOUND');
+  return result;
 }
 
 export type ApiKeyResolver = () => string | undefined;

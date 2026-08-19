@@ -1,4 +1,4 @@
-import type { GetSettingsResponse, PatchSettingsRequest, GetSecretsResponse, ValidateSymbolResponse } from '@shared/api';
+import type { GetSettingsResponse, PatchSettingsRequest, GetSecretsResponse, ValidateSymbolResponse } from '@atn-trd/shared/api';
 
 export class ApiError extends Error {
   constructor(
@@ -19,18 +19,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set('Content-Type', 'application/json');
   }
 
+  console.log(`[API] ${init?.method || 'GET'} ${url}`);
+
   const response = await fetch(url, { ...init, headers });
 
   if (!response.ok) {
     let body: unknown;
+    let message = `HTTP ${response.status}`;
     try {
       body = await response.json();
+      // Extract error message from backend response
+      if (typeof body === 'object' && body !== null) {
+        const bodyObj = body as Record<string, unknown>;
+        if (typeof bodyObj.message === 'string') {
+          message = bodyObj.message;
+        } else if (typeof bodyObj.error === 'string') {
+          message = bodyObj.error;
+        }
+      }
     } catch {
-      body = await response.text();
+      const text = await response.text();
+      body = text;
+      if (text) message = text;
     }
-    throw new ApiError(response.status, body, `HTTP ${response.status}`);
+    console.log(`[API] Error ${response.status}: ${message}`);
+    throw new ApiError(response.status, body, message);
   }
 
+  console.log(`[API] Success ${response.status}`);
   return response.json() as Promise<T>;
 }
 

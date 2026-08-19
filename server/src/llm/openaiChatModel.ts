@@ -182,7 +182,7 @@ function readLlmSettings(): Partial<{ model: string; temperature: number; timeou
 
 /**
  * Key precedence: explicit config → encrypted secret store (DB) → env vars.
- * DB wins over env so settings saved in the UI always take effect.
+ * DB wins over env so a key set in the UI always takes effect.
  */
 export function resolveApiKey(explicit?: string): string | undefined {
   const fromConfig = explicit?.trim();
