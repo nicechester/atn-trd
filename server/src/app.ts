@@ -5,6 +5,13 @@ import { logger } from './lib/logger.js';
 import { healthHandler } from './routes/health.js';
 import { getSettingsHandler, patchSettingsHandler } from './routes/settings.js';
 import { getSecretsHandler, putSecretHandler, deleteSecretHandler } from './routes/secrets.js';
+import {
+  validateSymbolHandler,
+  listWatchlistHandler,
+  addWatchlistHandler,
+  removeWatchlistHandler,
+  patchWatchlistHandler,
+} from './routes/watchlist.js';
 
 interface AppOptions {
   staticRoot?: string;
@@ -33,6 +40,11 @@ export function createApp(options: AppOptions = {}): Express {
   app.get('/api/secrets', getSecretsHandler);
   app.put('/api/secrets/:name', putSecretHandler);
   app.delete('/api/secrets/:name', deleteSecretHandler);
+  app.post('/api/symbols/validate', validateSymbolHandler);
+  app.get('/api/watchlist', listWatchlistHandler);
+  app.post('/api/watchlist', addWatchlistHandler);
+  app.patch('/api/watchlist/:symbol', patchWatchlistHandler);
+  app.delete('/api/watchlist/:symbol', removeWatchlistHandler);
 
   // Static file serving
   if (options.viteDevMiddleware) {

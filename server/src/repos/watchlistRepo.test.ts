@@ -144,6 +144,80 @@ describe("WatchlistRepo", () => {
     assert.equal(updated.note, "Updated");
   });
 
+  it("addSymbol() inserts a new symbol enabled by default", () => {
+    const row = repo.addSymbol("AAPL");
+
+    assert.equal(row.symbol, "AAPL");
+    assert.equal(row.enabled, true);
+    assert.equal(row.note, null);
+    assert.ok(row.addedAt > 0);
+    assert.deepEqual(repo.get("AAPL"), row);
+  });
+
+  it("addSymbol() normalizes case and whitespace", () => {
+    const row = repo.addSymbol("  aapl  ");
+    assert.equal(row.symbol, "AAPL");
+    assert.ok(repo.get("AAPL"));
+  });
+
+  it("addSymbol() stores an optional note", () => {
+    const row = repo.addSymbol("AAPL", "Tech stock");
+    assert.equal(row.note, "Tech stock");
+  });
+
+  it("addSymbol() is idempotent and preserves existing state", () => {
+    const first = repo.addSymbol("AAPL", "Original");
+    repo.disableSymbol("AAPL");
+
+    const second = repo.addSymbol("AAPL", "Ignored");
+
+    assert.equal(repo.list().length, 1);
+    assert.equal(second.addedAt, first.addedAt, "addedAt preserved");
+    assert.equal(second.note, "Original", "note preserved");
+    assert.equal(second.enabled, false, "enabled preserved");
+  });
+
+  it("removeSymbol() returns true when a row was deleted, false otherwise", () => {
+    repo.addSymbol("AAPL");
+
+    assert.equal(repo.removeSymbol("aapl"), true);
+    assert.equal(repo.get("AAPL"), undefined);
+    assert.equal(repo.removeSymbol("AAPL"), false);
+  });
+
+  it("enableSymbol() / disableSymbol() toggle the flag", () => {
+    repo.addSymbol("AAPL");
+
+    assert.equal(repo.disableSymbol("AAPL"), true);
+    assert.equal(repo.get("AAPL")?.enabled, false);
+
+    assert.equal(repo.enableSymbol("AAPL"), true);
+    assert.equal(repo.get("AAPL")?.enabled, true);
+  });
+
+  it("enableSymbol() / disableSymbol() normalize the symbol", () => {
+    repo.addSymbol("AAPL");
+    assert.equal(repo.disableSymbol(" aapl "), true);
+    assert.equal(repo.get("AAPL")?.enabled, false);
+  });
+
+  it("enableSymbol() / disableSymbol() return false for unknown symbols", () => {
+    assert.equal(repo.enableSymbol("NOPE"), false);
+    assert.equal(repo.disableSymbol("NOPE"), false);
+  });
+
+  it("persists across repo instances backed by the same database", () => {
+    repo.addSymbol("AAPL", "Tech stock");
+    repo.disableSymbol("AAPL");
+
+    const reopened = new WatchlistRepo(db);
+    const row = reopened.get("AAPL");
+
+    assert.ok(row);
+    assert.equal(row.note, "Tech stock");
+    assert.equal(row.enabled, false);
+  });
+
   it("handles multiple symbols", () => {
     const now = Date.now();
     const symbols = ["AAPL", "GOOGL", "MSFT", "TSLA"];
