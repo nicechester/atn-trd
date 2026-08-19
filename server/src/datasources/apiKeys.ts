@@ -9,23 +9,23 @@ import { logger } from '../lib/logger.js';
 const log = logger.child({ component: 'datasource-keys' });
 
 /**
- * Never throws. The secret store needs an open database and an encryption key;
- * when either is missing (worker boot order, CLI usage, tests) we still want the
- * environment fallback rather than a crash inside `isConfigured()`.
+ * Never throws. Precedence: env var → encrypted secret store. Env vars win so
+ * that .env / Docker env overrides always take effect without touching the DB.
  */
 export function resolveApiKey(name: string): string | undefined {
-  let value: string | undefined;
+  const fromEnv = process.env[name]?.trim();
+  if (fromEnv) return fromEnv;
+
   try {
-    value = resolveSecret(name);
+    const fromStore = resolveSecret(name)?.trim();
+    return fromStore && fromStore.length > 0 ? fromStore : undefined;
   } catch (err) {
-    log.debug('secret store unavailable, falling back to env', {
+    log.debug('secret store unavailable', {
       name,
       error: err instanceof Error ? err.message : String(err),
     });
-    value = process.env[name];
+    return undefined;
   }
-  const trimmed = value?.trim();
-  return trimmed && trimmed.length > 0 ? trimmed : undefined;
 }
 
 export type ApiKeyResolver = () => string | undefined;
