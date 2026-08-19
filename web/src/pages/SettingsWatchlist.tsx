@@ -93,6 +93,7 @@ export default function SettingsWatchlist(): JSX.Element {
                   </td>
                   <td style={{ padding: 'var(--spacing-sm) 0', textAlign: 'right' }}>
                     <button
+                      type="button"
                       onClick={() => handleRemove(row.symbol)}
                       style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', color: 'var(--color-text-muted)', padding: '2px 8px' }}
                     >

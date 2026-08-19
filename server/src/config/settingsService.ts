@@ -61,29 +61,28 @@ export function updateSettings(patch: PatchSettingsRequest): Settings {
   try {
     validatedPatch = PatchSettingsRequestSchema.parse(patch);
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      throw new ValidationError("Invalid settings patch", err.issues);
-    }
+    if (err instanceof z.ZodError) throw new ValidationError("Invalid settings patch", err.issues);
     throw err;
   }
-  const current = getSettings();
-  const merged = deepMerge(current, validatedPatch);
+
+  const merged = deepMerge(getSettings(), validatedPatch);
 
   let validated: Settings;
   try {
     validated = SettingsSchema.parse(merged);
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      throw new ValidationError("Invalid settings patch", err.issues);
-    }
+    if (err instanceof z.ZodError) throw new ValidationError("Invalid settings patch", err.issues);
     throw err;
   }
 
   validated.updatedAt = Date.now();
+
   const { settingsRepo } = getRepos();
   settingsRepo.write(JSON.stringify(validated), validated.updatedAt);
+
   invalidateSettingsCache();
   settingsEvents.emit("change", validated);
+
   return structuredClone(validated);
 }
 
@@ -105,9 +104,22 @@ export function clearSecret(name: string): void {
   secretsRepo.delete(name);
 }
 
+/** Known secrets that may be supplied via environment variables. */
+const ENV_SECRET_NAMES = ['FINNHUB_API_KEY', 'FRED_API_KEY', 'LLM_API_KEY', 'OPENAI_API_KEY'];
+
 export function listSecretStatus(): SecretStatus[] {
   const { secretsRepo } = getRepos();
-  return secretsRepo.listMeta().map((m) => ({ name: m.name, isSet: true, updatedAt: m.updatedAt }));
+  const dbSecrets = secretsRepo.listMeta();
+  const dbNames = new Set(dbSecrets.map((m) => m.name));
+  const result: SecretStatus[] = dbSecrets.map((m) => ({ name: m.name, isSet: true, updatedAt: m.updatedAt }));
+
+  for (const name of ENV_SECRET_NAMES) {
+    if (!dbNames.has(name) && process.env[name]?.trim()) {
+      result.push({ name, isSet: true });
+    }
+  }
+
+  return result;
 }
 
 export function resolveSecret(name: string): string | undefined {

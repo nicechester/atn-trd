@@ -9,23 +9,21 @@ import { logger } from '../lib/logger.js';
 const log = logger.child({ component: 'datasource-keys' });
 
 /**
- * Never throws. Precedence: env var → encrypted secret store. Env vars win so
- * that .env / Docker env overrides always take effect without touching the DB.
+ * Never throws. Precedence: encrypted secret store (DB) → env var. DB wins so
+ * a key set in the UI always takes effect; env is the fallback when no DB key
+ * is stored.
  */
 export function resolveApiKey(name: string): string | undefined {
-  const fromEnv = process.env[name]?.trim();
-  if (fromEnv) return fromEnv;
-
   try {
     const fromStore = resolveSecret(name)?.trim();
-    return fromStore && fromStore.length > 0 ? fromStore : undefined;
+    if (fromStore) return fromStore;
   } catch (err) {
     log.debug('secret store unavailable', {
       name,
       error: err instanceof Error ? err.message : String(err),
     });
-    return undefined;
   }
+  return process.env[name]?.trim() || undefined;
 }
 
 export type ApiKeyResolver = () => string | undefined;

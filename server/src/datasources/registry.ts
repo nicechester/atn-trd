@@ -120,12 +120,13 @@ export function createDataSourceRegistry(deps: DataSourceRegistryDeps = {}): Dat
     const { provider, enabled } = settingsFor(id);
     const source = get(id);
     const secretName = REQUIRED_SECRETS[source.name] ?? null;
+    const configured = source.isConfigured();
     return {
       id,
       provider,
       name: source.name,
       // `isConfigured` reads the secret store, so this reflects live state.
-      configured: source.isConfigured(),
+      configured,
       enabled,
       requiresKey: secretName !== null,
       secretName,

@@ -6,11 +6,14 @@ services:
     env_file:
       - .env
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       ATN_DATA_DIR: /data
+      ATN_ENC_KEY: ${ATN_ENC_KEY}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+      FRED_API_KEY: ${FRED_API_KEY}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_API_URL: ${LLM_API_URL}
+      LLM_MODEL: ${LLM_MODEL}
     volumes:
-      - atn-data:/data
+      - ./data:/data
     restart: unless-stopped
-
-volumes:
-  atn-data:

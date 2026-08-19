@@ -14,8 +14,7 @@ function requireName(req: Request): string {
 
 export function getSecretsHandler(_req: Request, res: Response, next: NextFunction): void {
   try {
-    const data = listSecretStatus();
-    res.json({ ok: true, data });
+    res.json({ ok: true, data: listSecretStatus() });
   } catch (err) {
     next(err);
   }
@@ -28,9 +27,7 @@ export function putSecretHandler(req: Request, res: Response, next: NextFunction
     try {
       body = SetSecretRequestSchema.parse(req.body);
     } catch (err) {
-      if (err instanceof z.ZodError) {
-        throw new ValidationError('Invalid secret value', err.issues);
-      }
+      if (err instanceof z.ZodError) throw new ValidationError('Invalid secret value', err.issues);
       throw err;
     }
     setSecret(name, body.value);
@@ -42,8 +39,7 @@ export function putSecretHandler(req: Request, res: Response, next: NextFunction
 
 export function deleteSecretHandler(req: Request, res: Response, next: NextFunction): void {
   try {
-    const name = requireName(req);
-    clearSecret(name);
+    clearSecret(requireName(req));
     res.json({ ok: true });
   } catch (err) {
     next(err);

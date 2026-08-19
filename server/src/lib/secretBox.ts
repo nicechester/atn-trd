@@ -33,7 +33,9 @@ function deriveKey(): Buffer {
 }
 
 export function secretBoxAvailable(): boolean {
-  return !!process.env.ATN_ENC_KEY?.trim();
+  const available = !!process.env.ATN_ENC_KEY?.trim();
+  console.log(`[SECRETBOX] secretBoxAvailable() = ${available}, ATN_ENC_KEY set: ${!!process.env.ATN_ENC_KEY}`);
+  return available;
 }
 
 export function seal(plaintext: string): string {

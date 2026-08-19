@@ -3,8 +3,7 @@ import { getSettings, updateSettings } from '../config/settingsService.js';
 
 export function getSettingsHandler(_req: Request, res: Response, next: NextFunction): void {
   try {
-    const data = getSettings();
-    res.json({ ok: true, data });
+    res.json({ ok: true, data: getSettings() });
   } catch (err) {
     next(err);
   }
@@ -12,8 +11,7 @@ export function getSettingsHandler(_req: Request, res: Response, next: NextFunct
 
 export function patchSettingsHandler(req: Request, res: Response, next: NextFunction): void {
   try {
-    const data = updateSettings(req.body);
-    res.json({ ok: true, data });
+    res.json({ ok: true, data: updateSettings(req.body) });
   } catch (err) {
     next(err);
   }

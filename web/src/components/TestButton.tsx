@@ -35,6 +35,7 @@ export function TestButton({
 
   return (
     <button
+      type="button"
       className={styles.btn}
       onClick={handleClick}
       disabled={loading || disabled}

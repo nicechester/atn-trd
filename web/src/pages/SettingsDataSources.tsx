@@ -37,7 +37,7 @@ export default function SettingsDataSources(): JSX.Element {
       const [dsRes, secRes] = await Promise.all([api.datasources.list(), api.secrets.list()]);
       setEntries(dsRes.data as DsEntry[]);
       const secretMap: SecretMap = {};
-      for (const s of secRes.data) { secretMap[s.name] = s.isSet; }
+      for (const s of secRes.data as { name: string; isSet: boolean }[]) { secretMap[s.name] = s.isSet; }
       setSecrets(secretMap);
       const findEntry = (id: string) => dsRes.data.find(e => e.id === id);
       const news = findEntry('news');
