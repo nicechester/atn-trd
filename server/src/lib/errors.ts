@@ -38,6 +38,21 @@ export class UpstreamError extends AppError {
   }
 }
 
+/** A data source is missing a credential it cannot run without. */
+export class DataSourceNotConfiguredError extends AppError {
+  readonly source: string;
+  readonly secretName: string;
+  constructor(source: string, secretName: string) {
+    super(
+      `${source} is not configured. Add ${secretName} under Settings -> Secrets, or set the ${secretName} environment variable.`,
+      503,
+      "DATASOURCE_NOT_CONFIGURED"
+    );
+    this.source = source;
+    this.secretName = secretName;
+  }
+}
+
 /** The upstream provider has no instrument matching the requested symbol. */
 export class SymbolNotFoundError extends AppError {
   readonly symbol: string;
