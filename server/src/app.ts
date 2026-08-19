@@ -13,6 +13,7 @@ import {
   removeWatchlistHandler,
   patchWatchlistHandler,
 } from './routes/watchlist.js';
+import { nextRunsHandler } from './routes/scheduler.js';
 
 interface AppOptions {
   staticRoot?: string;
@@ -47,6 +48,7 @@ export function createApp(options: AppOptions = {}): Express {
   app.patch('/api/watchlist/:symbol', patchWatchlistHandler);
   app.delete('/api/watchlist/:symbol', removeWatchlistHandler);
   app.post('/api/llm/test', testLlmHandler);
+  app.get('/api/scheduler/next-runs', nextRunsHandler);
 
   // Static file serving
   if (options.viteDevMiddleware) {
