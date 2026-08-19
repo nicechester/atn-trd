@@ -169,7 +169,7 @@ const MAX_RETRY_DELAY_MS = 10_000;
 const log = logger.child({ component: 'llm' });
 
 /** Settings live in SQLite; tolerate the DB being unavailable (tests, CLI). */
-function readLlmSettings(): Partial<{ model: string; temperature: number; timeoutMs: number }> {
+function readLlmSettings(): Partial<{ model: string; temperature: number; timeoutMs: number; baseUrl: string }> {
   try {
     return getSettings().llm;
   } catch (err) {
@@ -181,17 +181,12 @@ function readLlmSettings(): Partial<{ model: string; temperature: number; timeou
 }
 
 /**
- * Key precedence: explicit config → env vars (OPENAI_API_KEY, LLM_API_KEY)
- * → encrypted secret store. Env vars win so that .env / Docker env overrides
- * always take effect without touching the database.
+ * Key precedence: explicit config → encrypted secret store (DB) → env vars.
+ * DB wins over env so settings saved in the UI always take effect.
  */
 export function resolveApiKey(explicit?: string): string | undefined {
   const fromConfig = explicit?.trim();
   if (fromConfig) return fromConfig;
-
-  const fromEnv =
-    process.env.OPENAI_API_KEY?.trim() || process.env.LLM_API_KEY?.trim();
-  if (fromEnv) return fromEnv;
 
   try {
     const fromStore = resolveSecret('LLM_API_KEY')?.trim();
@@ -201,22 +196,25 @@ export function resolveApiKey(explicit?: string): string | undefined {
       error: err instanceof Error ? err.message : String(err),
     });
   }
-  return undefined;
+
+  const fromEnv =
+    process.env.OPENAI_API_KEY?.trim() || process.env.LLM_API_KEY?.trim();
+  return fromEnv || undefined;
 }
 
-function resolveBaseUrl(explicit?: string): string | undefined {
-  const candidate = process.env.LLM_API_URL?.trim() || explicit?.trim();
+function resolveBaseUrl(explicit?: string, settingsBaseUrl?: string): string | undefined {
+  const candidate = explicit?.trim() || settingsBaseUrl?.trim() || process.env.LLM_API_URL?.trim();
   return candidate || undefined;
 }
 
 export function resolveConfig(config: OpenAIChatModelConfig = {}): ResolvedChatModelConfig {
   const settings = readLlmSettings();
   return {
-    model: config.model ?? process.env.LLM_MODEL?.trim() ?? settings.model ?? DEFAULT_MODEL,
+    model: config.model ?? settings.model ?? process.env.LLM_MODEL?.trim() ?? DEFAULT_MODEL,
     temperature: config.temperature ?? settings.temperature ?? DEFAULT_TEMPERATURE,
     timeoutMs: config.timeoutMs ?? settings.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     maxRetries: config.maxRetries ?? DEFAULT_MAX_RETRIES,
-    baseUrl: resolveBaseUrl(config.baseUrl),
+    baseUrl: resolveBaseUrl(config.baseUrl, settings.baseUrl),
     hasApiKey: resolveApiKey(config.apiKey) !== undefined,
   };
 }

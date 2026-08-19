@@ -4,8 +4,6 @@ import Nav from './Nav';
 import DashboardPage from './pages/Dashboard';
 import SettingsPage from './pages/Settings';
 import SecretsPage from './pages/Secrets';
-import DataSourcesPage from './pages/DataSources';
-import LlmTestPage from './pages/LlmTest';
 import styles from './App.module.css';
 
 export default function App(): JSX.Element {
@@ -19,8 +17,6 @@ export default function App(): JSX.Element {
               <Route path="/" element={<DashboardPage />} />
               <Route path="/settings/*" element={<SettingsPage />} />
               <Route path="/secrets" element={<SecretsPage />} />
-              <Route path="/datasources" element={<DataSourcesPage />} />
-              <Route path="/llm" element={<LlmTestPage />} />
             </Routes>
           </main>
         </div>

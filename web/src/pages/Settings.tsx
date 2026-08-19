@@ -4,6 +4,8 @@ import SettingsGeneral from './SettingsGeneral';
 import SettingsWatchlist from './SettingsWatchlist';
 import SettingsSchedule from './SettingsSchedule';
 import SettingsRisk from './SettingsRisk';
+import SettingsDataSources from './SettingsDataSources';
+import SettingsLlm from './SettingsLlm';
 
 export default function SettingsPage(): JSX.Element {
   return (
@@ -14,6 +16,8 @@ export default function SettingsPage(): JSX.Element {
         <NavLink to="watchlist" className={styles.subLink}>Watchlist</NavLink>
         <NavLink to="schedule" className={styles.subLink}>Schedule</NavLink>
         <NavLink to="risk" className={styles.subLink}>Risk</NavLink>
+        <NavLink to="data-sources" className={styles.subLink}>Data Sources</NavLink>
+        <NavLink to="llm" className={styles.subLink}>LLM</NavLink>
       </nav>
       <Routes>
         <Route index element={<Navigate to="general" replace />} />
@@ -21,6 +25,8 @@ export default function SettingsPage(): JSX.Element {
         <Route path="watchlist" element={<SettingsWatchlist />} />
         <Route path="schedule" element={<SettingsSchedule />} />
         <Route path="risk" element={<SettingsRisk />} />
+        <Route path="data-sources" element={<SettingsDataSources />} />
+        <Route path="llm" element={<SettingsLlm />} />
       </Routes>
     </div>
   );

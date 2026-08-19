@@ -163,6 +163,8 @@ interface DataSourceEntry {
   provider: string;
   configured: boolean;
   enabled: boolean;
+  requiresKey: boolean;
+  secretName: string | null;
 }
 
 interface DataSourceTestResult {
