@@ -42,6 +42,7 @@ export const SettingsSchema = z.object({
     model: z.string().default('gpt-4-turbo'),
     temperature: z.number().min(0).max(2).default(0.7),
     timeoutMs: z.number().int().positive().default(30000),
+    baseUrl: z.string().default(''),
   }).default({}),
 
   schedule: z.object({
@@ -98,6 +99,7 @@ export const DEFAULT_SETTINGS: Settings = {
     model: 'gpt-4-turbo',
     temperature: 0.7,
     timeoutMs: 30000,
+    baseUrl: '',
   },
   schedule: {
     timezone: 'America/New_York',

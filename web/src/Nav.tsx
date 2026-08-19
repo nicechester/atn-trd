@@ -14,12 +14,6 @@ export default function Nav(): JSX.Element {
       <NavLink to="/secrets" className={styles.link}>
         API Keys
       </NavLink>
-      <NavLink to="/datasources" className={styles.link}>
-        Data Sources
-      </NavLink>
-      <NavLink to="/llm" className={styles.link}>
-        LLM Test
-      </NavLink>
     </nav>
   );
 }
