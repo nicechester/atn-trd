@@ -5,6 +5,7 @@ import { logger } from './lib/logger.js';
 import { healthHandler } from './routes/health.js';
 import { getSettingsHandler, patchSettingsHandler } from './routes/settings.js';
 import { getSecretsHandler, putSecretHandler, deleteSecretHandler } from './routes/secrets.js';
+import { testLlmHandler } from './routes/llm.js';
 import {
   validateSymbolHandler,
   listWatchlistHandler,
@@ -45,6 +46,7 @@ export function createApp(options: AppOptions = {}): Express {
   app.post('/api/watchlist', addWatchlistHandler);
   app.patch('/api/watchlist/:symbol', patchWatchlistHandler);
   app.delete('/api/watchlist/:symbol', removeWatchlistHandler);
+  app.post('/api/llm/test', testLlmHandler);
 
   // Static file serving
   if (options.viteDevMiddleware) {
