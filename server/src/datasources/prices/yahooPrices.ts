@@ -119,6 +119,7 @@ function toEpochMs(value: Date | number | string | undefined): number {
 export class YahooPricesDataSource extends BaseDataSource<{ symbol: string }, PriceQuote> {
   readonly name = YAHOO_PRICES_SOURCE;
   readonly kind: DataSourceKind = 'prices';
+  readonly provider = 'yahoo';
 
   private readonly quoteFn: YahooQuoteFn;
   private readonly chartFn: YahooQuoteFn | null;

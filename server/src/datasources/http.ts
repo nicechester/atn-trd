@@ -101,6 +101,44 @@ export class TokenBucket {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Timeout                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Bound an arbitrary async call in wall-clock time. `HttpClient` already times
+ * out its own fetches; this is for SDK-backed sources (yahoo-finance2) whose
+ * internal I/O we cannot abort directly — hence the race rather than a plain
+ * `AbortSignal`.
+ */
+export async function withTimeout<T>(
+  fn: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  label: string,
+  externalSignal?: AbortSignal
+): Promise<T> {
+  const controller = new AbortController();
+  const abortExternal = () => controller.abort();
+  externalSignal?.addEventListener('abort', abortExternal, { once: true });
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      const err = new Error(`${label} timed out after ${timeoutMs}ms`);
+      err.name = 'TimeoutError';
+      reject(err);
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([fn(controller.signal), expiry]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    externalSignal?.removeEventListener('abort', abortExternal);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* Errors                                                                     */
 /* -------------------------------------------------------------------------- */
 
