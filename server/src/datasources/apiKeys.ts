@@ -14,28 +14,16 @@ const log = logger.child({ component: 'datasource-keys' });
  * is stored.
  */
 export function resolveApiKey(name: string): string | undefined {
-  console.log(`[DEBUG] resolveApiKey('${name}') - Starting resolution (DB > ENV precedence)`);
-
   try {
     const fromStore = resolveSecret(name)?.trim();
-    console.log(`[DEBUG] resolveApiKey('${name}') - resolveSecret() returned:`, fromStore ? 'FOUND (length: ' + fromStore.length + ')' : 'NOT FOUND');
-    if (fromStore) {
-      console.log(`[DEBUG] resolveApiKey('${name}') - Returning from store`);
-      return fromStore;
-    }
+    if (fromStore) return fromStore;
   } catch (err) {
-    console.log(`[DEBUG] resolveApiKey('${name}') - Error from resolveSecret:`, err instanceof Error ? err.message : String(err));
     log.debug('secret store unavailable', {
       name,
       error: err instanceof Error ? err.message : String(err),
     });
   }
-
-  const fromEnv = process.env[name]?.trim();
-  console.log(`[DEBUG] resolveApiKey('${name}') - process.env fallback:`, fromEnv ? 'FOUND (length: ' + fromEnv.length + ')' : 'NOT FOUND');
-  const result = fromEnv || undefined;
-  console.log(`[DEBUG] resolveApiKey('${name}') - Final result:`, result ? 'FOUND' : 'NOT FOUND');
-  return result;
+  return process.env[name]?.trim() || undefined;
 }
 
 export type ApiKeyResolver = () => string | undefined;

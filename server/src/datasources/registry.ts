@@ -121,7 +121,6 @@ export function createDataSourceRegistry(deps: DataSourceRegistryDeps = {}): Dat
     const source = get(id);
     const secretName = REQUIRED_SECRETS[source.name] ?? null;
     const configured = source.isConfigured();
-    console.log(`[DEBUG] DataSourceRegistry.describe('${id}') - name: ${source.name}, provider: ${provider}, secretName: ${secretName}, isConfigured: ${configured}`);
     return {
       id,
       provider,
