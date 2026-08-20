@@ -31,6 +31,7 @@ import { WatchlistRepo } from '../repos/watchlistRepo.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
 import { PaperBroker } from '../brokers/paperBroker.js';
+import { RunCache } from '../datasources/cache.js';
 import { dataSourceRegistry } from '../datasources/registry.js';
 import type { NewsDataSource } from '../datasources/news/index.js';
 import type { FundamentalsDataSource } from '../datasources/fundamentals/index.js';
@@ -88,7 +89,8 @@ function registerJobs(): void {
           slippageBps: settings.paperAccount.slippageBps,
         });
 
-        // agent tools deps
+        // agent tools deps (with per-run cache)
+        const runCache = new RunCache();
         const analystDeps: AnalystAgentDeps = {
           toolsDeps: {
             newsSource:         dataSourceRegistry.get('news') as unknown as NewsDataSource,
@@ -98,6 +100,7 @@ function registerJobs(): void {
             pricesRepo,
             portfolioService,
             decisionsRepo,
+            cache: runCache,
           },
           messagesRepo,
           artifactsRepo,

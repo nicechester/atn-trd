@@ -16,6 +16,7 @@ import { NotFoundError } from '../lib/errors.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
 import { PaperBroker } from '../brokers/paperBroker.js';
+import { RunCache } from '../datasources/cache.js';
 import { createTradingCycleService } from '../services/tradingCycleService.js';
 import { dataSourceRegistry } from '../datasources/registry.js';
 import type { NewsDataSource } from '../datasources/news/index.js';
@@ -120,7 +121,8 @@ export async function triggerRunHandler(
       slippageBps: settings.paperAccount.slippageBps,
     });
 
-    // agent tools deps
+    // agent tools deps (with per-run cache)
+    const runCache = new RunCache();
     const analystDeps: AnalystAgentDeps = {
       toolsDeps: {
         newsSource:         dataSourceRegistry.get('news') as unknown as NewsDataSource,
@@ -130,6 +132,7 @@ export async function triggerRunHandler(
         pricesRepo,
         portfolioService,
         decisionsRepo,
+        cache: runCache,
       },
       messagesRepo,
       artifactsRepo,
