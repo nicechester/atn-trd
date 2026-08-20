@@ -3,6 +3,7 @@ import type { AssessmentsRepo } from '../repos/assessmentsRepo.js';
 import type { DecisionsRepo } from '../repos/decisionsRepo.js';
 import type { OrdersRepo } from '../repos/ordersRepo.js';
 import type { WatchlistRepo } from '../repos/watchlistRepo.js';
+import type { CalibrationRepo } from '../repos/calibrationRepo.js';
 import type { PortfolioService } from './portfolioService.js';
 import type { Broker } from '../brokers/types.js';
 import type { AnalystAgentDeps } from '../agent/analystAgent.js';
@@ -58,6 +59,7 @@ export interface TradingCycleDeps {
   priceFeed: RiskPriceFeed;
   getSettings: () => Settings;
   watchlistRepo: WatchlistRepo;
+  calibrationRepo?: CalibrationRepo;
 }
 
 export interface TradingCycleService {
@@ -256,6 +258,25 @@ class TradingCycleServiceImpl implements TradingCycleService {
       });
 
       const decisionSetWithIds = { decisions: persistedDecisions, timestamp: decisionSet.timestamp };
+
+      // ── Step J2: Record calibration baselines ────────────────────────
+      if (this.deps.calibrationRepo) {
+        for (const d of persistedDecisions) {
+          const predictedDirection: 'long' | 'short' | 'hold' =
+            d.action === 'buy' || d.action === 'add'
+              ? 'long'
+              : d.action === 'sell' || d.action === 'trim'
+              ? 'short'
+              : 'hold';
+
+          this.deps.calibrationRepo.create({
+            runId,
+            symbol: d.symbol,
+            predictedDirection,
+            confidence: d.confidence,
+          });
+        }
+      }
 
       // ── Step K: Risk engine ──────────────────────────────────────
       const riskConstraints: RiskConstraints = {

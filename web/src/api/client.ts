@@ -391,5 +391,25 @@ export const trades = {
   },
 };
 
+// Calibration
+export interface CalibrationBand {
+  band: string;
+  count: number;
+  correctCount: number;
+  avgReturn5d: number | null;
+  avgReturn20d: number | null;
+}
+
+export interface CalibrationReport {
+  bands: CalibrationBand[];
+  totalPending: number;
+}
+
+export const calibration = {
+  get(): Promise<{ ok: boolean; data: CalibrationReport }> {
+    return request<{ ok: boolean; data: CalibrationReport }>('/calibration');
+  },
+};
+
 // Unified API object
-export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades };
+export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades, calibration };

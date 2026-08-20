@@ -1,5 +1,6 @@
 import { PricesRepo } from '../repos/pricesRepo.js';
 import { YahooPricesDataSource, normalizeSymbol } from '../datasources/prices/yahooPrices.js';
+import { FinnhubPricesDataSource } from '../datasources/prices/finnhubPrices.js';
 import { logger } from '../lib/logger.js';
 
 const log = logger.child({ component: 'price-service' });
@@ -55,12 +56,14 @@ interface CacheEntry {
  */
 export class PriceService implements PriceFeed {
   private readonly pricesRepo: PricesRepo;
+  private readonly finnhub: FinnhubPricesDataSource;
   private readonly yahoo: YahooPricesDataSource;
   private readonly cache: Map<string, CacheEntry> = new Map();
   private readonly cacheMaxAgeMs = 1000 * 60 * 60; // 1 hour
 
   constructor(pricesRepo: PricesRepo, yahoo?: YahooPricesDataSource) {
     this.pricesRepo = pricesRepo;
+    this.finnhub = new FinnhubPricesDataSource();
     this.yahoo = yahoo ?? new YahooPricesDataSource();
   }
 
@@ -77,27 +80,42 @@ export class PriceService implements PriceFeed {
       return cached.priceCents / 100;
     }
 
-    // Fetch from Yahoo and cache
-    try {
-      const quote = await this.yahoo.fetch({ symbol: normalized });
-      if (!quote) {
-        log.debug('price not found', { symbol: normalized });
+    // Fetch from Finnhub (primary), fall back to Yahoo
+    let price: number | null = null;
+    if (this.finnhub.isConfigured()) {
+      try {
+        const quote = await this.finnhub.fetch({ symbol: normalized });
+        price = quote.price;
+      } catch (err) {
+        log.debug('finnhub price fetch failed, trying yahoo', { symbol: normalized, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    if (price === null) {
+      try {
+        const quote = await this.yahoo.fetch({ symbol: normalized });
+        if (!quote) {
+          log.debug('price not found', { symbol: normalized });
+          return this.getLatestCachedPrice(normalized);
+        }
+        price = quote.price;
+      } catch (err) {
+        log.debug('yahoo price fetch failed', { symbol: normalized, error: err instanceof Error ? err.message : String(err) });
         return this.getLatestCachedPrice(normalized);
       }
-
-      const priceCents = Math.round(quote.price * 100);
-      this.cache.set(normalized, {
-        symbol: normalized,
-        priceCents,
-        adjCloseCents: priceCents, // TODO: adjust for splits/dividends
-        timestamp: Date.now(),
-      });
-
-      return priceCents / 100;
-    } catch (err) {
-      log.debug('price fetch failed', { symbol: normalized, error: err instanceof Error ? err.message : String(err) });
-      return this.getLatestCachedPrice(normalized);
     }
+
+    if (price === null) return this.getLatestCachedPrice(normalized);
+
+    const priceCents = Math.round(price * 100);
+    this.cache.set(normalized, {
+      symbol: normalized,
+      priceCents,
+      adjCloseCents: priceCents,
+      timestamp: Date.now(),
+    });
+
+    return priceCents / 100;
   }
 
   /**
