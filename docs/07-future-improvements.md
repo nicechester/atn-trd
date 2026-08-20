@@ -226,6 +226,81 @@ class RunCache {
 
 ---
 
+## 8. Autonomous Watchlist Selection
+
+**Problem:** Watchlist is manually curated. The system only trades among hand-picked symbols, missing opportunities in the broader market.
+
+**Solution:** Add a **Screener Agent** (Stage 0) that dynamically selects symbols before the analyst stage runs.
+
+**Architecture:**
+```
+┌─────────────────────┐
+│   Universe Filter   │  ← Quant pre-filter (no LLM): volume, market cap, sector
+│   (S&P 500 → 30)    │
+└──────────┬──────────┘
+           ▼
+┌─────────────────────┐
+│   Screener Agent    │  ← LLM picks final 10-15 with rationale
+│   (30 → 10-15)      │
+└──────────┬──────────┘
+           ▼
+┌─────────────────────┐
+│   Analyst Agents    │  ← Existing per-symbol research
+└─────────────────────┘
+```
+
+**New tools for Screener Agent:**
+```ts
+scan_market({ criteria }): Promise<{ symbol: string; metrics: object }[]>
+// Wraps stock screener API (Finviz, TradingView, Yahoo)
+
+get_sector_performance(): Promise<{ sector: string; return1d: number; return1w: number }[]>
+// Identify hot/cold sectors for rotation
+
+get_unusual_options_activity({ minVolumeRatio }): Promise<{ symbol: string; putCallRatio: number; volumeVsOI: number }[]>
+// Find names with unusual activity
+
+get_earnings_calendar({ days }): Promise<{ symbol: string; date: string; estimate: number }[]>
+// Upcoming catalysts
+```
+
+**Settings schema:**
+```ts
+// shared/src/settings.ts
+watchlist: {
+  mode: 'manual' | 'dynamic',
+  // Manual mode (current behavior)
+  symbols: string[],
+  // Dynamic mode
+  universe: 'SP500' | 'NASDAQ100' | 'custom',
+  customUniverse?: string[],  // if universe = 'custom'
+  maxSymbolsPerRun: number,   // default 15
+  preFilter: {
+    minAvgVolume: number,     // default 1_000_000
+    minMarketCap: number,     // default 10_000_000_000
+    excludeSectors: string[], // e.g. ['Utilities']
+  }
+}
+```
+
+**Hybrid approach (recommended):**
+1. Define universe (S&P 500 or custom 100-200 names)
+2. Quant pre-filter narrows to ~30 candidates (cheap, fast, no LLM)
+3. Screener agent picks final 10-15 with rationale (one LLM call)
+4. Analyst agents research those 10-15
+
+**Trade-offs:**
+| Approach | Token Cost | Control | Serendipity |
+|----------|------------|---------|-------------|
+| Hand-picked watchlist | None | Full | None |
+| Quant pre-filter only | None | High | Low |
+| Screener agent | Medium | Medium | High |
+| Full autonomous | High | Low | Highest |
+
+**Complexity:** Medium — new agent, new tools, settings schema update, but no changes to existing analyst/PM/risk pipeline.
+
+---
+
 ## Priority Ranking
 
 | Improvement | Impact | Complexity | Recommended Phase |
@@ -233,12 +308,13 @@ class RunCache {
 | Confidence Calibration | High | Low | Phase 2 |
 | Tool Result Caching | Medium | Low | Phase 2 |
 | Graceful Degradation Dashboard | Medium | Low | Phase 2 |
+| Autonomous Watchlist Selection | High | Medium | Phase 3 |
 | Backtesting Infrastructure | High | High | Phase 3 |
 | Embedding Store | Medium | Medium | Phase 3 |
 | Multi-Agent Debate | Medium | Medium | Phase 4 |
 | Event-Driven Runs | Low | Medium | Phase 4+ |
 
-**Rationale:** Start with low-complexity wins that improve observability and efficiency. Backtesting is high-impact but requires significant data infrastructure. Multi-agent and event-driven are nice-to-haves once the core loop is proven.
+**Rationale:** Start with low-complexity wins that improve observability and efficiency. Autonomous watchlist and backtesting are high-impact but require more infrastructure. Multi-agent and event-driven are nice-to-haves once the core loop is proven.
 
 ---
 
