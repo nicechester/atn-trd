@@ -19,6 +19,7 @@ import { listRunsHandler, getRunHandler, triggerRunHandler } from './routes/runs
 import { getPortfolioHandler, getPortfolioHistoryHandler } from './routes/portfolio.js';
 import { listTradesHandler, getTradeHandler } from './routes/trades.js';
 import { getCalibrationHandler } from './routes/calibration.js';
+import { getPerformanceHandler } from './routes/performance.js';
 
 interface AppOptions {
   staticRoot?: string;
@@ -64,6 +65,7 @@ export function createApp(options: AppOptions = {}): Express {
   app.get('/api/trades', listTradesHandler);
   app.get('/api/trades/:id', getTradeHandler);
   app.get('/api/calibration', getCalibrationHandler);
+  app.get('/api/performance', getPerformanceHandler);
 
   // Static file serving
   if (options.viteDevMiddleware) {

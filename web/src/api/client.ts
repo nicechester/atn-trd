@@ -411,5 +411,31 @@ export const calibration = {
   },
 };
 
+// Performance
+export interface PerformancePoint {
+  date: string;
+  strategyReturn: number;
+  benchmarkReturn: number;
+}
+
+export interface PerformanceMetrics {
+  totalStrategyReturn: number;
+  totalBenchmarkReturn: number;
+  strategyMaxDrawdown: number;
+  benchmarkMaxDrawdown: number;
+  sharpeRatio?: number;
+  series: PerformancePoint[];
+}
+
+export const performance = {
+  get(fromDate?: string, toDate?: string): Promise<{ ok: boolean; data: PerformanceMetrics }> {
+    const params = new URLSearchParams();
+    if (fromDate) params.append('fromDate', fromDate);
+    if (toDate) params.append('toDate', toDate);
+    const qs = params.toString();
+    return request<{ ok: boolean; data: PerformanceMetrics }>(`/performance${qs ? '?' + qs : ''}`);
+  },
+};
+
 // Unified API object
-export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades, calibration };
+export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades, calibration, performance };
