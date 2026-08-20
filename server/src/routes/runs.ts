@@ -11,6 +11,7 @@ import { PositionsRepo } from '../repos/positionsRepo.js';
 import { PortfolioRepo } from '../repos/portfolioRepo.js';
 import { PricesRepo } from '../repos/pricesRepo.js';
 import { WatchlistRepo } from '../repos/watchlistRepo.js';
+import { CalibrationRepo } from '../repos/calibrationRepo.js';
 import { NotFoundError } from '../lib/errors.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
@@ -109,6 +110,7 @@ export async function triggerRunHandler(
     const messagesRepo    = new AgentMessagesRepo(db);
     const artifactsRepo   = new ArtifactsRepo(db);
     const watchlistRepo   = new WatchlistRepo(db);
+    const calibrationRepo = new CalibrationRepo(db);
 
     // services
     const priceService     = new PriceService(pricesRepo);
@@ -155,6 +157,7 @@ export async function triggerRunHandler(
       priceFeed: priceService,
       getSettings,
       watchlistRepo,
+      calibrationRepo,
     });
 
     await tradingCycle.execute('manual');
