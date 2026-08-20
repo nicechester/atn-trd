@@ -70,4 +70,13 @@ export class DecisionsRepo {
       .get(runId) as { count: number };
     return result.count;
   }
+
+  listBySymbol(symbol: string, limit: number): DecisionRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, run_id as runId, symbol, action, target_weight as targetWeight, confidence, rationale, assessment_id as assessmentId, created_at as createdAt
+         FROM decisions WHERE symbol = ? ORDER BY created_at DESC LIMIT ?`
+      )
+      .all(symbol, limit) as DecisionRow[];
+  }
 }

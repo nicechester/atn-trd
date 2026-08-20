@@ -1,0 +1,254 @@
+import { DynamicStructuredTool } from '@langchain/core/tools';
+import { z } from 'zod';
+import type { NewsDataSource } from '../datasources/news/index.js';
+import type { FundamentalsDataSource } from '../datasources/fundamentals/index.js';
+import type { MacroDataSource } from '../datasources/macro/index.js';
+import type { OptionsDataSource } from '../datasources/options/index.js';
+import type { PricesRepo } from '../repos/pricesRepo.js';
+import type { PriceBarRow } from '../repos/pricesRepo.js';
+import type { PortfolioService, PositionDetail } from '../services/portfolioService.js';
+import type { DecisionsRepo } from '../repos/decisionsRepo.js';
+import { toIsoDate } from '../datasources/news/types.js';
+
+export interface AgentToolsDeps {
+  newsSource: NewsDataSource;
+  fundamentalsSource: FundamentalsDataSource;
+  macroSource: MacroDataSource;
+  optionsSource: OptionsDataSource;
+  pricesRepo: PricesRepo;
+  portfolioService: PortfolioService;
+  decisionsRepo: DecisionsRepo;
+}
+
+function makeGetNews(deps: AgentToolsDeps) {
+  const schema = z.object({
+    symbol: z.string().describe('Stock ticker symbol'),
+    days: z.number().int().optional().describe('Days back to search (1–90, default 7)'),
+    limit: z.number().int().optional().describe('Max articles to return (1–50, default 20)'),
+  });
+
+  return new DynamicStructuredTool({
+    name: 'get_news',
+    description: 'Fetch recent news articles for a given symbol',
+    schema,
+    func: async (input: z.infer<typeof schema>) => {
+      try {
+        const symbol = input.symbol;
+        const days = input.days ?? 7;
+        const limit = input.limit ?? 20;
+
+        // Clamp days to 1–90
+        const clampedDays = Math.max(1, Math.min(90, days));
+        // Clamp limit to 1–50
+        const clampedLimit = Math.max(1, Math.min(50, limit));
+
+        const now = Date.now();
+        const fromMs = now - clampedDays * 86_400_000;
+        const from = toIsoDate(fromMs);
+        const to = toIsoDate(now);
+
+        const result = await deps.newsSource.fetch({
+          symbol,
+          from,
+          to,
+          limit: clampedLimit,
+        });
+
+        return JSON.stringify(result.data);
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  });
+}
+
+function makeGetFundamentals(deps: AgentToolsDeps) {
+  const schema = z.object({
+    symbol: z.string().describe('Stock ticker symbol'),
+  });
+
+  return new DynamicStructuredTool({
+    name: 'get_fundamentals',
+    description: 'Fetch fundamental company data including valuations, earnings, and ratios',
+    schema,
+    func: async (input: z.infer<typeof schema>) => {
+      try {
+        const symbol = input.symbol;
+        const result = await deps.fundamentalsSource.fetch({ symbol });
+        return JSON.stringify(result.data);
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  });
+}
+
+function makeGetMacro(deps: AgentToolsDeps) {
+  const schema = z
+    .object({
+      seriesIds: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'FRED series IDs to fetch. Omit for defaults: DGS10, DGS2, T10Y2Y, CPIAUCSL, UNRATE, FEDFUNDS, VIXCLS, UMCSENT'
+        ),
+    })
+    .passthrough();
+
+  return new DynamicStructuredTool({
+    name: 'get_macro',
+    description: 'Fetch macroeconomic indicators from FRED',
+    schema,
+    func: async (input: z.infer<typeof schema>) => {
+      try {
+        const seriesIds = input.seriesIds ?? undefined;
+        const result = await deps.macroSource.fetch({ seriesIds });
+        return JSON.stringify(result.data);
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  });
+}
+
+function makeGetOptionsSnapshot(deps: AgentToolsDeps) {
+  const schema = z.object({
+    symbol: z.string().describe('Stock ticker symbol'),
+  });
+
+  return new DynamicStructuredTool({
+    name: 'get_options_snapshot',
+    description: 'Fetch current options chain snapshot for a given symbol',
+    schema,
+    func: async (input: z.infer<typeof schema>) => {
+      try {
+        const symbol = input.symbol;
+        const result = await deps.optionsSource.fetch({ symbol });
+        return JSON.stringify(result.data);
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  });
+}
+
+function makeGetPriceHistory(deps: AgentToolsDeps) {
+  const schema = z.object({
+    symbol: z.string().describe('Stock ticker symbol'),
+    days: z.number().int().optional().describe('Days of history to return (1–504, default 90)'),
+  });
+
+  return new DynamicStructuredTool({
+    name: 'get_price_history',
+    description: 'Fetch cached historical price bars for a given symbol',
+    schema,
+    func: async (input: z.infer<typeof schema>) => {
+      try {
+        const symbol = input.symbol;
+        const days = input.days ?? 90;
+
+        // Clamp days to 1–504 (roughly 2 years of trading days)
+        const clampedDays = Math.max(1, Math.min(504, days));
+
+        // Get price bars from the repository
+        const bars = deps.pricesRepo.listBySymbol(symbol, clampedDays);
+
+        // Map cents to dollars
+        const mapped = bars.map((bar: PriceBarRow) => ({
+          barDate: bar.barDate,
+          open: bar.openCents / 100,
+          high: bar.highCents / 100,
+          low: bar.lowCents / 100,
+          close: bar.closeCents / 100,
+          adjClose: bar.adjCloseCents / 100,
+          volume: bar.volume,
+        }));
+
+        return JSON.stringify({ symbol, bars: mapped });
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  });
+}
+
+function makeGetPortfolio(deps: AgentToolsDeps) {
+  const schema = z.object({}).passthrough();
+
+  return new DynamicStructuredTool({
+    name: 'get_portfolio',
+    description: 'Get the current portfolio state including positions, NAV, and P&L',
+    schema,
+    func: async (_input: z.infer<typeof schema>) => {
+      try {
+        const portfolio = await deps.portfolioService.getPortfolio();
+
+        // Map all *Cents fields to USD (divide by 100)
+        const mapped = {
+          asOfDate: portfolio.asOfDate,
+          cash: portfolio.cashCents / 100,
+          positionsValue: portfolio.positionsValueCents / 100,
+          totalValue: portfolio.totalValueCents / 100,
+          totalUnrealizedPnl: portfolio.totalUnrealizedPnlCents / 100,
+          totalRealizedPnl: portfolio.totalRealizedPnlCents / 100,
+          totalPnl: portfolio.totalPnlCents / 100,
+          totalReturnPercent: portfolio.totalReturnPercent,
+          positions: portfolio.positions.map((detail: PositionDetail) => ({
+            symbol: detail.symbol,
+            qty: detail.qty,
+            avgCost: detail.avgCostCents / 100,
+            currentPrice: detail.currentPriceCents / 100,
+            costBasis: detail.costBasisCents / 100,
+            marketValue: detail.marketValueCents / 100,
+            weightPercent: detail.weightPercent,
+            unrealizedPnl: detail.unrealizedPnlCents / 100,
+            realizedPnl: detail.realizedPnlCents / 100,
+          })),
+        };
+
+        return JSON.stringify(mapped);
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  });
+}
+
+function makeGetPriorDecisions(deps: AgentToolsDeps) {
+  const schema = z.object({
+    symbol: z.string().describe('Stock ticker symbol'),
+    limit: z.number().int().optional().describe('Max decisions to return (1–20, default 5)'),
+  });
+
+  return new DynamicStructuredTool({
+    name: 'get_prior_decisions',
+    description: 'Fetch prior trading decisions for a given symbol',
+    schema,
+    func: async (input: z.infer<typeof schema>) => {
+      try {
+        const symbol = input.symbol;
+        const limit = input.limit ?? 5;
+
+        // Clamp limit to 1–20
+        const clampedLimit = Math.max(1, Math.min(20, limit));
+
+        const rows = deps.decisionsRepo.listBySymbol(symbol, clampedLimit);
+        return JSON.stringify(rows);
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  });
+}
+
+export function createAgentTools(deps: AgentToolsDeps) {
+  return [
+    makeGetNews(deps),
+    makeGetFundamentals(deps),
+    makeGetMacro(deps),
+    makeGetOptionsSnapshot(deps),
+    makeGetPriceHistory(deps),
+    makeGetPortfolio(deps),
+    makeGetPriorDecisions(deps),
+  ];
+}
