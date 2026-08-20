@@ -1,0 +1,158 @@
+import { Request, Response, NextFunction } from 'express';
+import { getDatabase } from '../db/index.js';
+import { RunsRepo } from '../repos/runsRepo.js';
+import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
+import { DecisionsRepo } from '../repos/decisionsRepo.js';
+import { OrdersRepo } from '../repos/ordersRepo.js';
+import { FillsRepo } from '../repos/fillsRepo.js';
+import { AgentMessagesRepo } from '../repos/agentMessagesRepo.js';
+import { ArtifactsRepo } from '../repos/artifactsRepo.js';
+import { PositionsRepo } from '../repos/positionsRepo.js';
+import { PortfolioRepo } from '../repos/portfolioRepo.js';
+import { PricesRepo } from '../repos/pricesRepo.js';
+import { NotFoundError } from '../lib/errors.js';
+import { PriceService } from '../services/priceService.js';
+import { PortfolioServiceImpl } from '../services/portfolioService.js';
+import { PaperBroker } from '../brokers/paperBroker.js';
+import { createTradingCycleService } from '../services/tradingCycleService.js';
+import { dataSourceRegistry } from '../datasources/registry.js';
+import type { NewsDataSource } from '../datasources/news/index.js';
+import type { FundamentalsDataSource } from '../datasources/fundamentals/index.js';
+import type { MacroDataSource } from '../datasources/macro/index.js';
+import type { OptionsDataSource } from '../datasources/options/index.js';
+import type { AnalystAgentDeps } from '../agent/analystAgent.js';
+import { getSettings } from '../config/settingsService.js';
+
+/** GET /api/runs?limit=50&offset=0 */
+export function listRunsHandler(req: Request, res: Response, next: NextFunction): void {
+  try {
+    const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '50', 10), 1), 200);
+    const offset = Math.max(parseInt((req.query.offset as string) || '0', 10), 0);
+
+    const db = getDatabase();
+    const runsRepo = new RunsRepo(db);
+    const runs = runsRepo.list(limit, offset);
+
+    res.json({ ok: true, data: runs });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** GET /api/runs/:id */
+export function getRunHandler(req: Request, res: Response, next: NextFunction): void {
+  try {
+    const { id } = req.params;
+
+    const db = getDatabase();
+    const runsRepo = new RunsRepo(db);
+    const assessmentsRepo = new AssessmentsRepo(db);
+    const decisionsRepo = new DecisionsRepo(db);
+    const ordersRepo = new OrdersRepo(db);
+    const fillsRepo = new FillsRepo(db);
+    const messagesRepo = new AgentMessagesRepo(db);
+    const artifactsRepo = new ArtifactsRepo(db);
+
+    const run = runsRepo.get(id);
+    if (!run) {
+      throw new NotFoundError(`Run "${id}" not found`);
+    }
+
+    const assessments = assessmentsRepo.listByRun(id);
+    const decisions = decisionsRepo.listByRun(id);
+    const orders = ordersRepo.listByRun(id);
+    const messages = messagesRepo.listByRun(id);
+    const artifacts = artifactsRepo.listByRun(id);
+
+    // For each order, fetch its fills
+    const ordersWithFills = orders.map(order => ({
+      ...order,
+      fills: fillsRepo.listByOrder(order.id),
+    }));
+
+    res.json({
+      ok: true,
+      data: {
+        run,
+        assessments,
+        decisions,
+        orders: ordersWithFills,
+        messages,
+        artifacts,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** POST /api/runs */
+export async function triggerRunHandler(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const db = getDatabase();
+    const settings = getSettings();
+
+    // repos
+    const runsRepo        = new RunsRepo(db);
+    const assessmentsRepo = new AssessmentsRepo(db);
+    const decisionsRepo   = new DecisionsRepo(db);
+    const ordersRepo      = new OrdersRepo(db);
+    const fillsRepo       = new FillsRepo(db);
+    const positionsRepo   = new PositionsRepo(db);
+    const portfolioRepo   = new PortfolioRepo(db);
+    const pricesRepo      = new PricesRepo(db);
+    const messagesRepo    = new AgentMessagesRepo(db);
+    const artifactsRepo   = new ArtifactsRepo(db);
+
+    // services
+    const priceService     = new PriceService(pricesRepo);
+    const portfolioService = new PortfolioServiceImpl(db, priceService, positionsRepo, portfolioRepo);
+    const broker           = new PaperBroker(db, priceService, ordersRepo, fillsRepo, positionsRepo, portfolioRepo, {
+      fillModel:   settings.paperAccount.fillModel,
+      slippageBps: settings.paperAccount.slippageBps,
+    });
+
+    // agent tools deps
+    const analystDeps: AnalystAgentDeps = {
+      toolsDeps: {
+        newsSource:         dataSourceRegistry.get('news') as unknown as NewsDataSource,
+        fundamentalsSource: dataSourceRegistry.get('fundamentals') as unknown as FundamentalsDataSource,
+        macroSource:        dataSourceRegistry.get('macro') as unknown as MacroDataSource,
+        optionsSource:      dataSourceRegistry.get('options') as unknown as OptionsDataSource,
+        pricesRepo,
+        portfolioService,
+        decisionsRepo,
+      },
+      messagesRepo,
+      artifactsRepo,
+    };
+
+    const tradingCycle = createTradingCycleService({
+      runsRepo,
+      assessmentsRepo,
+      decisionsRepo,
+      ordersRepo,
+      portfolioService,
+      broker,
+      analystDeps,
+      priceFeed: priceService,
+      getSettings,
+    });
+
+    await tradingCycle.execute('manual');
+
+    // After executing, get the most recent run to return its id
+    const latestRun = runsRepo.list(1, 0)[0];
+    if (!latestRun) {
+      throw new Error('Failed to retrieve created run');
+    }
+
+    res.json({ ok: true, runId: latestRun.id });
+  } catch (err) {
+    next(err);
+  }
+}
