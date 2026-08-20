@@ -255,6 +255,18 @@ export interface DecisionRow {
   createdAt: number;
 }
 
+export interface RejectionRow {
+  id: string;
+  runId: string;
+  decisionId: string | null;
+  symbol: string;
+  action: 'buy' | 'sell' | 'hold' | 'trim' | 'add';
+  confidence: number;
+  targetWeight: number | null;
+  reason: string;
+  createdAt: number;
+}
+
 export interface FillRow {
   id: string;
   orderId: string;
@@ -349,6 +361,7 @@ export interface RunDetailData {
   assessments: AssessmentRow[];
   decisions: DecisionRow[];
   orders: OrderWithFills[];
+  rejections: RejectionRow[];
   messages: AgentMessageRow[];
   artifacts: ResearchArtifactRow[];
 }

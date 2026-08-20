@@ -4,6 +4,7 @@ import { runs as runsApi, type RunDetailData, type AgentRunRow, type DecisionRow
 import { centsToUSD, formatTimestamp, formatDuration } from '../lib/format';
 import { useToast } from '../context/ToastContext';
 import CoverageHeatmap from '../components/CoverageHeatmap';
+import { RejectedDecisions } from '../components/RejectedDecisions';
 import styles from './RunDetail.module.css';
 
 function badgeClass(status: AgentRunRow['status'], s: Record<string, string>) {
@@ -207,6 +208,9 @@ export default function RunDetailPage() {
           {orders.length === 0 && <p className={styles.muted}>No orders.</p>}
         </details>
       </div>
+
+      {/* Rejected Decisions */}
+      <RejectedDecisions rejections={detail.rejections} />
 
       {/* Transcript — collapsed by default */}
       <div className={styles.section}>
