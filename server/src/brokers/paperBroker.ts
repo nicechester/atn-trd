@@ -6,7 +6,7 @@ import { FillsRepo } from '../repos/fillsRepo.js';
 import { PositionsRepo, type PositionRow } from '../repos/positionsRepo.js';
 import { PortfolioRepo, type PortfolioRow } from '../repos/portfolioRepo.js';
 import { notionalCents } from '../lib/money.js';
-import { isTradingDay, nextSessionOpen, nextSessionClose } from '../scheduler/marketCalendar.js';
+import { isTradingDay, nextSessionOpen, nextSessionClose, nextTradingDateStr, toETDateStr } from '../scheduler/marketCalendar.js';
 import { logger } from '../lib/logger.js';
 
 const log = logger.child({ component: 'paper-broker' });
@@ -42,6 +42,7 @@ export class PaperBroker implements Broker {
   private readonly portfolioRepo: PortfolioRepo;
   private readonly db: Database.Database;
   private readonly config: PaperBrokerConfig;
+  private reservedCashCents = 0;
 
   constructor(
     db: Database.Database,
@@ -210,16 +211,32 @@ export class PaperBroker implements Broker {
     });
 
     // Calculate fill price with slippage
-    const fillPriceCents = this.calculateFillPrice(req.side, latestBar.closeCents);
+    const estimateFillPriceCents = this.calculateFillPrice(req.side, latestBar.closeCents);
 
+    // Handle next_open fill model
+    if (this.config.fillModel === 'next_open') {
+      const check = this.tryFillOrder(orderId, req, latestBar, estimateFillPriceCents, portfolio);
+      if (check.rejected) {
+        this.ordersRepo.updateStatus(orderId, 'rejected', undefined, check.rejectReason);
+        return this.rowToState(this.ordersRepo.get(orderId)!);
+      }
+      if (req.side === 'buy') {
+        this.reservedCashCents += notionalCents(req.qty, estimateFillPriceCents) + this.config.commissionCents;
+      }
+      this.ordersRepo.updateStatus(orderId, 'accepted');
+      log.debug('order deferred to next_open settlement', { orderId, symbol: req.symbol });
+      return this.rowToState(this.ordersRepo.get(orderId)!);
+    }
+
+    // Handle last_close fill model (existing logic)
     // For limit orders, reject if limit would be violated
     if (req.type === 'limit' && req.limitPriceCents !== undefined) {
-      if (req.side === 'buy' && fillPriceCents > req.limitPriceCents) {
+      if (req.side === 'buy' && estimateFillPriceCents > req.limitPriceCents) {
         this.ordersRepo.updateStatus(orderId, 'accepted');
         log.debug('limit order accepted but not filled', { orderId, symbol: req.symbol });
         return this.rowToState(this.ordersRepo.get(orderId)!);
       }
-      if (req.side === 'sell' && fillPriceCents < req.limitPriceCents) {
+      if (req.side === 'sell' && estimateFillPriceCents < req.limitPriceCents) {
         this.ordersRepo.updateStatus(orderId, 'accepted');
         log.debug('limit order accepted but not filled', { orderId, symbol: req.symbol });
         return this.rowToState(this.ordersRepo.get(orderId)!);
@@ -227,7 +244,7 @@ export class PaperBroker implements Broker {
     }
 
     // Try to fill the order
-    const fillResult = this.tryFillOrder(orderId, req, latestBar, fillPriceCents, portfolio);
+    const fillResult = this.tryFillOrder(orderId, req, latestBar, estimateFillPriceCents, portfolio);
 
     if (fillResult.rejected) {
       this.ordersRepo.updateStatus(orderId, 'rejected', undefined, fillResult.rejectReason);
@@ -236,7 +253,7 @@ export class PaperBroker implements Broker {
 
     // Fill order in transaction
     if (fillResult.shouldFill) {
-      this.executeOrder(orderId, req, latestBar, fillPriceCents);
+      this.executeOrder(orderId, req, latestBar, estimateFillPriceCents);
     }
 
     // Move from pending to accepted
@@ -283,6 +300,46 @@ export class PaperBroker implements Broker {
     };
   }
 
+  async processPendingOrders(): Promise<void> {
+    if (this.config.fillModel !== 'next_open') return;
+
+    const pending = this.ordersRepo
+      .list({ status: ['accepted'] })
+      .filter((o) => o.broker === this.id);
+
+    let filled = 0, rejected = 0, stillPending = 0;
+
+    for (const order of pending) {
+      // Settlement date is the next trading day after order submission
+      const settlementDateStr = nextTradingDateStr(toETDateStr(new Date(order.submittedAt)));
+      const bar = await this.priceFeed.getBar(order.symbol, settlementDateStr);
+      if (!bar) { stillPending++; continue; }
+
+      const fillPriceCents = this.calculateFillPrice(order.side, bar.openCents);
+
+      if (order.type === 'limit' && order.limitPriceCents !== null &&
+          ((order.side === 'buy' && fillPriceCents > order.limitPriceCents) ||
+           (order.side === 'sell' && fillPriceCents < order.limitPriceCents))) {
+        stillPending++; continue;
+      }
+
+      const portfolio = this.portfolioRepo.read();
+      if (!portfolio) { log.warn('portfolio not initialized during settlement'); continue; }
+
+      const result = this.tryFillOrder(order.id, order, bar, fillPriceCents, portfolio);
+      if (result.rejected) {
+        this.ordersRepo.updateStatus(order.id, 'rejected', undefined, result.rejectReason);
+        rejected++; continue;
+      }
+
+      this.executeOrder(order.id, order, bar, fillPriceCents);
+      this.ordersRepo.updateStatus(order.id, 'filled');
+      filled++;
+    }
+
+    log.info('processed pending orders', { evaluated: pending.length, filled, rejected, stillPending });
+  }
+
   // ── private helpers ──
 
   private rowToState(row: OrderRow): OrderState {
@@ -316,17 +373,18 @@ export class PaperBroker implements Broker {
 
   private tryFillOrder(
     _orderId: string,
-    req: OrderRequest,
+    req: OrderRequest | { symbol: string; side: 'buy' | 'sell'; qty: number },
     _bar: HistoricalPrice,
     fillPriceCents: number,
     portfolio: PortfolioRow
   ): { rejected: boolean; shouldFill: boolean; rejectReason?: string } {
     if (req.side === 'buy') {
-      // Check cash availability
+      // Check cash availability (accounting for reserved cash from pending next_open orders)
       const notional = notionalCents(req.qty, fillPriceCents);
       const totalCost = notional + this.config.commissionCents;
+      const availableCash = portfolio.cashCents - this.reservedCashCents;
 
-      if (totalCost > portfolio.cashCents) {
+      if (totalCost > availableCash) {
         return {
           rejected: true,
           shouldFill: false,
@@ -336,7 +394,15 @@ export class PaperBroker implements Broker {
 
       return { rejected: false, shouldFill: true };
     } else {
-      // Sell order - position check already done in submitOrder
+      // Sell order - check position availability
+      const position = this.positionsRepo.get(req.symbol);
+      if (!position || position.qty < req.qty) {
+        return {
+          rejected: true,
+          shouldFill: false,
+          rejectReason: 'Insufficient shares to sell',
+        };
+      }
       return { rejected: false, shouldFill: true };
     }
   }

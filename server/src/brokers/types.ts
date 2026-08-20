@@ -51,4 +51,11 @@ export interface Broker {
   listOrders(f: { status?: OrderStatus[]; since?: number }): Promise<OrderState[]>;
   cancelOrder(orderId: string): Promise<void>;
   getClock(): Promise<{ isOpen: boolean; nextOpen: number; nextClose: number }>;
+  /**
+   * Settle orders deferred to a future session (e.g. PaperBroker's next_open
+   * fill model). Optional — brokers that fill synchronously, or real adapters
+   * that self-settle via their own API, need not implement it. Safe to call
+   * every cycle; must be a no-op when nothing is pending.
+   */
+  processPendingOrders?(): Promise<void>;
 }

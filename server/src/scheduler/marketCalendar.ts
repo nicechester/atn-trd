@@ -277,7 +277,7 @@ function addDay(dateStr: string): string {
 /**
  * Return the YYYY-MM-DD of the next NYSE trading day strictly after `dateStr`.
  */
-function nextTradingDateStr(dateStr: string): string {
+export function nextTradingDateStr(dateStr: string): string {
   let cursor = addDay(dateStr);
   for (let i = 0; i < 10; i++) {
     const probe = new Date(cursor + 'T12:00:00Z');
