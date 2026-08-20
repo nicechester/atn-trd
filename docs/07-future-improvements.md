@@ -301,18 +301,223 @@ watchlist: {
 
 ---
 
+## 9. Sector Performance Data
+
+**Problem:** No visibility into sector-level trends. The agent can't answer "which sectors are hot/cold?" or factor sector momentum into decisions.
+
+**Solution:** Add `get_sector_performance()` tool using sector ETFs or Finnhub sector metrics.
+
+**Data sources:**
+- Yahoo Finance sector ETFs (XLK, XLF, XLE, XLV, XLY, XLP, XLI, XLB, XLRE, XLU, XLC)
+- Finnhub `/stock/sector-metric`
+- Alpha Vantage `SECTOR` endpoint
+
+**Payload:**
+```ts
+interface SectorPerformance {
+  sector: string;           // 'Technology', 'Healthcare', etc.
+  etfSymbol: string;        // 'XLK', 'XLV', etc.
+  return1d: number;         // 1-day return %
+  return1w: number;         // 1-week return %
+  return1m: number;         // 1-month return %
+  return3m: number;         // 3-month return %
+  avgPE: number | null;     // sector average P/E
+  avgVolatility: number | null;
+}
+```
+
+**Usage:**
+- Screener agent: sector rotation signals
+- Analyst agent: relative sector strength context
+- Investor profile: sector bias application
+
+**Complexity:** Low — can derive from existing price data via sector ETFs.
+
+---
+
+## 10. Volatility Calculation Service
+
+**Problem:** Beta is available from fundamentals, but historical volatility is not calculated. Need volatility metrics for risk filtering and style scoring.
+
+**Solution:** Calculate historical volatility from price history.
+
+**Formula:**
+```ts
+// Daily return standard deviation × √252 (annualized)
+function calculateHistoricalVolatility(prices: number[], days: number): number {
+  const returns = prices.slice(-days).map((p, i, arr) => 
+    i === 0 ? 0 : (p - arr[i-1]) / arr[i-1]
+  ).slice(1);
+  
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((a, r) => a + (r - mean) ** 2, 0) / returns.length;
+  const stdDev = Math.sqrt(variance);
+  
+  return stdDev * Math.sqrt(252);  // Annualize
+}
+```
+
+**Metrics:**
+```ts
+interface VolatilityMetrics {
+  symbol: string;
+  historicalVol20d: number;   // 20-day annualized volatility
+  historicalVol60d: number;   // 60-day annualized volatility
+  beta: number | null;        // From fundamentals (market relative)
+  impliedVol: number | null;  // From options chain ATM IV
+}
+```
+
+**Usage:**
+- Risk engine: filter by `maxVolatility`
+- Style scoring: `stabilityScore = 1 / volatility`
+- Analyst context: risk assessment
+
+**Complexity:** Low — pure calculation over existing price data.
+
+---
+
+## 11. Investor Profile Settings
+
+**Problem:** No concept of investor preferences. Different investors want different strategies (growth vs income, high risk vs conservative).
+
+**Solution:** Add `investorProfile` to settings with weighted style preferences.
+
+**Schema:**
+```ts
+investorProfile: {
+  // Style weights (should sum to 100)
+  styleWeights: {
+    growth: number;      // Revenue/earnings growth focus
+    value: number;       // Low P/E, undervalued stocks
+    stability: number;   // Low volatility, blue chips
+    cashFlow: number;    // FCF, dividends, income
+    momentum: number;    // Price trend following
+  };
+  
+  // Risk tolerance
+  maxVolatility: number;           // Max annualized volatility (e.g., 0.30 = 30%)
+  
+  // Sector preferences (optional)
+  sectorBias?: {
+    [sector: string]: number;      // 1.0 = neutral, >1 = prefer, <1 = avoid
+  };
+}
+```
+
+**Example profiles:**
+```ts
+// Growth investor
+{ growth: 60, stability: 30, cashFlow: 10, value: 0, momentum: 0 }
+
+// Income/dividend investor
+{ cashFlow: 50, stability: 30, value: 20, growth: 0, momentum: 0 }
+
+// Aggressive momentum
+{ momentum: 50, growth: 40, stability: 10, value: 0, cashFlow: 0 }
+```
+
+**Style scoring:**
+```ts
+function scoreSymbol(fundamentals: F, volatility: V, weights: StyleWeights): number {
+  const growthScore = normalize(fundamentals.revenueGrowth);
+  const valueScore = normalize(1 / fundamentals.trailingPE);
+  const stabilityScore = normalize(1 / volatility.historicalVol60d);
+  const cashFlowScore = normalize(fundamentals.freeCashflow);
+  
+  return (
+    weights.growth * growthScore +
+    weights.value * valueScore +
+    weights.stability * stabilityScore +
+    weights.cashFlow * cashFlowScore
+  ) / 100;
+}
+```
+
+**Integration:**
+| Component | Usage |
+|-----------|-------|
+| Screener | Score and rank candidates by style fit |
+| Analyst prompt | "This investor prioritizes growth 60%, stability 30%" |
+| PM prompt | Consider style balance in portfolio construction |
+| Risk Engine | Filter by `maxVolatility`, apply `sectorBias` |
+
+**Complexity:** Low — settings schema + scoring logic, no new data sources.
+
+---
+
+## 12. RSS Feed News Ingestion
+
+**Problem:** Current news sources have limitations — Finnhub requires API key with rate limits, Yahoo is unofficial and can break. Need a free, unlimited news pipeline.
+
+**Solution:** Add RSS feed ingestion as primary news source.
+
+**Key RSS feeds:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     RSS Feed Sources                            │
+├─────────────────────────────────────────────────────────────────┤
+│ Ticker News:                                                    │
+│   • Google News: news.google.com/rss/search?q={symbol}+stock    │
+│   • Yahoo RSS:   finance.yahoo.com/rss/headline?s={symbol}      │
+│   • Seeking Alpha: seekingalpha.com/api/sa/combined/{symbol}.xml│
+├─────────────────────────────────────────────────────────────────┤
+│ Regulatory (material events before news reports):               │
+│   • SEC EDGAR 8-K: sec.gov/.../type=8-K&output=atom             │
+│   • SEC EDGAR 10-Q: sec.gov/.../type=10-Q&output=atom           │
+├─────────────────────────────────────────────────────────────────┤
+│ Macro:                                                          │
+│   • Federal Reserve: federalreserve.gov/feeds/press_all.xml     │
+│   • CNBC Finance: search.cnbc.com/rs/.../id=10000664            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────┐
+│              News Aggregator                │
+├─────────────────────────────────────────────┤
+│  Primary:   RSS feeds (free, no limits)     │
+│  Enrichment: Finnhub (sentiment, if key)    │
+│  Fallback:  Yahoo (zero-key backup)         │
+└─────────────────────────────────────────────┘
+```
+
+**Comparison:**
+| Feature | RSS Feeds | REST APIs |
+|---------|-----------|----------|
+| Cost | **Free** | Paid tiers |
+| Auth | **None** | API keys |
+| Rate limits | **None** | 60/min etc |
+| Latency | 1-5 min | Real-time |
+| Structure | XML (parse needed) | JSON |
+
+**Key value:**
+- **SEC 8-K** — catches earnings, M&A, executive changes before news outlets report
+- **Fed releases** — FOMC decisions, rate changes direct from source
+- Pairs well with Event-driven runs (#73) — poll RSS, trigger on material events
+
+**Complexity:** Low — XML parsing with `rss-parser`, normalize to existing `NewsArticle` interface.
+
+---
+
 ## Priority Ranking
 
-| Improvement | Impact | Complexity | Recommended Phase |
-|-------------|--------|------------|-------------------|
-| Confidence Calibration | High | Low | Phase 2 |
-| Tool Result Caching | Medium | Low | Phase 2 |
-| Graceful Degradation Dashboard | Medium | Low | Phase 2 |
-| Autonomous Watchlist Selection | High | Medium | Phase 3 |
-| Backtesting Infrastructure | High | High | Phase 3 |
-| Embedding Store | Medium | Medium | Phase 3 |
-| Multi-Agent Debate | Medium | Medium | Phase 4 |
-| Event-Driven Runs | Low | Medium | Phase 4+ |
+| Improvement | Impact | Complexity | Recommended Phase | Issue |
+|-------------|--------|------------|-------------------|-------|
+| Confidence Calibration | High | Low | Phase 2 | #68 |
+| Tool Result Caching | Medium | Low | Phase 2 | #69 |
+| Graceful Degradation Dashboard | Medium | Low | Phase 2 | #70 |
+| Sector Performance Data | Medium | Low | Phase 2 | #83 |
+| Volatility Calculation | Medium | Low | Phase 2 | #84 |
+| Investor Profile Settings | High | Low | Phase 2 | #85 |
+| Finnhub Fundamentals | Medium | Low | Phase 2 | #81 |
+| RSS Feed News Ingestion | High | Low | Phase 2 | #86 |
+| Autonomous Watchlist Selection | High | Medium | Phase 3 | #79 |
+| Backtesting Infrastructure | High | High | Phase 3 | #66 |
+| Embedding Store | Medium | Medium | Phase 3 | #67 |
+| Multi-Agent Debate | Medium | Medium | Phase 4 | #72 |
+| Event-Driven Runs | Low | Medium | Phase 4+ | #73 |
 
 **Rationale:** Start with low-complexity wins that improve observability and efficiency. Autonomous watchlist and backtesting are high-impact but require more infrastructure. Multi-agent and event-driven are nice-to-haves once the core loop is proven.
 
