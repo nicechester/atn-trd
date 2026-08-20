@@ -7,5 +7,13 @@
 .dotGreen { width: 10px; height: 10px; border-radius: 50%; background: #4ade80; flex-shrink: 0; display: inline-block; }
 .dotRed { width: 10px; height: 10px; border-radius: 50%; background: #f87171; flex-shrink: 0; display: inline-block; }
 .muted { color: var(--color-text-muted); font-size: 0.875rem; }
-.disabledBtn { padding: var(--spacing-xs) var(--spacing-md); border-radius: var(--radius-sm); background: var(--color-border); color: var(--color-text-muted); border: none; cursor: not-allowed; font-size: inherit; }
+.disabledBtn { padding: var(--spacing-xs, 4px) var(--spacing-md); border-radius: var(--radius-sm, 4px); background: var(--color-border); color: var(--color-text-muted); border: none; cursor: not-allowed; font-size: inherit; }
+.activeBtn { padding: var(--spacing-xs, 4px) var(--spacing-md); border-radius: var(--radius-sm, 4px); background: var(--color-primary); color: #fff; border: none; cursor: pointer; font-size: inherit; }
+.activeBtn:hover { opacity: 0.9; }
+.positive { color: var(--color-success, #4ade80); font-size: 0.875rem; }
+.negative { color: var(--color-error, #f87171); font-size: 0.875rem; }
+.badgeGreen { background: #4ade80; color: #052e16; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+.badgeRed { background: #f87171; color: #450a0a; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+.badgeYellow { background: var(--color-warning, #fbbf24); color: #451a03; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+.badgeGray { background: var(--color-border); color: var(--color-text); padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; }
 @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }

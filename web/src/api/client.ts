@@ -216,5 +216,180 @@ export const scheduler = {
   },
 };
 
+// Runs
+export interface AgentRunRow {
+  id: string;
+  trigger: 'scheduled' | 'manual';
+  status: 'running' | 'succeeded' | 'failed' | 'skipped';
+  startedAt: number;
+  finishedAt: number | null;
+  model: string | null;
+  settingsSnapshot: string;
+  error: string | null;
+  tokenUsageJson: string | null;
+  skipReason: string | null;
+}
+
+export interface AssessmentRow {
+  id: string;
+  runId: string;
+  symbol: string;
+  score: number;
+  confidence: number;
+  thesis: string;
+  risks: string | null;
+  catalysts: string | null;
+  evidenceIdsJson: string | null;
+  createdAt: number;
+}
+
+export interface DecisionRow {
+  id: string;
+  runId: string;
+  symbol: string;
+  action: 'buy' | 'sell' | 'hold' | 'trim' | 'add';
+  targetWeight: number | null;
+  confidence: number;
+  rationale: string;
+  assessmentId: string | null;
+  createdAt: number;
+}
+
+export interface FillRow {
+  id: string;
+  orderId: string;
+  qty: number;
+  priceCents: number;
+  feeCents: number;
+  filledAt: number;
+  barDate: string;
+}
+
+export interface OrderWithFills {
+  id: string;
+  clientOrderId: string;
+  decisionId: string | null;
+  runId: string | null;
+  broker: string;
+  brokerOrderId: string | null;
+  mode: 'paper' | 'live';
+  symbol: string;
+  side: 'buy' | 'sell';
+  qty: number;
+  type: 'market' | 'limit';
+  limitPriceCents: number | null;
+  tif: 'day' | 'gtc';
+  status: 'pending' | 'accepted' | 'partially_filled' | 'filled' | 'canceled' | 'rejected' | 'expired';
+  rejectReason: string | null;
+  submittedAt: number;
+  updatedAt: number;
+  fills: FillRow[];
+}
+
+export interface AgentMessageRow {
+  id: string;
+  runId: string;
+  symbol: string | null;
+  seq: number;
+  role: 'system' | 'human' | 'ai' | 'tool';
+  content: string;
+  toolName: string | null;
+  toolArgsJson: string | null;
+  toolResultJson: string | null;
+  createdAt: number;
+}
+
+export interface ResearchArtifactRow {
+  id: string;
+  runId: string;
+  symbol: string | null;
+  source: 'news' | 'fundamentals' | 'macro' | 'options' | 'prices';
+  provider: string;
+  fetchedAt: number;
+  payloadJson: string;
+  summary: string | null;
+  citationsJson: string | null;
+}
+
+export interface RunDetailData {
+  run: AgentRunRow;
+  assessments: AssessmentRow[];
+  decisions: DecisionRow[];
+  orders: OrderWithFills[];
+  messages: AgentMessageRow[];
+  artifacts: ResearchArtifactRow[];
+}
+
+export interface PositionDetail {
+  symbol: string;
+  qty: number;
+  avgCostCents: number;
+  currentPriceCents: number;
+  costBasisCents: number;
+  marketValueCents: number;
+  weightPercent: number;
+  unrealizedPnlCents: number;
+  realizedPnlCents: number;
+}
+
+export interface Portfolio {
+  asOfDate: string;
+  cashCents: number;
+  positionsValueCents: number;
+  totalValueCents: number;
+  totalUnrealizedPnlCents: number;
+  totalRealizedPnlCents: number;
+  totalPnlCents: number;
+  totalReturnPercent: number;
+  positions: PositionDetail[];
+}
+
+export interface PortfolioSnapshotRow {
+  id: string;
+  asOfDate: string;
+  cashCents: number;
+  positionsValueCents: number;
+  totalValueCents: number;
+  unrealizedPnlCents: number;
+  weightsJson: string | null;
+  createdAt: number;
+}
+
+export interface FillWithOrder extends FillRow {
+  symbol: string;
+  side: 'buy' | 'sell';
+  mode: 'paper' | 'live';
+}
+
+export const runs = {
+  list(limit = 50, offset = 0): Promise<{ ok: boolean; data: AgentRunRow[] }> {
+    return request(`/runs?limit=${limit}&offset=${offset}`);
+  },
+  get(id: string): Promise<{ ok: boolean; data: RunDetailData }> {
+    return request(`/runs/${encodeURIComponent(id)}`);
+  },
+  trigger(): Promise<{ ok: boolean; runId: string }> {
+    return request('/runs', { method: 'POST', body: JSON.stringify({}) });
+  },
+};
+
+export const portfolio = {
+  get(): Promise<{ ok: boolean; data: Portfolio }> {
+    return request('/portfolio');
+  },
+  history(limit = 30): Promise<{ ok: boolean; data: PortfolioSnapshotRow[] }> {
+    return request(`/portfolio/history?limit=${limit}`);
+  },
+};
+
+export const trades = {
+  list(limit = 100, offset = 0): Promise<{ ok: boolean; data: FillWithOrder[] }> {
+    return request(`/trades?limit=${limit}&offset=${offset}`);
+  },
+  get(id: string): Promise<{ ok: boolean; data: FillRow }> {
+    return request(`/trades/${encodeURIComponent(id)}`);
+  },
+};
+
 // Unified API object
-export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler };
+export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades };

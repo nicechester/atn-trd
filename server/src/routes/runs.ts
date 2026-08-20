@@ -10,6 +10,7 @@ import { ArtifactsRepo } from '../repos/artifactsRepo.js';
 import { PositionsRepo } from '../repos/positionsRepo.js';
 import { PortfolioRepo } from '../repos/portfolioRepo.js';
 import { PricesRepo } from '../repos/pricesRepo.js';
+import { WatchlistRepo } from '../repos/watchlistRepo.js';
 import { NotFoundError } from '../lib/errors.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
@@ -107,6 +108,7 @@ export async function triggerRunHandler(
     const pricesRepo      = new PricesRepo(db);
     const messagesRepo    = new AgentMessagesRepo(db);
     const artifactsRepo   = new ArtifactsRepo(db);
+    const watchlistRepo   = new WatchlistRepo(db);
 
     // services
     const priceService     = new PriceService(pricesRepo);
@@ -131,6 +133,17 @@ export async function triggerRunHandler(
       artifactsRepo,
     };
 
+    // Seed portfolio on first run if not yet initialized
+    if (!portfolioRepo.read()) {
+      portfolioRepo.write({
+        cashCents: settings.trading.startingCashCents,
+        startingCashCents: settings.trading.startingCashCents,
+        startedAt: Date.now(),
+        resetAt: null,
+        baseCurrency: settings.trading.baseCurrency,
+      });
+    }
+
     const tradingCycle = createTradingCycleService({
       runsRepo,
       assessmentsRepo,
@@ -141,6 +154,7 @@ export async function triggerRunHandler(
       analystDeps,
       priceFeed: priceService,
       getSettings,
+      watchlistRepo,
     });
 
     await tradingCycle.execute('manual');

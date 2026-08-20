@@ -1,0 +1,31 @@
+.backLink { display: inline-block; color: var(--color-primary); text-decoration: none; margin-bottom: var(--spacing-md); font-size: 0.875rem; }
+.section { margin-bottom: var(--spacing-lg); }
+.section > details > summary { cursor: pointer; font-weight: 600; padding: var(--spacing-sm) 0; font-size: 1rem; list-style: none; display: flex; align-items: center; gap: var(--spacing-sm); }
+.section > details > summary::marker { display: none; }
+.section > details > summary::before { content: '▶'; font-size: 0.75rem; transition: transform 0.15s; }
+.section > details[open] > summary::before { transform: rotate(90deg); }
+.symbolCard { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md, 6px); padding: var(--spacing-md); margin-bottom: var(--spacing-sm); }
+.symbolHeader { font-weight: 600; margin-bottom: var(--spacing-sm); display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; }
+.scorePositive { color: var(--color-success, #4ade80); font-weight: 700; }
+.scoreNegative { color: var(--color-error, #f87171); font-weight: 700; }
+.fieldLabel { font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase; margin-bottom: 2px; }
+.fieldValue { font-size: 0.875rem; margin-bottom: var(--spacing-sm); }
+.transcript { font-size: 0.8rem; }
+.messageBlock { display: flex; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm); align-items: flex-start; }
+.messageContent { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-sm, 4px); padding: var(--spacing-sm); flex: 1; overflow-x: auto; }
+.messageContent pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.roleBadge { font-size: 0.7rem; font-weight: 600; padding: 2px 6px; border-radius: 9999px; flex-shrink: 0; margin-top: 2px; }
+.roleSystem { background: var(--color-border); color: var(--color-text-muted); }
+.roleHuman { background: var(--color-info, #60a5fa); color: #0c1a3e; }
+.roleAi { background: var(--color-success, #4ade80); color: #052e16; }
+.roleTool { background: var(--color-warning, #fbbf24); color: #451a03; }
+.badgeGreen { background: #4ade80; color: #052e16; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+.badgeRed { background: #f87171; color: #450a0a; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+.badgeYellow { background: var(--color-warning, #fbbf24); color: #451a03; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+.badgeGray { background: var(--color-border); color: var(--color-text); padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; }
+.badgeOrange { background: var(--color-warning, #fbbf24); color: #451a03; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+.badgeBlue { background: var(--color-primary); color: #fff; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+.th { text-align: left; padding: var(--spacing-xs, 4px) var(--spacing-sm); border-bottom: 1px solid var(--color-border); color: var(--color-text-muted); font-size: 0.75rem; text-transform: uppercase; }
+.td { padding: var(--spacing-xs, 4px) var(--spacing-sm); border-bottom: 1px solid var(--color-border); font-size: 0.875rem; }
+.fillsTable { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: var(--spacing-sm); background: var(--color-bg); }
+.muted { color: var(--color-text-muted); font-size: 0.875rem; }

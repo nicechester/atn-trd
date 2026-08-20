@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ChatOpenAI } from '@langchain/openai';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
+import { convertToOpenAITool } from '@langchain/core/utils/function_calling';
 import { resolveConfig, resolveApiKey, LlmNotConfiguredError } from '../llm/openaiChatModel.js';
 import { ANALYST_SYSTEM_PROMPT } from '../llm/prompts/analyst.js';
 import { createAgentTools, type AgentToolsDeps } from './tools.js';
@@ -66,6 +67,13 @@ export async function runAnalystAgent(
       maxRetries: 0,
       ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
     });
+
+    // Patch bindTools if missing (@langchain/openai <0.1.0 doesn't include it)
+    if (!('bindTools' in reactLlm)) {
+      (reactLlm as any).bindTools = function (tools: any[]) {
+        return this.bind({ tools: tools.map(convertToOpenAITool) });
+      };
+    }
 
     const synthesisLlm = new ChatOpenAI({
       apiKey,

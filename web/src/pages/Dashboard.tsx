@@ -1,25 +1,34 @@
 import { useEffect, useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../api/client';
+import type { AgentRunRow, Portfolio } from '../api/client';
 import { Card } from '../components/Card';
 import { useToast } from '../context/ToastContext';
+import { centsToUSD, formatTimestamp } from '../lib/format';
 import styles from './Dashboard.module.css';
 
 type DashState = {
   trading: { enabled: boolean; mode: 'paper' | 'live' };
   nextRuns: string[];
   dataSources: Array<{ id: string; name: string; enabled: boolean; configured: boolean }>;
+  lastRun: AgentRunRow | null;
+  nav: Portfolio | null;
 };
 
 export default function DashboardPage(): JSX.Element {
   const { addToast } = useToast();
+  const navigate = useNavigate();
   const [state, setState] = useState<DashState | null>(null);
+  const [running, setRunning] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const [settingsRes, schedulerRes, dsRes] = await Promise.allSettled([
+      const [settingsRes, schedulerRes, dsRes, runsRes, portfolioRes] = await Promise.allSettled([
         api.settings.get(),
         api.scheduler.nextRuns(3),
         api.datasources.list(),
+        api.runs.list(1, 0),
+        api.portfolio.get(),
       ]);
 
       const trading = settingsRes.status === 'fulfilled'
@@ -34,10 +43,45 @@ export default function DashboardPage(): JSX.Element {
         ? dsRes.value.data.map(ds => ({ id: ds.id, name: ds.name, enabled: ds.enabled, configured: ds.configured }))
         : (() => { addToast('Failed to load data sources', 'error'); return []; })();
 
-      setState({ trading, nextRuns, dataSources });
+      const lastRun = runsRes.status === 'fulfilled' && runsRes.value.data.length > 0
+        ? runsRes.value.data[0]
+        : null;
+
+      let nav: Portfolio | null = null;
+      if (portfolioRes.status === 'fulfilled') {
+        nav = portfolioRes.value.data;
+      } else if (portfolioRes.status === 'rejected') {
+        const err = portfolioRes.reason;
+        const msg = err instanceof Error ? err.message : 'Failed to load portfolio';
+        if (!msg.includes('not initialized')) {
+          addToast(msg, 'error');
+        }
+      }
+
+      setState({ trading, nextRuns, dataSources, lastRun, nav });
     }
     load();
   }, []);
+
+  async function runNow() {
+    setRunning(true);
+    try {
+      const result = await api.runs.trigger();
+      addToast('Run started', 'success');
+      navigate(`/runs/${result.runId}`);
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Failed to trigger run', 'error');
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  function statusBadgeClass(status: AgentRunRow['status']) {
+    if (status === 'succeeded') return styles.badgeGreen;
+    if (status === 'failed') return styles.badgeRed;
+    if (status === 'running') return styles.badgeYellow;
+    return styles.badgeGray;
+  }
 
   if (!state) return <div><p>Loading...</p></div>;
 
@@ -68,7 +112,31 @@ export default function DashboardPage(): JSX.Element {
         </Card>
 
         <Card title="Last Run">
-          <p className={styles.muted}>No runs yet. Run history will appear here.</p>
+          {state.lastRun
+            ? <>
+                <div style={{ display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap', marginBottom: 'var(--spacing-sm)' }}>
+                  <span className={statusBadgeClass(state.lastRun.status)}>{state.lastRun.status}</span>
+                  <span className={styles.badgeGray}>{state.lastRun.trigger}</span>
+                </div>
+                <p className={styles.muted}>{formatTimestamp(state.lastRun.startedAt)}</p>
+                <Link to={`/runs/${state.lastRun.id}`} style={{ color: 'var(--color-primary)', fontSize: '0.875rem' }}>View detail →</Link>
+              </>
+            : <p className={styles.muted}>No runs yet.</p>
+          }
+        </Card>
+
+        <Card title="Current NAV">
+          {state.nav
+            ? <>
+                <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 var(--spacing-xs, 4px)' }}>
+                  {centsToUSD(state.nav.totalValueCents)}
+                </p>
+                <p className={state.nav.totalReturnPercent >= 0 ? styles.positive : styles.negative}>
+                  {state.nav.totalReturnPercent >= 0 ? '+' : ''}{state.nav.totalReturnPercent.toFixed(2)}% total return
+                </p>
+              </>
+            : <p className={styles.muted}>Portfolio not initialized.</p>
+          }
         </Card>
 
         <Card title="Data Sources">
@@ -86,8 +154,12 @@ export default function DashboardPage(): JSX.Element {
         </Card>
 
         <Card title="Actions">
-          <button disabled title="Available in Phase 2" className={styles.disabledBtn}>
-            Run Now
+          <button
+            className={running ? styles.disabledBtn : styles.activeBtn}
+            disabled={running}
+            onClick={runNow}
+          >
+            {running ? 'Running…' : 'Run Now'}
           </button>
         </Card>
       </div>

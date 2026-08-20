@@ -24,6 +24,16 @@
   margin-bottom: var(--spacing-xs);
 }
 
+.activeLink {
+  display: block;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  background: rgba(79, 142, 247, 0.1);
+  color: var(--color-primary);
+  text-decoration: none;
+  margin-bottom: var(--spacing-xs);
+}
+
 .link[aria-current="page"] {
   background: rgba(79, 142, 247, 0.1);
   color: var(--color-primary);

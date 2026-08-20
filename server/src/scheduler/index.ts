@@ -27,6 +27,7 @@ import { PortfolioRepo } from '../repos/portfolioRepo.js';
 import { PricesRepo } from '../repos/pricesRepo.js';
 import { AgentMessagesRepo } from '../repos/agentMessagesRepo.js';
 import { ArtifactsRepo } from '../repos/artifactsRepo.js';
+import { WatchlistRepo } from '../repos/watchlistRepo.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
 import { PaperBroker } from '../brokers/paperBroker.js';
@@ -77,6 +78,7 @@ function registerJobs(): void {
         const pricesRepo      = new PricesRepo(db);
         const messagesRepo    = new AgentMessagesRepo(db);
         const artifactsRepo   = new ArtifactsRepo(db);
+        const watchlistRepo   = new WatchlistRepo(db);
 
         // services
         const priceService     = new PriceService(pricesRepo);
@@ -101,6 +103,17 @@ function registerJobs(): void {
           artifactsRepo,
         };
 
+        // Seed portfolio on first run if not yet initialized
+        if (!portfolioRepo.read()) {
+          portfolioRepo.write({
+            cashCents: settings.trading.startingCashCents,
+            startingCashCents: settings.trading.startingCashCents,
+            startedAt: Date.now(),
+            resetAt: null,
+            baseCurrency: settings.trading.baseCurrency,
+          });
+        }
+
         const tradingCycle = createTradingCycleService({
           runsRepo,
           assessmentsRepo,
@@ -111,6 +124,7 @@ function registerJobs(): void {
           analystDeps,
           priceFeed: priceService,
           getSettings,
+          watchlistRepo,
         });
 
         await tradingCycle.execute('scheduled');

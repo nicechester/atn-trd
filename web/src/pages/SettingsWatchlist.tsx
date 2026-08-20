@@ -45,21 +45,26 @@ export default function SettingsWatchlist(): JSX.Element {
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
-    const sym = input.trim().toUpperCase();
-    if (!sym) return;
+    const syms = input.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+    if (syms.length === 0) return;
     setAdding(true);
+    const added: string[] = [];
+    const failed: string[] = [];
     try {
-      const validation = await api.symbols.validate(sym);
-      if (!validation.ok || !validation.data) {
-        addToast(`Symbol not found: ${sym}`, 'error');
-        return;
+      for (const sym of syms) {
+        try {
+          const validation = await api.symbols.validate(sym);
+          if (!validation.ok || !validation.data) { failed.push(sym); continue; }
+          await api.watchlist.add(sym);
+          setSymbols(prev => prev.find(r => r.symbol === sym) ? prev : [...prev, { symbol: sym, enabled: true, addedAt: Date.now(), note: null }]);
+          added.push(sym);
+        } catch {
+          failed.push(sym);
+        }
       }
-      await api.watchlist.add(sym);
-      setSymbols(prev => [...prev, { symbol: sym, enabled: true, addedAt: Date.now(), note: null }]);
-      setInput('');
-      addToast(`Added ${sym}`, 'success');
-    } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Add failed', 'error');
+      if (added.length) addToast(`Added: ${added.join(', ')}`, 'success');
+      if (failed.length) addToast(`Not found: ${failed.join(', ')}`, 'error');
+      if (added.length) setInput('');
     } finally {
       setAdding(false);
     }
@@ -116,7 +121,7 @@ export default function SettingsWatchlist(): JSX.Element {
                 type="text"
                 value={input}
                 onChange={e => setInput(e.target.value.toUpperCase())}
-                placeholder="e.g. AAPL"
+                placeholder="e.g. AAPL, MSFT, NVDA"
                 style={{ maxWidth: '100%' }}
               />
             </div>

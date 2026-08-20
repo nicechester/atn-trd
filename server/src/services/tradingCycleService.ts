@@ -2,6 +2,7 @@ import type { RunsRepo } from '../repos/runsRepo.js';
 import type { AssessmentsRepo } from '../repos/assessmentsRepo.js';
 import type { DecisionsRepo } from '../repos/decisionsRepo.js';
 import type { OrdersRepo } from '../repos/ordersRepo.js';
+import type { WatchlistRepo } from '../repos/watchlistRepo.js';
 import type { PortfolioService } from './portfolioService.js';
 import type { Broker } from '../brokers/types.js';
 import type { AnalystAgentDeps } from '../agent/analystAgent.js';
@@ -56,6 +57,7 @@ export interface TradingCycleDeps {
   analystDeps: AnalystAgentDeps;
   priceFeed: RiskPriceFeed;
   getSettings: () => Settings;
+  watchlistRepo: WatchlistRepo;
 }
 
 export interface TradingCycleService {
@@ -153,7 +155,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
       const portfolio = await this.deps.portfolioService.getPortfolio();
 
       // ── Step E: Get symbols ───────────────────────────────────────
-      const symbols = settings.watchlist.symbols
+      const symbols = this.deps.watchlistRepo.list()
         .filter(s => s.enabled)
         .map(s => s.symbol);
 
