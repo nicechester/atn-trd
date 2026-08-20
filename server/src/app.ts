@@ -15,6 +15,9 @@ import {
   patchWatchlistHandler,
 } from './routes/watchlist.js';
 import { nextRunsHandler } from './routes/scheduler.js';
+import { listRunsHandler, getRunHandler, triggerRunHandler } from './routes/runs.js';
+import { getPortfolioHandler, getPortfolioHistoryHandler } from './routes/portfolio.js';
+import { listTradesHandler, getTradeHandler } from './routes/trades.js';
 
 interface AppOptions {
   staticRoot?: string;
@@ -52,6 +55,13 @@ export function createApp(options: AppOptions = {}): Express {
   app.get('/api/datasources', listDataSourcesHandler);
   app.post('/api/datasources/:id/test', testDataSourceHandler);
   app.get('/api/scheduler/next-runs', nextRunsHandler);
+  app.get('/api/runs', listRunsHandler);
+  app.get('/api/runs/:id', getRunHandler);
+  app.post('/api/runs', triggerRunHandler);
+  app.get('/api/portfolio', getPortfolioHandler);
+  app.get('/api/portfolio/history', getPortfolioHistoryHandler);
+  app.get('/api/trades', listTradesHandler);
+  app.get('/api/trades/:id', getTradeHandler);
 
   // Static file serving
   if (options.viteDevMiddleware) {
