@@ -6,6 +6,8 @@ export interface PortfolioSnapshotRow {
   cashCents: number;
   positionsValueCents: number;
   totalValueCents: number;
+  unrealizedPnlCents: number;
+  weightsJson: string | null;
   createdAt: number;
 }
 
@@ -21,13 +23,19 @@ export class SnapshotsRepo {
 
   // Portfolio snapshots
 
-  createPortfolioSnapshot(snapshot: Omit<PortfolioSnapshotRow, 'id' | 'createdAt'>): string {
+  upsertPortfolioSnapshot(snapshot: Omit<PortfolioSnapshotRow, 'id' | 'createdAt'>): string {
     const id = crypto.randomUUID();
     const createdAt = Date.now();
     this.db
       .prepare(
-        `INSERT INTO portfolio_snapshots (id, as_of_date, cash_cents, positions_value_cents, total_value_cents, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO portfolio_snapshots (id, as_of_date, cash_cents, positions_value_cents, total_value_cents, unrealized_pnl_cents, weights_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(as_of_date) DO UPDATE SET
+           cash_cents = excluded.cash_cents,
+           positions_value_cents = excluded.positions_value_cents,
+           total_value_cents = excluded.total_value_cents,
+           unrealized_pnl_cents = excluded.unrealized_pnl_cents,
+           weights_json = excluded.weights_json`
       )
       .run(
         id,
@@ -35,6 +43,8 @@ export class SnapshotsRepo {
         snapshot.cashCents,
         snapshot.positionsValueCents,
         snapshot.totalValueCents,
+        snapshot.unrealizedPnlCents,
+        snapshot.weightsJson,
         createdAt
       );
     return id;
@@ -44,7 +54,7 @@ export class SnapshotsRepo {
     return this.db
       .prepare(
         `SELECT id, as_of_date as asOfDate, cash_cents as cashCents, positions_value_cents as positionsValueCents,
-                total_value_cents as totalValueCents, created_at as createdAt
+                total_value_cents as totalValueCents, unrealized_pnl_cents as unrealizedPnlCents, weights_json as weightsJson, created_at as createdAt
          FROM portfolio_snapshots WHERE as_of_date = ?`
       )
       .get(asOfDate) as PortfolioSnapshotRow | undefined;
@@ -54,7 +64,7 @@ export class SnapshotsRepo {
     return this.db
       .prepare(
         `SELECT id, as_of_date as asOfDate, cash_cents as cashCents, positions_value_cents as positionsValueCents,
-                total_value_cents as totalValueCents, created_at as createdAt
+                total_value_cents as totalValueCents, unrealized_pnl_cents as unrealizedPnlCents, weights_json as weightsJson, created_at as createdAt
          FROM portfolio_snapshots ORDER BY as_of_date DESC LIMIT ?`
       )
       .all(limit) as PortfolioSnapshotRow[];
@@ -64,7 +74,7 @@ export class SnapshotsRepo {
     return this.db
       .prepare(
         `SELECT id, as_of_date as asOfDate, cash_cents as cashCents, positions_value_cents as positionsValueCents,
-                total_value_cents as totalValueCents, created_at as createdAt
+                total_value_cents as totalValueCents, unrealized_pnl_cents as unrealizedPnlCents, weights_json as weightsJson, created_at as createdAt
          FROM portfolio_snapshots WHERE as_of_date >= ? AND as_of_date <= ? ORDER BY as_of_date ASC`
       )
       .all(fromDate, toDate) as PortfolioSnapshotRow[];
