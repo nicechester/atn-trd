@@ -11,9 +11,6 @@ export default function Nav(): JSX.Element {
       <NavLink to="/settings" className={styles.link}>
         Settings
       </NavLink>
-      <NavLink to="/secrets" className={styles.link}>
-        API Keys
-      </NavLink>
     </nav>
   );
 }
