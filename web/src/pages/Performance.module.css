@@ -1,0 +1,134 @@
+.controls {
+  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border-radius: var(--spacing-xs);
+}
+
+.dateInputGroup {
+  display: flex;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.dateInputGroup label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.dateInputGroup input {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--spacing-xs);
+  font-size: 0.875rem;
+}
+
+.applyBtn {
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--color-bg-accent);
+  color: var(--color-text-accent);
+  border: none;
+  border-radius: var(--spacing-xs);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.applyBtn:hover {
+  opacity: 0.9;
+}
+
+.metricsRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.metricCard {
+  padding: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border-radius: var(--spacing-xs);
+  border: 1px solid var(--color-border);
+}
+
+.metricLabel {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  margin-bottom: var(--spacing-xs);
+}
+
+.metricValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.positive {
+  color: var(--color-success, #4ade80);
+}
+
+.negative {
+  color: var(--color-error, #f87171);
+}
+
+.chartContainer {
+  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border-radius: var(--spacing-xs);
+  border: 1px solid var(--color-border);
+  overflow-x: auto;
+}
+
+.chart {
+  min-width: 600px;
+  height: auto;
+}
+
+.gridLine {
+  stroke: var(--color-border);
+  stroke-width: 0.5;
+  stroke-dasharray: 2, 2;
+}
+
+.axisLabel {
+  font-size: 0.75rem;
+  fill: var(--color-text-muted);
+}
+
+.strategyLine {
+  fill: none;
+  stroke: var(--color-success, #4ade80);
+  stroke-width: 2;
+}
+
+.benchmarkLine {
+  fill: none;
+  stroke: var(--color-info, #60a5fa);
+  stroke-width: 2;
+}
+
+.legend {
+  font-size: 0.75rem;
+}
+
+.legendText {
+  fill: var(--color-text);
+  font-size: 0.75rem;
+}
+
+.note {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin-top: var(--spacing-md);
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}

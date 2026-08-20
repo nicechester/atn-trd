@@ -14,6 +14,9 @@ export default function Nav(): JSX.Element {
       <NavLink to="/portfolio" className={({ isActive }) => isActive ? styles.activeLink : styles.link}>
         Portfolio
       </NavLink>
+      <NavLink to="/performance" className={({ isActive }) => isActive ? styles.activeLink : styles.link}>
+        Performance
+      </NavLink>
       <NavLink to="/trades" className={({ isActive }) => isActive ? styles.activeLink : styles.link}>
         Trades
       </NavLink>
