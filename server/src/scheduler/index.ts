@@ -17,6 +17,26 @@ import { settingsEvents } from '../config/settingsService.js';
 import { logger } from '../lib/logger.js';
 import { runSnapshotJob } from './jobs/snapshot.js';
 import { getDatabase } from '../db/index.js';
+import { RunsRepo } from '../repos/runsRepo.js';
+import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
+import { DecisionsRepo } from '../repos/decisionsRepo.js';
+import { OrdersRepo } from '../repos/ordersRepo.js';
+import { FillsRepo } from '../repos/fillsRepo.js';
+import { PositionsRepo } from '../repos/positionsRepo.js';
+import { PortfolioRepo } from '../repos/portfolioRepo.js';
+import { PricesRepo } from '../repos/pricesRepo.js';
+import { AgentMessagesRepo } from '../repos/agentMessagesRepo.js';
+import { ArtifactsRepo } from '../repos/artifactsRepo.js';
+import { PriceService } from '../services/priceService.js';
+import { PortfolioServiceImpl } from '../services/portfolioService.js';
+import { PaperBroker } from '../brokers/paperBroker.js';
+import { dataSourceRegistry } from '../datasources/registry.js';
+import type { NewsDataSource } from '../datasources/news/index.js';
+import type { FundamentalsDataSource } from '../datasources/fundamentals/index.js';
+import type { MacroDataSource } from '../datasources/macro/index.js';
+import type { OptionsDataSource } from '../datasources/options/index.js';
+import type { AnalystAgentDeps } from '../agent/analystAgent.js';
+import { createTradingCycleService } from '../services/tradingCycleService.js';
 
 const log = logger.child({ component: 'scheduler' });
 
@@ -27,14 +47,6 @@ let activeJob: Cron | null = null;
 let snapshotCronJob: Cron | null = null;
 
 // ── job handlers ──────────────────────────────────────────────────────────────
-
-/**
- * Phase 1 no-op snapshot job.
- * In Phase 2 this will invoke the trading agent pipeline.
- */
-function snapshotJob(): void {
-  log.info('snapshot job fired (no-op placeholder)');
-}
 
 // ── internal ──────────────────────────────────────────────────────────────────
 
@@ -49,7 +61,63 @@ function registerJobs(): void {
   }
 
   try {
-    activeJob = new Cron(cron, { timezone, protect: true }, snapshotJob);
+    activeJob = new Cron(cron, { timezone, protect: true }, async () => {
+      try {
+        const db = getDatabase();
+        const settings = getSettings();
+
+        // repos
+        const runsRepo        = new RunsRepo(db);
+        const assessmentsRepo = new AssessmentsRepo(db);
+        const decisionsRepo   = new DecisionsRepo(db);
+        const ordersRepo      = new OrdersRepo(db);
+        const fillsRepo       = new FillsRepo(db);
+        const positionsRepo   = new PositionsRepo(db);
+        const portfolioRepo   = new PortfolioRepo(db);
+        const pricesRepo      = new PricesRepo(db);
+        const messagesRepo    = new AgentMessagesRepo(db);
+        const artifactsRepo   = new ArtifactsRepo(db);
+
+        // services
+        const priceService     = new PriceService(pricesRepo);
+        const portfolioService = new PortfolioServiceImpl(db, priceService, positionsRepo, portfolioRepo);
+        const broker           = new PaperBroker(db, priceService, ordersRepo, fillsRepo, positionsRepo, portfolioRepo, {
+          fillModel:   settings.paperAccount.fillModel,
+          slippageBps: settings.paperAccount.slippageBps,
+        });
+
+        // agent tools deps
+        const analystDeps: AnalystAgentDeps = {
+          toolsDeps: {
+            newsSource:         dataSourceRegistry.get('news') as unknown as NewsDataSource,
+            fundamentalsSource: dataSourceRegistry.get('fundamentals') as unknown as FundamentalsDataSource,
+            macroSource:        dataSourceRegistry.get('macro') as unknown as MacroDataSource,
+            optionsSource:      dataSourceRegistry.get('options') as unknown as OptionsDataSource,
+            pricesRepo,
+            portfolioService,
+            decisionsRepo,
+          },
+          messagesRepo,
+          artifactsRepo,
+        };
+
+        const tradingCycle = createTradingCycleService({
+          runsRepo,
+          assessmentsRepo,
+          decisionsRepo,
+          ordersRepo,
+          portfolioService,
+          broker,
+          analystDeps,
+          priceFeed: priceService,
+          getSettings,
+        });
+
+        await tradingCycle.execute('scheduled');
+      } catch (err) {
+        log.error('trading cycle job failed', { error: err instanceof Error ? err.message : String(err) });
+      }
+    });
     const nextRun = activeJob.nextRun();
     log.info('scheduler registered', { cron, timezone, nextRun: nextRun?.toISOString() ?? null });
   } catch (err) {
