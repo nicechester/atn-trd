@@ -12,9 +12,11 @@ import { PortfolioRepo } from '../repos/portfolioRepo.js';
 import { PricesRepo } from '../repos/pricesRepo.js';
 import { WatchlistRepo } from '../repos/watchlistRepo.js';
 import { CalibrationRepo } from '../repos/calibrationRepo.js';
+import { RejectionsRepo } from '../repos/rejectionsRepo.js';
 import { NotFoundError } from '../lib/errors.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
+import { CoverageServiceImpl } from '../services/coverageService.js';
 import { PaperBroker } from '../brokers/paperBroker.js';
 import { RunCache } from '../datasources/cache.js';
 import { createTradingCycleService } from '../services/tradingCycleService.js';
@@ -55,6 +57,7 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
     const fillsRepo = new FillsRepo(db);
     const messagesRepo = new AgentMessagesRepo(db);
     const artifactsRepo = new ArtifactsRepo(db);
+    const rejectionsRepo = new RejectionsRepo(db);
 
     const run = runsRepo.get(id);
     if (!run) {
@@ -66,6 +69,7 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
     const orders = ordersRepo.listByRun(id);
     const messages = messagesRepo.listByRun(id);
     const artifacts = artifactsRepo.listByRun(id);
+    const rejections = rejectionsRepo.listByRun(id);
 
     // For each order, fetch its fills
     const ordersWithFills = orders.map(order => ({
@@ -80,6 +84,7 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
         assessments,
         decisions,
         orders: ordersWithFills,
+        rejections,
         messages,
         artifacts,
       },
@@ -150,6 +155,7 @@ export async function triggerRunHandler(
     }
 
     const tradingCycle = createTradingCycleService({
+      db,
       runsRepo,
       assessmentsRepo,
       decisionsRepo,
@@ -172,6 +178,30 @@ export async function triggerRunHandler(
     }
 
     res.json({ ok: true, runId: latestRun.id });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** GET /api/runs/:id/coverage */
+export function getCoverageHandler(req: Request, res: Response, next: NextFunction): void {
+  try {
+    const { id } = req.params;
+
+    const db = getDatabase();
+    const runsRepo = new RunsRepo(db);
+    const artifactsRepo = new ArtifactsRepo(db);
+    const assessmentsRepo = new AssessmentsRepo(db);
+
+    const run = runsRepo.get(id);
+    if (!run) {
+      throw new NotFoundError(`Run "${id}" not found`);
+    }
+
+    const coverageService = new CoverageServiceImpl(artifactsRepo, assessmentsRepo);
+    const coverage = coverageService.getCoverage(id);
+
+    res.json(coverage);
   } catch (err) {
     next(err);
   }

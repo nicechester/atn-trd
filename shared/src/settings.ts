@@ -47,7 +47,7 @@ export const SettingsSchema = z.object({
 
   schedule: z.object({
     timezone: z.string().default('America/New_York'),
-    cron: z.string().default('30 16 * * 1-5'), // 16:30 ET on weekdays
+    cron: z.string().default('30 16 * * 1-5'), // 16:30 ET on weekdays (after market close)
     minIntervalHours: z.number().int().min(1).default(12),
   }).refine((s) => validateCronMinInterval(s.cron, s.minIntervalHours), {
     message: 'Cron expression fires too frequently for minIntervalHours',
@@ -68,7 +68,7 @@ export const SettingsSchema = z.object({
 
   paperAccount: z.object({
     enabled: z.boolean().default(true),
-    fillModel: z.enum(['last_close', 'next_open']).default('last_close'),
+    fillModel: z.enum(['last_close', 'next_open']).default('next_open'),
     slippageBps: z.number().int().min(0).default(5),
   }).default({}),
 
@@ -119,7 +119,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   paperAccount: {
     enabled: true,
-    fillModel: 'last_close',
+    fillModel: 'next_open',
     slippageBps: 5,
   },
 };

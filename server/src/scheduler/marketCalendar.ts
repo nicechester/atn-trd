@@ -211,6 +211,26 @@ export function isEarlyClose(dateStr: string): boolean {
   return NYSE_EARLY_CLOSES.has(dateStr);
 }
 
+/** Check if a given time is within regular market hours (9:30 AM - 4:00 PM ET, or 1:00 PM ET on early-close days). */
+export function isMarketHours(date: Date): boolean {
+  if (!isTradingDay(date)) return false;
+
+  const dateStr = toETDateStr(date);
+  const [h, m] = etHourMinute(date);
+  const minutesIntoDay = h * 60 + m;
+
+  // Check if after open (9:30 AM)
+  const openMinutes = OPEN_HOUR * 60 + OPEN_MIN;
+  if (minutesIntoDay < openMinutes) return false;
+
+  // Check if before close (4:00 PM or 1:00 PM on early-close days)
+  const [closeH, closeM] = closeHourMin(dateStr);
+  const closeMinutes = closeH * 60 + closeM;
+  if (minutesIntoDay >= closeMinutes) return false;
+
+  return true;
+}
+
 /** Close hour/minute for a given trading day (identified by ET date string). */
 function closeHourMin(dateStr: string): [number, number] {
   return NYSE_EARLY_CLOSES.has(dateStr)

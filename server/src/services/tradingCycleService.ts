@@ -4,11 +4,13 @@ import type { DecisionsRepo } from '../repos/decisionsRepo.js';
 import type { OrdersRepo } from '../repos/ordersRepo.js';
 import type { WatchlistRepo } from '../repos/watchlistRepo.js';
 import type { CalibrationRepo } from '../repos/calibrationRepo.js';
+import { RejectionsRepo } from '../repos/rejectionsRepo.js';
 import type { PortfolioService } from './portfolioService.js';
 import type { Broker } from '../brokers/types.js';
 import type { AnalystAgentDeps } from '../agent/analystAgent.js';
 import type { RiskPriceFeed } from './riskService.js';
 import type { Settings } from '@atn-trd/shared';
+import type Database from 'better-sqlite3';
 import type { SymbolAssessment } from '../agent/analystAgent.js';
 import { runAnalystAgent } from '../agent/analystAgent.js';
 import { runPortfolioManagerAgent } from '../agent/portfolioManagerAgent.js';
@@ -49,6 +51,7 @@ async function runWithConcurrency<T>(
 }
 
 export interface TradingCycleDeps {
+  db: Database.Database;
   runsRepo: RunsRepo;
   assessmentsRepo: AssessmentsRepo;
   decisionsRepo: DecisionsRepo;
@@ -310,7 +313,10 @@ class TradingCycleServiceImpl implements TradingCycleService {
         earningsBlackoutSymbols: undefined,
       });
 
+      // Persist rejections to database
+      const rejectionsRepo = new RejectionsRepo(this.deps.db);
       for (const r of rejections) {
+        rejectionsRepo.create(r, runId);
         log.debug('order rejected', { symbol: r.symbol, reason: r.reason });
       }
 

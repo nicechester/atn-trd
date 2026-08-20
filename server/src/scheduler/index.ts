@@ -118,6 +118,7 @@ function registerJobs(): void {
         }
 
         const tradingCycle = createTradingCycleService({
+          db,
           runsRepo,
           assessmentsRepo,
           decisionsRepo,

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { runs as runsApi, type RunDetailData, type AgentRunRow, type DecisionRow, type AgentMessageRow, type ResearchArtifactRow } from '../api/client';
+import { runs as runsApi, type RunDetailData, type AgentRunRow, type DecisionRow, type AgentMessageRow, type ResearchArtifactRow, type RunCoverageData } from '../api/client';
 import { centsToUSD, formatTimestamp, formatDuration } from '../lib/format';
 import { useToast } from '../context/ToastContext';
+import CoverageHeatmap from '../components/CoverageHeatmap';
+import { RejectedDecisions } from '../components/RejectedDecisions';
 import styles from './RunDetail.module.css';
 
 function badgeClass(status: AgentRunRow['status'], s: Record<string, string>) {
@@ -28,6 +30,7 @@ function roleBadge(role: AgentMessageRow['role'], s: Record<string, string>) {
 export default function RunDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [detail, setDetail] = useState<RunDetailData | null>(null);
+  const [coverage, setCoverage] = useState<RunCoverageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const { addToast } = useToast();
@@ -38,6 +41,11 @@ export default function RunDetailPage() {
       .then(res => setDetail(res.data))
       .catch(e => addToast(e instanceof Error ? e.message : 'Failed to load run', 'error'))
       .finally(() => setLoading(false));
+
+    // Fetch coverage in parallel (optional, doesn't block rendering)
+    runsApi.getCoverage(id)
+      .then(res => setCoverage(res.data))
+      .catch(e => console.warn('Failed to load coverage:', e instanceof Error ? e.message : 'Unknown error'));
   }, [id]);
 
   function toggleExpanded(msgId: string) {
@@ -83,6 +91,7 @@ export default function RunDetailPage() {
         <div className={styles.symbolHeader}>
           <span className={badgeClass(run.status, styles)}>{run.status}</span>
           <span className={styles.badgeGray}>{run.trigger}</span>
+          {coverage && coverage.belowThreshold && <span className={styles.badgeRed}>Coverage below {coverage.thresholdPercent}%</span>}
         </div>
         <div className={styles.fieldLabel}>Run ID</div>
         <div className={styles.fieldValue} style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{run.id}</div>
@@ -98,6 +107,13 @@ export default function RunDetailPage() {
         {run.error && <><div className={styles.fieldLabel}>Error</div><div className={styles.fieldValue} style={{ color: 'var(--color-error)' }}>{run.error}</div></>}
         {run.skipReason && <><div className={styles.fieldLabel}>Skip Reason</div><div className={styles.fieldValue}>{run.skipReason}</div></>}
       </div>
+
+      {/* Coverage Heatmap */}
+      {coverage && (
+        <div className={styles.symbolCard} style={{ marginBottom: 'var(--spacing-lg)' }}>
+          <CoverageHeatmap coverage={coverage} />
+        </div>
+      )}
 
       {/* Assessments */}
       <div className={styles.section}>
@@ -192,6 +208,9 @@ export default function RunDetailPage() {
           {orders.length === 0 && <p className={styles.muted}>No orders.</p>}
         </details>
       </div>
+
+      {/* Rejected Decisions */}
+      <RejectedDecisions rejections={detail.rejections} />
 
       {/* Transcript — collapsed by default */}
       <div className={styles.section}>
