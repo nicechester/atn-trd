@@ -101,6 +101,12 @@ export class OrdersRepo {
       .run(status, brokerOrderId || null, rejectReason || null, Date.now(), id);
   }
 
+  updateRunContext(id: string, decisionId: string | null, runId: string | null): void {
+    this.db
+      .prepare(`UPDATE orders SET decision_id = ?, run_id = ?, updated_at = ? WHERE id = ?`)
+      .run(decisionId, runId, Date.now(), id);
+  }
+
   listPending(symbol?: string): OrderRow[] {
     if (symbol) {
       return this.db
