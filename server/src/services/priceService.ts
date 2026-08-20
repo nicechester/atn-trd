@@ -20,6 +20,16 @@ export interface PriceFeed {
    * Returns prices in ascending date order.
    */
   getPrices(symbols: string[], fromDate: string, toDate: string): Promise<Map<string, HistoricalPrice[]>>;
+
+  /**
+   * Get the latest bar for a symbol (used by PaperBroker for fills).
+   */
+  getLatestBar(symbol: string): Promise<HistoricalPrice | null>;
+
+  /**
+   * Get a specific bar by symbol and date (used by PaperBroker for fills).
+   */
+  getBar(symbol: string, date: string): Promise<HistoricalPrice | null>;
 }
 
 export interface HistoricalPrice {
@@ -183,5 +193,51 @@ export class PriceService implements PriceFeed {
 
     const successful = results.filter((r) => r.status === 'fulfilled').length;
     log.debug('price cache warmed', { count: successful, total: results.length });
+  }
+
+  /**
+   * Get the latest bar for a symbol (used by PaperBroker for fills).
+   */
+  async getLatestBar(symbol: string): Promise<HistoricalPrice | null> {
+    const normalized = normalizeSymbol(symbol);
+    const bar = this.pricesRepo.getLatest(normalized);
+
+    if (!bar) {
+      log.debug('latest bar not found', { symbol: normalized });
+      return null;
+    }
+
+    return {
+      barDate: bar.barDate,
+      openCents: bar.openCents,
+      highCents: bar.highCents,
+      lowCents: bar.lowCents,
+      closeCents: bar.closeCents,
+      adjCloseCents: bar.adjCloseCents,
+      volume: bar.volume,
+    };
+  }
+
+  /**
+   * Get a specific bar by symbol and date (used by PaperBroker for fills).
+   */
+  async getBar(symbol: string, date: string): Promise<HistoricalPrice | null> {
+    const normalized = normalizeSymbol(symbol);
+    const bar = this.pricesRepo.get(normalized, date);
+
+    if (!bar) {
+      log.debug('bar not found', { symbol: normalized, date });
+      return null;
+    }
+
+    return {
+      barDate: bar.barDate,
+      openCents: bar.openCents,
+      highCents: bar.highCents,
+      lowCents: bar.lowCents,
+      closeCents: bar.closeCents,
+      adjCloseCents: bar.adjCloseCents,
+      volume: bar.volume,
+    };
   }
 }
