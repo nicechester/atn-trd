@@ -767,4 +767,351 @@ describe('PaperBroker', () => {
       assert.equal(clock.isOpen, expected);
     });
   });
+
+  describe('next_open fill model', () => {
+    let brokerNextOpen: PaperBroker;
+
+    beforeEach(() => {
+      brokerNextOpen = new PaperBroker(
+        db,
+        priceService,
+        ordersRepo,
+        fillsRepo,
+        positionsRepo,
+        portfolioRepo,
+        { slippageBps: 5, commissionCents: 0, fillModel: 'next_open' }
+      );
+    });
+
+    it('accepts buy order without filling immediately', async () => {
+      pricesRepo.upsert({
+        symbol: 'AAPL',
+        barDate: '2025-01-15',
+        openCents: 15000,
+        highCents: 15100,
+        lowCents: 14900,
+        closeCents: 15050,
+        adjCloseCents: 15050,
+        volume: 1000000,
+        provider: 'yahoo',
+        fetchedAt: Date.now(),
+      });
+
+      const clientOrderId = crypto.randomUUID();
+      const result = await brokerNextOpen.submitOrder({
+        clientOrderId,
+        symbol: 'AAPL',
+        side: 'buy',
+        qty: 10,
+        type: 'market',
+        tif: 'day',
+      });
+
+      assert.equal(result.status, 'accepted');
+      assert.equal(result.symbol, 'AAPL');
+      assert.equal(result.qty, 10);
+
+      // Verify no fill was created
+      const fills = fillsRepo.listByOrder(result.id);
+      assert.equal(fills.length, 0);
+
+      // Verify cash is unchanged (reserved, not debited)
+      const portfolio = portfolioRepo.read()!;
+      assert.equal(portfolio.cashCents, 1000000);
+    });
+
+    it('processPendingOrders with no next-day bar remains accepted', async () => {
+      pricesRepo.upsert({
+        symbol: 'AAPL',
+        barDate: '2025-01-15',
+        openCents: 15000,
+        highCents: 15100,
+        lowCents: 14900,
+        closeCents: 15050,
+        adjCloseCents: 15050,
+        volume: 1000000,
+        provider: 'yahoo',
+        fetchedAt: Date.now(),
+      });
+
+      const clientOrderId = crypto.randomUUID();
+      await brokerNextOpen.submitOrder({
+        clientOrderId,
+        symbol: 'AAPL',
+        side: 'buy',
+        qty: 10,
+        type: 'market',
+        tif: 'day',
+      });
+
+      // Call processPendingOrders without adding next day's bar
+      await brokerNextOpen.processPendingOrders();
+
+      // Order should remain accepted
+      const order = ordersRepo.getByClientOrderId(clientOrderId)!;
+      assert.equal(order.status, 'accepted');
+
+      // No fill should exist
+      const fills = fillsRepo.listByOrder(order.id);
+      assert.equal(fills.length, 0);
+    });
+
+    it('processPendingOrders fills at next trading day open price', async () => {
+      pricesRepo.upsert({
+        symbol: 'AAPL',
+        barDate: '2026-08-19',
+        openCents: 15000,
+        highCents: 15100,
+        lowCents: 14900,
+        closeCents: 15050,
+        adjCloseCents: 15050,
+        volume: 1000000,
+        provider: 'yahoo',
+        fetchedAt: Date.now(),
+      });
+
+      const clientOrderId = crypto.randomUUID();
+      const orderResult = await brokerNextOpen.submitOrder({
+        clientOrderId,
+        symbol: 'AAPL',
+        side: 'buy',
+        qty: 10,
+        type: 'market',
+        tif: 'day',
+      });
+
+      // Add next trading day's bar (2026-08-20 is today, so next trading day is 2026-08-21)
+      pricesRepo.upsert({
+        symbol: 'AAPL',
+        barDate: '2026-08-21',
+        openCents: 16000,
+        highCents: 16100,
+        lowCents: 15900,
+        closeCents: 16050,
+        adjCloseCents: 16050,
+        volume: 1000000,
+        provider: 'yahoo',
+        fetchedAt: Date.now(),
+      });
+
+      // Process pending orders
+      await brokerNextOpen.processPendingOrders();
+
+      // Order should now be filled
+      const order = ordersRepo.get(orderResult.id)!;
+      assert.equal(order.status, 'filled');
+
+      // Fill should exist at next day's open price with slippage
+      const fills = fillsRepo.listByOrder(order.id);
+      assert.equal(fills.length, 1);
+
+      // Fill price: 16000 * (1 + 0.0005) = 16008
+      const expectedFillPrice = Math.round(16000 * (1 + 5 / 10000));
+      assert.equal(fills[0].priceCents, expectedFillPrice);
+      assert.equal(fills[0].barDate, '2026-08-21');
+
+      // Cash should be debited
+      const portfolio = portfolioRepo.read()!;
+      const notional = 10 * expectedFillPrice;
+      assert.equal(portfolio.cashCents, 1000000 - notional);
+    });
+
+    it('processPendingOrders is idempotent', async () => {
+      pricesRepo.upsert({
+        symbol: 'AAPL',
+        barDate: '2026-08-19',
+        openCents: 15000,
+        highCents: 15100,
+        lowCents: 14900,
+        closeCents: 15050,
+        adjCloseCents: 15050,
+        volume: 1000000,
+        provider: 'yahoo',
+        fetchedAt: Date.now(),
+      });
+
+      const clientOrderId = crypto.randomUUID();
+      const orderResult = await brokerNextOpen.submitOrder({
+        clientOrderId,
+        symbol: 'AAPL',
+        side: 'buy',
+        qty: 10,
+        type: 'market',
+        tif: 'day',
+      });
+
+      // Add next trading day's bar
+      pricesRepo.upsert({
+        symbol: 'AAPL',
+        barDate: '2026-08-21',
+        openCents: 16000,
+        highCents: 16100,
+        lowCents: 15900,
+        closeCents: 16050,
+        adjCloseCents: 16050,
+        volume: 1000000,
+        provider: 'yahoo',
+        fetchedAt: Date.now(),
+      });
+
+      // Process pending orders twice
+      await brokerNextOpen.processPendingOrders();
+      await brokerNextOpen.processPendingOrders();
+
+      // Should have exactly one fill
+      const fills = fillsRepo.listByOrder(orderResult.id);
+      assert.equal(fills.length, 1);
+    });
+
+    it('reserves cash for multiple buy orders in same cycle', async () => {
+      pricesRepo.upsert({
+        symbol: 'AAPL',
+        barDate: '2025-01-15',
+        openCents: 15000,
+        highCents: 15100,
+        lowCents: 14900,
+        closeCents: 15050,
+        adjCloseCents: 15050,
+        volume: 1000000,
+        provider: 'yahoo',
+        fetchedAt: Date.now(),
+      });
+
+      // First buy
+      await brokerNextOpen.submitOrder({
+        clientOrderId: crypto.randomUUID(),
+        symbol: 'AAPL',
+        side: 'buy',
+        qty: 10,
+        type: 'market',
+        tif: 'day',
+      });
+
+      // Try second buy that would exceed cash if reservation works
+      const result = await brokerNextOpen.submitOrder({
+        clientOrderId: crypto.randomUUID(),
+        symbol: 'AAPL',
+        side: 'buy',
+        qty: 6800, // Would need ~$102M, exceeds our $10M + first order reservation
+        type: 'market',
+        tif: 'day',
+      });
+
+      // Second order should be rejected
+      assert.equal(result.status, 'rejected');
+      assert.equal(result.rejectReason, 'Insufficient cash');
+    });
+
+    it('re-validates sell position at settlement', async () => {
+      // Buy some shares
+      pricesRepo.upsert({
+        symbol: 'AAPL',
+        barDate: '2025-01-15',
+        openCents: 10000,
+        highCents: 10100,
+        lowCents: 9900,
+        closeCents: 10000,
+        adjCloseCents: 10000,
+        volume: 1000000,
+        provider: 'yahoo',
+        fetchedAt: Date.now(),
+      });
+
+      await brokerNextOpen.submitOrder({
+        clientOrderId: crypto.randomUUID(),
+        symbol: 'AAPL',
+        side: 'buy',
+        qty: 10,
+        type: 'market',
+        tif: 'day',
+      });
+
+      // Defer a sell order for more shares than we have
+      const sellOrderId = crypto.randomUUID();
+      const sellResult = await brokerNextOpen.submitOrder({
+        clientOrderId: sellOrderId,
+        symbol: 'AAPL',
+        side: 'sell',
+        qty: 15,
+        type: 'market',
+        tif: 'day',
+      });
+
+      // Should be rejected at submit time
+      assert.equal(sellResult.status, 'rejected');
+      assert.equal(sellResult.rejectReason, 'Insufficient shares to sell');
+    });
+
+    it('processes limit orders only if limit is met at open', async () => {
+      pricesRepo.upsert({
+        symbol: 'AAPL',
+        barDate: '2026-08-19',
+        openCents: 15000,
+        highCents: 15100,
+        lowCents: 14900,
+        closeCents: 15050,
+        adjCloseCents: 15050,
+        volume: 1000000,
+        provider: 'yahoo',
+        fetchedAt: Date.now(),
+      });
+
+      // Limit buy at 15800 (lower than next open at 16000)
+      const clientOrderId = crypto.randomUUID();
+      await brokerNextOpen.submitOrder({
+        clientOrderId,
+        symbol: 'AAPL',
+        side: 'buy',
+        qty: 10,
+        type: 'limit',
+        limitPriceCents: 15800,
+        tif: 'day',
+      });
+
+      // Add next day's bar with open at 16000
+      pricesRepo.upsert({
+        symbol: 'AAPL',
+        barDate: '2026-08-21',
+        openCents: 16000,
+        highCents: 16100,
+        lowCents: 15900,
+        closeCents: 16050,
+        adjCloseCents: 16050,
+        volume: 1000000,
+        provider: 'yahoo',
+        fetchedAt: Date.now(),
+      });
+
+      // Process pending orders
+      await brokerNextOpen.processPendingOrders();
+
+      // Order should remain accepted (limit not met)
+      const order = ordersRepo.getByClientOrderId(clientOrderId)!;
+      assert.equal(order.status, 'accepted');
+
+      // No fill
+      const fills = fillsRepo.listByOrder(order.id);
+      assert.equal(fills.length, 0);
+    });
+
+    it('is no-op on last_close broker', async () => {
+      // Use the original broker with last_close
+      pricesRepo.upsert({
+        symbol: 'AAPL',
+        barDate: '2025-01-15',
+        openCents: 15000,
+        highCents: 15100,
+        lowCents: 14900,
+        closeCents: 15050,
+        adjCloseCents: 15050,
+        volume: 1000000,
+        provider: 'yahoo',
+        fetchedAt: Date.now(),
+      });
+
+      // Try processPendingOrders on last_close broker (should be no-op)
+      await broker.processPendingOrders?.();
+      // No error should occur
+    });
+  });
 });

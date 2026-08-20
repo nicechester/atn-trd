@@ -153,6 +153,18 @@ class TradingCycleServiceImpl implements TradingCycleService {
 
     // From here — try/catch wrapper
     try {
+      // ── Step C1: Process pending orders from prior session ─────────
+      if (this.deps.broker.processPendingOrders) {
+        try {
+          await this.deps.broker.processPendingOrders();
+        } catch (err) {
+          log.warn('processPendingOrders failed', {
+            runId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
       // ── Step D: Snapshot portfolio ────────────────────────────────
       const portfolio = await this.deps.portfolioService.getPortfolio();
 
