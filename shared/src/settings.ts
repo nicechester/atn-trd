@@ -47,7 +47,7 @@ export const SettingsSchema = z.object({
 
   schedule: z.object({
     timezone: z.string().default('America/New_York'),
-    cron: z.string().default('30 16 * * 1-5'), // 16:30 ET on weekdays
+    cron: z.string().default('55 15 * * 1-5'), // 15:55 ET on weekdays (5 min before market close)
     minIntervalHours: z.number().int().min(1).default(12),
   }).refine((s) => validateCronMinInterval(s.cron, s.minIntervalHours), {
     message: 'Cron expression fires too frequently for minIntervalHours',
@@ -103,7 +103,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   schedule: {
     timezone: 'America/New_York',
-    cron: '30 16 * * 1-5',
+    cron: '55 15 * * 1-5',
     minIntervalHours: 12,
   },
   risk: {

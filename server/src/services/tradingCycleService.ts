@@ -14,7 +14,7 @@ import { runAnalystAgent } from '../agent/analystAgent.js';
 import { runPortfolioManagerAgent } from '../agent/portfolioManagerAgent.js';
 import type { PortfolioContext, PortfolioConstraints } from '../agent/portfolioManagerAgent.js';
 import { createRiskService, type RiskConstraints } from './riskService.js';
-import { isTradingDay } from '../scheduler/marketCalendar.js';
+import { isTradingDay, isMarketHours } from '../scheduler/marketCalendar.js';
 import { logger } from '../lib/logger.js';
 import type { OrderRequest } from '../brokers/types.js';
 import type { Decision } from '@atn-trd/shared';
@@ -122,6 +122,22 @@ class TradingCycleServiceImpl implements TradingCycleService {
         skipReason: null,
       });
       this.deps.runsRepo.setSkipped(id, 'not a trading day');
+      return;
+    }
+
+    if (trigger !== 'manual' && !isMarketHours(new Date())) {
+      const id = this.deps.runsRepo.create({
+        trigger,
+        status: 'running',
+        startedAt: Date.now(),
+        finishedAt: null,
+        model: settings.llm.model,
+        settingsSnapshot: JSON.stringify(settings),
+        error: null,
+        tokenUsageJson: null,
+        skipReason: null,
+      });
+      this.deps.runsRepo.setSkipped(id, 'not within market hours (9:30 AM - 4:00 PM ET)');
       return;
     }
 
