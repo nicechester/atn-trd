@@ -10,6 +10,12 @@ export interface FillRow {
   barDate: string; // YYYY-MM-DD
 }
 
+export interface FillWithOrderRow extends FillRow {
+  symbol: string;
+  side: 'buy' | 'sell';
+  mode: 'paper' | 'live';
+}
+
 export class FillsRepo {
   constructor(private readonly db: Database.Database) {}
 
@@ -66,6 +72,19 @@ export class FillsRepo {
          FROM fills ORDER BY filled_at DESC LIMIT ? OFFSET ?`
       )
       .all(limit, offset) as FillRow[];
+  }
+
+  listAllWithOrder(limit: number = 50, offset: number = 0): FillWithOrderRow[] {
+    return this.db
+      .prepare(
+        `SELECT f.id, f.order_id as orderId, f.qty, f.price_cents as priceCents,
+                f.fee_cents as feeCents, f.filled_at as filledAt, f.bar_date as barDate,
+                o.symbol, o.side, o.mode
+         FROM fills f
+         JOIN orders o ON o.id = f.order_id
+         ORDER BY f.filled_at DESC LIMIT ? OFFSET ?`
+      )
+      .all(limit, offset) as FillWithOrderRow[];
   }
 
   countByOrder(orderId: string): number {

@@ -11,7 +11,7 @@ export function listTradesHandler(req: Request, res: Response, next: NextFunctio
 
     const db = getDatabase();
     const fillsRepo = new FillsRepo(db);
-    const fills = fillsRepo.listAll(limit, offset);
+    const fills = fillsRepo.listAllWithOrder(limit, offset);
 
     res.json({ ok: true, data: fills });
   } catch (err) {

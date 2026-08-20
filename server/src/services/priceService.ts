@@ -202,19 +202,36 @@ export class PriceService implements PriceFeed {
     const normalized = normalizeSymbol(symbol);
     const bar = this.pricesRepo.getLatest(normalized);
 
-    if (!bar) {
+    if (bar) {
+      return {
+        barDate: bar.barDate,
+        openCents: bar.openCents,
+        highCents: bar.highCents,
+        lowCents: bar.lowCents,
+        closeCents: bar.closeCents,
+        adjCloseCents: bar.adjCloseCents,
+        volume: bar.volume,
+      };
+    }
+
+    // Fall back to live price when no cached bar exists
+    const livePriceDollars = await this.getPrice(symbol);
+    if (livePriceDollars === null) {
       log.debug('latest bar not found', { symbol: normalized });
       return null;
     }
 
+    const priceCents = Math.round(livePriceDollars * 100);
+    const today = new Date().toISOString().slice(0, 10);
+    log.debug('latest bar synthesized from live price', { symbol: normalized, priceCents });
     return {
-      barDate: bar.barDate,
-      openCents: bar.openCents,
-      highCents: bar.highCents,
-      lowCents: bar.lowCents,
-      closeCents: bar.closeCents,
-      adjCloseCents: bar.adjCloseCents,
-      volume: bar.volume,
+      barDate: today,
+      openCents: priceCents,
+      highCents: priceCents,
+      lowCents: priceCents,
+      closeCents: priceCents,
+      adjCloseCents: priceCents,
+      volume: 0,
     };
   }
 
