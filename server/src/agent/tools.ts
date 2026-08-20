@@ -9,6 +9,7 @@ import type { PriceBarRow } from '../repos/pricesRepo.js';
 import type { PortfolioService, PositionDetail } from '../services/portfolioService.js';
 import type { DecisionsRepo } from '../repos/decisionsRepo.js';
 import { toIsoDate } from '../datasources/news/types.js';
+import type { RunCache } from '../datasources/cache.js';
 
 export interface AgentToolsDeps {
   newsSource: NewsDataSource;
@@ -18,6 +19,7 @@ export interface AgentToolsDeps {
   pricesRepo: PricesRepo;
   portfolioService: PortfolioService;
   decisionsRepo: DecisionsRepo;
+  cache: RunCache;
 }
 
 function makeGetNews(deps: AgentToolsDeps) {
@@ -42,16 +44,20 @@ function makeGetNews(deps: AgentToolsDeps) {
         // Clamp limit to 1–50
         const clampedLimit = Math.max(1, Math.min(50, limit));
 
-        const now = Date.now();
-        const fromMs = now - clampedDays * 86_400_000;
-        const from = toIsoDate(fromMs);
-        const to = toIsoDate(now);
+        const cacheKey = `news:${symbol}:${clampedDays}`;
 
-        const result = await deps.newsSource.fetch({
-          symbol,
-          from,
-          to,
-          limit: clampedLimit,
+        const result = await deps.cache.getOrFetch(cacheKey, 60_000, async () => {
+          const now = Date.now();
+          const fromMs = now - clampedDays * 86_400_000;
+          const from = toIsoDate(fromMs);
+          const to = toIsoDate(now);
+
+          return await deps.newsSource.fetch({
+            symbol,
+            from,
+            to,
+            limit: clampedLimit,
+          });
         });
 
         return JSON.stringify(result.data);
@@ -74,7 +80,12 @@ function makeGetFundamentals(deps: AgentToolsDeps) {
     func: async (input: z.infer<typeof schema>) => {
       try {
         const symbol = input.symbol;
-        const result = await deps.fundamentalsSource.fetch({ symbol });
+        const cacheKey = `fundamentals:${symbol}`;
+
+        const result = await deps.cache.getOrFetch(cacheKey, 60_000, async () => {
+          return await deps.fundamentalsSource.fetch({ symbol });
+        });
+
         return JSON.stringify(result.data);
       } catch (err) {
         return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
@@ -102,7 +113,13 @@ function makeGetMacro(deps: AgentToolsDeps) {
     func: async (input: z.infer<typeof schema>) => {
       try {
         const seriesIds = input.seriesIds ?? undefined;
-        const result = await deps.macroSource.fetch({ seriesIds });
+        const seriesKey = seriesIds ? seriesIds.sort().join(',') : 'default';
+        const cacheKey = `macro:${seriesKey}`;
+
+        const result = await deps.cache.getOrFetch(cacheKey, 300_000, async () => {
+          return await deps.macroSource.fetch({ seriesIds });
+        });
+
         return JSON.stringify(result.data);
       } catch (err) {
         return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
