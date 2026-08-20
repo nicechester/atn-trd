@@ -15,6 +15,7 @@ import { CalibrationRepo } from '../repos/calibrationRepo.js';
 import { NotFoundError } from '../lib/errors.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
+import { CoverageServiceImpl } from '../services/coverageService.js';
 import { PaperBroker } from '../brokers/paperBroker.js';
 import { RunCache } from '../datasources/cache.js';
 import { createTradingCycleService } from '../services/tradingCycleService.js';
@@ -172,6 +173,30 @@ export async function triggerRunHandler(
     }
 
     res.json({ ok: true, runId: latestRun.id });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** GET /api/runs/:id/coverage */
+export function getCoverageHandler(req: Request, res: Response, next: NextFunction): void {
+  try {
+    const { id } = req.params;
+
+    const db = getDatabase();
+    const runsRepo = new RunsRepo(db);
+    const artifactsRepo = new ArtifactsRepo(db);
+    const assessmentsRepo = new AssessmentsRepo(db);
+
+    const run = runsRepo.get(id);
+    if (!run) {
+      throw new NotFoundError(`Run "${id}" not found`);
+    }
+
+    const coverageService = new CoverageServiceImpl(artifactsRepo, assessmentsRepo);
+    const coverage = coverageService.getCoverage(id);
+
+    res.json(coverage);
   } catch (err) {
     next(err);
   }

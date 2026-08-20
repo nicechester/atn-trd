@@ -15,7 +15,7 @@ import {
   patchWatchlistHandler,
 } from './routes/watchlist.js';
 import { nextRunsHandler } from './routes/scheduler.js';
-import { listRunsHandler, getRunHandler, triggerRunHandler } from './routes/runs.js';
+import { listRunsHandler, getRunHandler, triggerRunHandler, getCoverageHandler } from './routes/runs.js';
 import { getPortfolioHandler, getPortfolioHistoryHandler } from './routes/portfolio.js';
 import { listTradesHandler, getTradeHandler } from './routes/trades.js';
 import { getCalibrationHandler } from './routes/calibration.js';
@@ -59,6 +59,7 @@ export function createApp(options: AppOptions = {}): Express {
   app.get('/api/scheduler/next-runs', nextRunsHandler);
   app.get('/api/runs', listRunsHandler);
   app.get('/api/runs/:id', getRunHandler);
+  app.get('/api/runs/:id/coverage', getCoverageHandler);
   app.post('/api/runs', triggerRunHandler);
   app.get('/api/portfolio', getPortfolioHandler);
   app.get('/api/portfolio/history', getPortfolioHistoryHandler);

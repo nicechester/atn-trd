@@ -311,6 +311,39 @@ export interface ResearchArtifactRow {
   citationsJson: string | null;
 }
 
+export interface CoverageCellData {
+  source: 'news' | 'fundamentals' | 'macro' | 'options' | 'prices';
+  status: 'ok' | 'error' | 'missing';
+  provider?: string;
+  fetchedAt?: number;
+  error?: string;
+}
+
+export interface CoverageRowData {
+  symbol: string;
+  coveragePercent: number;
+  cells: CoverageCellData[];
+}
+
+export interface SourceSummaryData {
+  source: 'news' | 'fundamentals' | 'macro' | 'options' | 'prices';
+  okCount: number;
+  errorCount: number;
+  missingCount: number;
+  coveragePercent: number;
+}
+
+export interface RunCoverageData {
+  runId: string;
+  thresholdPercent: number;
+  overallCoveragePercent: number;
+  belowThreshold: boolean;
+  sources: readonly ('news' | 'fundamentals' | 'macro' | 'options' | 'prices')[];
+  symbols: string[];
+  matrix: CoverageRowData[];
+  sourceSummary: SourceSummaryData[];
+}
+
 export interface RunDetailData {
   run: AgentRunRow;
   assessments: AssessmentRow[];
@@ -367,6 +400,9 @@ export const runs = {
   },
   get(id: string): Promise<{ ok: boolean; data: RunDetailData }> {
     return request(`/runs/${encodeURIComponent(id)}`);
+  },
+  getCoverage(id: string): Promise<{ ok: boolean; data: RunCoverageData }> {
+    return request(`/runs/${encodeURIComponent(id)}/coverage`);
   },
   trigger(): Promise<{ ok: boolean; runId: string }> {
     return request('/runs', { method: 'POST', body: JSON.stringify({}) });
