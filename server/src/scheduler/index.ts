@@ -15,11 +15,16 @@ import { Cron } from 'croner';
 import { getSettings } from '../config/settingsService.js';
 import { settingsEvents } from '../config/settingsService.js';
 import { logger } from '../lib/logger.js';
+import { runSnapshotJob } from './jobs/snapshot.js';
+import { getDatabase } from '../db/index.js';
 
 const log = logger.child({ component: 'scheduler' });
 
 // Active job handle; replaced on every settings change.
 let activeJob: Cron | null = null;
+
+// Snapshot job handle; runs daily at 16:45 ET on trading days.
+let snapshotCronJob: Cron | null = null;
 
 // ── job handlers ──────────────────────────────────────────────────────────────
 
@@ -63,6 +68,25 @@ function registerJobs(): void {
 export function startScheduler(): void {
   registerJobs();
 
+  // Register fixed snapshot job (16:45 ET daily on trading days)
+  try {
+    const db = getDatabase();
+    snapshotCronJob = new Cron(
+      '45 16 * * 1-5',
+      { timezone: 'America/New_York', protect: true },
+      async () => {
+        await runSnapshotJob(db);
+      }
+    );
+    const nextRun = snapshotCronJob.nextRun();
+    log.info('snapshot job registered', { cron: '45 16 * * 1-5', timezone: 'America/New_York', nextRun: nextRun?.toISOString() ?? null });
+  } catch (err) {
+    log.error('failed to register snapshot job', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    snapshotCronJob = null;
+  }
+
   settingsEvents.on('change', () => {
     log.info('settings changed, re-registering scheduler jobs');
     registerJobs();
@@ -74,8 +98,14 @@ export function stopScheduler(): void {
   if (activeJob) {
     activeJob.stop();
     activeJob = null;
-    log.info('scheduler stopped');
   }
+
+  if (snapshotCronJob) {
+    snapshotCronJob.stop();
+    snapshotCronJob = null;
+  }
+
+  log.info('scheduler stopped');
 }
 
 /**
