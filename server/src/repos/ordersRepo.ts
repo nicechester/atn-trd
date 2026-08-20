@@ -123,4 +123,30 @@ export class OrdersRepo {
       )
       .all() as OrderRow[];
   }
+
+  list(filter?: { status?: OrderRow['status'][]; since?: number }): OrderRow[] {
+    let sql = `SELECT id, client_order_id as clientOrderId, decision_id as decisionId, run_id as runId,
+                      broker, broker_order_id as brokerOrderId, mode, symbol, side, qty, type,
+                      limit_price_cents as limitPriceCents, tif, status, reject_reason as rejectReason,
+                      submitted_at as submittedAt, updated_at as updatedAt
+               FROM orders WHERE 1=1`;
+    const params: any[] = [];
+
+    if (filter?.status && filter.status.length > 0) {
+      const placeholders = filter.status.map(() => '?').join(',');
+      sql += ` AND status IN (${placeholders})`;
+      params.push(...filter.status);
+    }
+
+    if (filter?.since !== undefined) {
+      sql += ` AND submitted_at >= ?`;
+      params.push(filter.since);
+    }
+
+    sql += ` ORDER BY submitted_at DESC`;
+
+    return this.db
+      .prepare(sql)
+      .all(...params) as OrderRow[];
+  }
 }
