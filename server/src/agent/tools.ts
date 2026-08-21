@@ -4,6 +4,7 @@ import type { NewsDataSource } from '../datasources/news/index.js';
 import type { FundamentalsDataSource } from '../datasources/fundamentals/index.js';
 import type { MacroDataSource } from '../datasources/macro/index.js';
 import type { OptionsDataSource } from '../datasources/options/index.js';
+import type { YahooSectorPerformance } from '../datasources/sectors/index.js';
 import type { PricesRepo } from '../repos/pricesRepo.js';
 import type { PriceBarRow } from '../repos/pricesRepo.js';
 import type { PortfolioService, PositionDetail } from '../services/portfolioService.js';
@@ -16,6 +17,7 @@ export interface AgentToolsDeps {
   fundamentalsSource: FundamentalsDataSource;
   macroSource: MacroDataSource;
   optionsSource: OptionsDataSource;
+  sectorSource: YahooSectorPerformance;
   pricesRepo: PricesRepo;
   portfolioService: PortfolioService;
   decisionsRepo: DecisionsRepo;
@@ -258,12 +260,34 @@ function makeGetPriorDecisions(deps: AgentToolsDeps) {
   });
 }
 
+function makeGetSectorPerformance(deps: AgentToolsDeps) {
+  const schema = z.object({
+    limit: z.number().int().optional().describe('Max sectors to return (default all)'),
+  });
+
+  return new DynamicStructuredTool({
+    name: 'get_sector_performance',
+    description: 'Fetch sector performance metrics (returns, PE, volatility) for sector rotation signals',
+    schema,
+    func: async (input: z.infer<typeof schema>) => {
+      try {
+        const sectors = await deps.sectorSource.fetch();
+        const limit = input.limit ?? sectors.length;
+        return JSON.stringify(sectors.slice(0, limit));
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  });
+}
+
 export function createAgentTools(deps: AgentToolsDeps) {
   return [
     makeGetNews(deps),
     makeGetFundamentals(deps),
     makeGetMacro(deps),
     makeGetOptionsSnapshot(deps),
+    makeGetSectorPerformance(deps),
     makeGetPriceHistory(deps),
     makeGetPortfolio(deps),
     makeGetPriorDecisions(deps),

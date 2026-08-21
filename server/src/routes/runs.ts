@@ -25,6 +25,7 @@ import type { NewsDataSource } from '../datasources/news/index.js';
 import type { FundamentalsDataSource } from '../datasources/fundamentals/index.js';
 import type { MacroDataSource } from '../datasources/macro/index.js';
 import type { OptionsDataSource } from '../datasources/options/index.js';
+import { YahooSectorPerformance } from '../datasources/sectors/index.js';
 import type { AnalystAgentDeps } from '../agent/analystAgent.js';
 import { getSettings } from '../config/settingsService.js';
 
@@ -152,12 +153,14 @@ export async function triggerRunHandler(
 
     // agent tools deps (with per-run cache)
     const runCache = new RunCache();
+    const sectorSource = new YahooSectorPerformance();
     const analystDeps: AnalystAgentDeps = {
       toolsDeps: {
         newsSource:         dataSourceRegistry.get('news') as unknown as NewsDataSource,
         fundamentalsSource: dataSourceRegistry.get('fundamentals') as unknown as FundamentalsDataSource,
         macroSource:        dataSourceRegistry.get('macro') as unknown as MacroDataSource,
         optionsSource:      dataSourceRegistry.get('options') as unknown as OptionsDataSource,
+        sectorSource,
         pricesRepo,
         portfolioService,
         decisionsRepo,
