@@ -92,7 +92,7 @@ function registerJobs(): void {
 
         // agent tools deps (with per-run cache)
         const runCache = new RunCache();
-        const sectorSource = new YahooSectorPerformance();
+        const sectorSource = new YahooSectorPerformance({ pricesRepo });
         const analystDeps: AnalystAgentDeps = {
           toolsDeps: {
             newsSource:         dataSourceRegistry.get('news') as unknown as NewsDataSource,

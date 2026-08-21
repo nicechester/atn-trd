@@ -1,1 +1,8 @@
-export { YahooSectorPerformance, SECTORS_SOURCE, type SectorPerformance } from './sectorPerformance.js';
+export {
+  SectorPerformanceDataSource,
+  YahooSectorPerformance, // backwards compat alias
+  SECTORS_SOURCE,
+  SECTOR_ETFS,
+  type SectorPerformance,
+  type SectorPerformanceOptions,
+} from './sectorPerformance.js';

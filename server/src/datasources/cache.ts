@@ -10,9 +10,11 @@ interface CacheEntry {
 
 export class RunCache {
   private store = new Map<string, CacheEntry>();
+  private inflight = new Map<string, Promise<any>>();
 
   /**
    * Get a value from cache or fetch it if missing/expired.
+   * Deduplicates concurrent requests for the same key.
    *
    * @param key Cache key
    * @param ttlMs Time to live in milliseconds
@@ -28,15 +30,23 @@ export class RunCache {
       return entry.value as T;
     }
 
-    // Fetch fresh value
-    const value = await fetch();
+    // Deduplicate concurrent requests for the same key
+    const existing = this.inflight.get(key);
+    if (existing) {
+      return existing as Promise<T>;
+    }
 
-    // Store in cache with TTL
-    this.store.set(key, {
-      value,
-      expiresAt: now + ttlMs,
+    // Fetch fresh value
+    const promise = fetch().then((value) => {
+      this.store.set(key, { value, expiresAt: Date.now() + ttlMs });
+      this.inflight.delete(key);
+      return value;
+    }).catch((err) => {
+      this.inflight.delete(key);
+      throw err;
     });
 
-    return value;
+    this.inflight.set(key, promise);
+    return promise;
   }
 }

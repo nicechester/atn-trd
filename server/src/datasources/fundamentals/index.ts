@@ -1,4 +1,4 @@
-/** Fundamentals connector with Yahoo primary and Finnhub fallback. */
+/** Fundamentals connector with Finnhub primary and Yahoo fallback. */
 
 import type { DataSource, DataSourceResult, FetchContext } from '../types.js';
 import {
@@ -22,46 +22,40 @@ export type FundamentalsDataSource = DataSource<
 const log = logger.child({ component: 'fundamentals-datasource' });
 
 /**
- * Creates a fundamentals datasource with automatic fallback.
- * Tries Yahoo first (richer data), falls back to Finnhub on rate limit.
+ * Creates a fundamentals datasource.
+ * Uses Finnhub as primary (reliable API), falls back to Yahoo if Finnhub fails.
  */
 export function createFundamentalsDataSource(
-  _provider: FundamentalsProvider = 'yahoo'
+  _provider: FundamentalsProvider = 'finnhub'
 ): FundamentalsDataSource {
-  const yahoo = new YahooFundamentalsDataSource();
   const finnhub = new FinnhubFundamentalsDataSource();
+  const yahoo = new YahooFundamentalsDataSource();
 
   return {
     name: 'fundamentals-fallback',
     kind: 'fundamentals',
-    provider: 'yahoo+finnhub',
-    isConfigured: () => yahoo.isConfigured() || finnhub.isConfigured(),
-    healthCheck: () => yahoo.healthCheck(),
+    provider: 'finnhub+yahoo',
+    isConfigured: () => finnhub.isConfigured() || yahoo.isConfigured(),
+    healthCheck: () => finnhub.isConfigured() ? finnhub.healthCheck() : yahoo.healthCheck(),
 
     async fetch(
       query: FundamentalsQuery,
       ctx?: FetchContext
     ): Promise<DataSourceResult<FundamentalsPayload>> {
-      try {
-        return await yahoo.fetch(query, ctx);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        // Fallback on rate limit or upstream errors
-        if (
-          message.includes('Too Many Requests') ||
-          message.includes('throttling') ||
-          message.includes('Could not reach')
-        ) {
-          log.debug('yahoo fundamentals failed, falling back to finnhub', {
+      // Use Finnhub as primary if configured
+      if (finnhub.isConfigured()) {
+        try {
+          return await finnhub.fetch(query, ctx);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          log.debug('finnhub fundamentals failed, falling back to yahoo', {
             symbol: query.symbol,
             error: message,
           });
-          if (finnhub.isConfigured()) {
-            return await finnhub.fetch(query, ctx);
-          }
         }
-        throw err;
       }
+      // Fallback to Yahoo
+      return await yahoo.fetch(query, ctx);
     },
   };
 }

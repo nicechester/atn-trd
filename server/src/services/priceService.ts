@@ -1,6 +1,6 @@
 import { PricesRepo } from '../repos/pricesRepo.js';
-import { YahooPricesDataSource, normalizeSymbol } from '../datasources/prices/yahooPrices.js';
 import { FinnhubPricesDataSource } from '../datasources/prices/finnhubPrices.js';
+import { normalizeSymbol } from '../datasources/prices/yahooPrices.js';
 import { logger } from '../lib/logger.js';
 
 const log = logger.child({ component: 'price-service' });
@@ -51,25 +51,23 @@ interface CacheEntry {
 }
 
 /**
- * Price service with read-through cache over yahooPrices.
+ * Price service with read-through cache over Finnhub.
  * Coordinates batch fetching, caching, and persistence to price_bars table.
  */
 export class PriceService implements PriceFeed {
   private readonly pricesRepo: PricesRepo;
   private readonly finnhub: FinnhubPricesDataSource;
-  private readonly yahoo: YahooPricesDataSource;
   private readonly cache: Map<string, CacheEntry> = new Map();
   private readonly cacheMaxAgeMs = 1000 * 60 * 60; // 1 hour
 
-  constructor(pricesRepo: PricesRepo, yahoo?: YahooPricesDataSource) {
+  constructor(pricesRepo: PricesRepo) {
     this.pricesRepo = pricesRepo;
     this.finnhub = new FinnhubPricesDataSource();
-    this.yahoo = yahoo ?? new YahooPricesDataSource();
   }
 
   /**
    * Get current price for a symbol.
-   * Checks cache first, then fetches from Yahoo if cache miss or stale.
+   * Checks cache first, then fetches from Finnhub if cache miss or stale.
    */
   async getPrice(symbol: string): Promise<number | null> {
     const normalized = normalizeSymbol(symbol);
@@ -80,29 +78,17 @@ export class PriceService implements PriceFeed {
       return cached.priceCents / 100;
     }
 
-    // Fetch from Finnhub (primary), fall back to Yahoo
+    // Fetch from Finnhub
     let price: number | null = null;
     if (this.finnhub.isConfigured()) {
       try {
         const quote = await this.finnhub.fetch({ symbol: normalized });
         price = quote.price;
       } catch (err) {
-        log.debug('finnhub price fetch failed, trying yahoo', { symbol: normalized, error: err instanceof Error ? err.message : String(err) });
+        log.debug('finnhub price fetch failed', { symbol: normalized, error: err instanceof Error ? err.message : String(err) });
       }
-    }
-
-    if (price === null) {
-      try {
-        const quote = await this.yahoo.fetch({ symbol: normalized });
-        if (!quote) {
-          log.debug('price not found', { symbol: normalized });
-          return this.getLatestCachedPrice(normalized);
-        }
-        price = quote.price;
-      } catch (err) {
-        log.debug('yahoo price fetch failed', { symbol: normalized, error: err instanceof Error ? err.message : String(err) });
-        return this.getLatestCachedPrice(normalized);
-      }
+    } else {
+      log.warn('finnhub not configured, using cached price', { symbol: normalized });
     }
 
     if (price === null) return this.getLatestCachedPrice(normalized);
@@ -164,7 +150,7 @@ export class PriceService implements PriceFeed {
       closeCents: priceCents,
       adjCloseCents: priceCents, // TODO: adjust for splits/dividends
       volume: null,
-      provider: 'yahoo',
+      provider: 'finnhub',
       fetchedAt: Date.now(),
     });
 

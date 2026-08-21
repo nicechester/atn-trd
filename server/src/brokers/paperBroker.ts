@@ -373,7 +373,7 @@ export class PaperBroker implements Broker {
 
   private tryFillOrder(
     _orderId: string,
-    req: OrderRequest | { symbol: string; side: 'buy' | 'sell'; qty: number },
+    req: { symbol: string; side: 'buy' | 'sell'; qty: number },
     _bar: HistoricalPrice,
     fillPriceCents: number,
     portfolio: PortfolioRow
@@ -409,7 +409,7 @@ export class PaperBroker implements Broker {
 
   private executeOrder(
     orderId: string,
-    req: OrderRequest,
+    req: { symbol: string; side: 'buy' | 'sell'; qty: number },
     bar: HistoricalPrice,
     fillPriceCents: number
   ): void {

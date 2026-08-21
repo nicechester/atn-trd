@@ -13,6 +13,7 @@ import type { Settings } from '@atn-trd/shared';
 import type Database from 'better-sqlite3';
 import type { SymbolAssessment } from '../agent/analystAgent.js';
 import { runAnalystAgent } from '../agent/analystAgent.js';
+import { prefetchForSymbol } from '../agent/tools.js';
 import { runPortfolioManagerAgent } from '../agent/portfolioManagerAgent.js';
 import type { PortfolioContext, PortfolioConstraints } from '../agent/portfolioManagerAgent.js';
 import { createRiskService, type RiskConstraints } from './riskService.js';
@@ -182,8 +183,12 @@ class TradingCycleServiceImpl implements TradingCycleService {
         return;
       }
 
-      // -- Step F: Run analysts (bounded concurrency) ----------------
+      // -- Step F: Prefetch data for all symbols concurrently --------
       const llmConfig = { model: settings.llm.model, temperature: settings.llm.temperature };
+      emitProgress(runId, 'analyst', `Prefetching data for ${symbols.length} symbols`);
+      await Promise.all(symbols.map(symbol => prefetchForSymbol(symbol, this.deps.analystDeps.toolsDeps)));
+
+      // -- Step G: Run analysts (bounded concurrency) ----------------
       emitProgress(runId, 'analyst', `Starting analysis for ${symbols.length} symbols`);
 
       const rawResults = await runWithConcurrency(symbols, ANALYST_CONCURRENCY, async (symbol) => {

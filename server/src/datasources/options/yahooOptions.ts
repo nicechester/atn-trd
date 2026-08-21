@@ -338,4 +338,24 @@ export class YahooOptionsDataSource extends BaseDataSource<
       `next expiry ${days === null ? 'unknown' : `in ${days}d`}`
     );
   }
+
+  /** Public method to normalize a raw chain (used by index fallback). */
+  normalizeChain(
+    raw: RawOptionChain,
+    symbol: string,
+    fetchedAt: number
+  ): DataSourceResult<OptionsPayload> {
+    return {
+      data: this.toPayload(symbol, raw, 'cboe'),
+      provider: 'cboe',
+      fetchedAt,
+      citations: [
+        {
+          title: `CBOE delayed quotes — ${symbol} option chain`,
+          url: `https://www.cboe.com/delayed_quotes/${encodeURIComponent(symbol.toLowerCase())}/quote_table`,
+        },
+      ],
+      raw,
+    };
+  }
 }

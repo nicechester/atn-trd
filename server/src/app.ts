@@ -21,6 +21,7 @@ import { listTradesHandler, getTradeHandler } from './routes/trades.js';
 import { getCalibrationHandler } from './routes/calibration.js';
 import { getPerformanceHandler } from './routes/performance.js';
 import { runProgressStreamHandler } from './routes/runProgress.js';
+import { triggerBackfillHandler, listTrackedSymbolsHandler } from './routes/prices.js';
 
 interface AppOptions {
   staticRoot?: string;
@@ -69,6 +70,8 @@ export function createApp(options: AppOptions = {}): Express {
   app.get('/api/calibration', getCalibrationHandler);
   app.get('/api/performance', getPerformanceHandler);
   app.get('/api/runs/progress/stream', runProgressStreamHandler);
+  app.get('/api/prices/symbols', listTrackedSymbolsHandler);
+  app.post('/api/prices/backfill', triggerBackfillHandler);
 
   // Static file serving
   if (options.viteDevMiddleware) {

@@ -1,6 +1,13 @@
+/**
+ * Sector performance data source.
+ * 
+ * Uses cached price bars from the database (populated by Finnhub backfill).
+ * No external API calls - requires price bars to be pre-populated.
+ */
+
 import { BaseDataSource, type DataSourceKind } from '../types.js';
-import { HttpClient } from '../http.js';
 import { logger } from '../../lib/logger.js';
+import type { PricesRepo, PriceBarRow } from '../../repos/pricesRepo.js';
 
 const log = logger.child({ component: 'sector-performance' });
 
@@ -32,130 +39,80 @@ const SECTOR_ETF_MAP: Record<string, string> = {
   'Communication Services': 'XLC',
 };
 
-interface YahooHistoricalQuote {
+export const SECTOR_ETFS = Object.values(SECTOR_ETF_MAP);
+
+interface HistoricalQuote {
   date: number;
   close: number;
 }
 
-interface YahooChartResponse {
-  chart?: {
-    result?: Array<{
-      timestamp?: number[];
-      indicators?: {
-        quote?: Array<{ close?: (number | null)[] }>;
-      };
-    }>;
-  };
+export interface SectorPerformanceOptions {
+  pricesRepo: PricesRepo;
 }
 
-export class YahooSectorPerformance extends BaseDataSource<void, SectorPerformance[]> {
+export class SectorPerformanceDataSource extends BaseDataSource<void, SectorPerformance[]> {
   readonly name = 'Sector Performance';
   readonly kind: DataSourceKind = 'prices';
-  readonly provider = 'yahoo';
+  readonly provider = 'finnhub';
 
-  private http: HttpClient;
+  private readonly pricesRepo: PricesRepo;
 
-  constructor(http?: HttpClient) {
+  constructor(options: SectorPerformanceOptions) {
     super();
-    this.http = http || new HttpClient();
+    this.pricesRepo = options.pricesRepo;
   }
 
   protected async probe(): Promise<string | void> {
-    await this.fetchHistoricalData(HEALTH_CHECK_SYMBOL, 90);
-    return 'ok';
+    const bars = this.pricesRepo.listBySymbol(HEALTH_CHECK_SYMBOL, 7);
+    if (bars.length === 0) {
+      throw new Error(`No cached price bars for ${HEALTH_CHECK_SYMBOL}. Run price backfill first.`);
+    }
+    return `Found ${bars.length} cached bars for ${HEALTH_CHECK_SYMBOL}`;
   }
 
   async fetch(): Promise<SectorPerformance[]> {
     const results: SectorPerformance[] = [];
 
     for (const [sector, etfSymbol] of Object.entries(SECTOR_ETF_MAP)) {
-      try {
-        const priceData = await this.fetchHistoricalData(etfSymbol, 90);
+      const bars = this.pricesRepo.listBySymbol(etfSymbol, 90);
 
-        if (priceData.length === 0) {
-          log.warn('no price data for sector etf', { etfSymbol, sector });
-          continue;
-        }
-
-        const return1d = this.calculateReturn(priceData, 1);
-        const return1w = this.calculateReturn(priceData, 7);
-        const return1m = this.calculateReturn(priceData, 30);
-        const return3m = this.calculateReturn(priceData, 90);
-
-        results.push({
-          sector,
-          etfSymbol,
-          return1d,
-          return1w,
-          return1m,
-          return3m,
-          avgPE: null,
-          avgVolatility: null,
-        });
-      } catch (err) {
-        log.warn('failed to fetch sector performance', {
-          etfSymbol,
-          sector,
-          error: err instanceof Error ? err.message : String(err),
-        });
+      if (bars.length === 0) {
+        log.warn('no cached price data for sector etf', { etfSymbol, sector });
+        continue;
       }
+
+      const priceData = bars.map((b: PriceBarRow) => ({
+        date: new Date(b.barDate).getTime(),
+        close: b.closeCents / 100,
+      }));
+
+      results.push({
+        sector,
+        etfSymbol,
+        return1d: this.calculateReturn(priceData, 1),
+        return1w: this.calculateReturn(priceData, 7),
+        return1m: this.calculateReturn(priceData, 30),
+        return3m: this.calculateReturn(priceData, 90),
+        avgPE: null,
+        avgVolatility: null,
+      });
     }
 
     log.info('sector performance fetched', { sectorCount: results.length });
     return results;
   }
 
-  private async fetchHistoricalData(symbol: string, days: number): Promise<YahooHistoricalQuote[]> {
-    const endTime = Math.floor(Date.now() / 1000);
-    const startTime = endTime - (days * 86400);
-
-    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}/historical?interval=1d&period1=${startTime}&period2=${endTime}`;
-
-    try {
-      const response = await this.http.get<YahooChartResponse>(url, {
-        headers: {
-          'User-Agent': 'atn-trd/0.1.0',
-        },
-      });
-
-      const timestamps = response.chart?.result?.[0]?.timestamp ?? [];
-      const quotes = response.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? [];
-
-      const results: YahooHistoricalQuote[] = [];
-      for (let i = 0; i < timestamps.length; i++) {
-        if (quotes[i] !== null && quotes[i] !== undefined) {
-          results.push({
-            date: timestamps[i] * 1000,
-            close: quotes[i],
-          });
-        }
-      }
-
-      return results.sort((a, b) => a.date - b.date);
-    } catch (err) {
-      log.debug('historical data fetch failed', {
-        symbol,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      throw err;
-    }
-  }
-
-  private calculateReturn(priceData: YahooHistoricalQuote[], days: number): number {
+  private calculateReturn(priceData: HistoricalQuote[], days: number): number {
     if (priceData.length < 2) return 0;
 
-    const now = Date.now();
-    const cutoffTime = now - (days * 86400 * 1000);
+    const cutoffTime = Date.now() - days * 86400 * 1000;
 
-    let startPrice: number | null = null;
-    for (let i = 0; i < priceData.length; i++) {
-      if (priceData[i].date <= cutoffTime) {
-        startPrice = priceData[i].close;
+    // Find the price closest to (but before) the cutoff
+    let startPrice = priceData[0].close;
+    for (const p of priceData) {
+      if (p.date <= cutoffTime) {
+        startPrice = p.close;
       }
-    }
-
-    if (startPrice === null) {
-      startPrice = priceData[0].close;
     }
 
     const endPrice = priceData[priceData.length - 1].close;
@@ -163,3 +120,6 @@ export class YahooSectorPerformance extends BaseDataSource<void, SectorPerforman
     return Math.round(ret * 100) / 100;
   }
 }
+
+// Backwards compatibility alias
+export { SectorPerformanceDataSource as YahooSectorPerformance };
