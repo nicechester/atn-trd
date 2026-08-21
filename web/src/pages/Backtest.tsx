@@ -310,7 +310,7 @@ function TradesTable({ trades }: { trades: BacktestTrade[] }) {
             <th>Date</th>
             <th>Symbol</th>
             <th>Side</th>
-            <th>Qty</th>
+            <th>Quantity</th>
             <th>Price</th>
           </tr>
         </thead>
@@ -320,7 +320,7 @@ function TradesTable({ trades }: { trades: BacktestTrade[] }) {
               <td>{t.date}</td>
               <td>{t.symbol}</td>
               <td className={t.side === 'buy' ? styles.buy : styles.sell}>{t.side}</td>
-              <td>{t.qty.toFixed(2)}</td>
+              <td>{Number.isInteger(t.qty) ? t.qty : t.qty.toFixed(2)}</td>
               <td>${t.price.toFixed(2)}</td>
             </tr>
           ))}
@@ -335,8 +335,14 @@ function TradesTable({ trades }: { trades: BacktestTrade[] }) {
   );
 }
 
-function SymbolAttribution({ perSymbol }: { perSymbol: Record<string, { return: number; trades: number }> }) {
-  const symbols = Object.entries(perSymbol).sort((a, b) => b[1].return - a[1].return);
+function SymbolAttribution({ perSymbol }: { perSymbol: Record<string, { return: number | null; trades: number }> }) {
+  const symbols = Object.entries(perSymbol).sort((a, b) => {
+    // Sort by return descending, nulls last
+    if (a[1].return === null && b[1].return === null) return 0;
+    if (a[1].return === null) return 1;
+    if (b[1].return === null) return -1;
+    return b[1].return - a[1].return;
+  });
 
   return (
     <div className={styles.attributionSection}>
@@ -353,8 +359,8 @@ function SymbolAttribution({ perSymbol }: { perSymbol: Record<string, { return: 
           {symbols.map(([symbol, data]) => (
             <tr key={symbol}>
               <td>{symbol}</td>
-              <td className={data.return >= 0 ? styles.positive : styles.negative}>
-                {(data.return * 100).toFixed(2)}%
+              <td className={data.return !== null && data.return >= 0 ? styles.positive : data.return !== null ? styles.negative : ''}>
+                {data.return !== null ? `${(data.return * 100).toFixed(2)}%` : '—'}
               </td>
               <td>{data.trades}</td>
             </tr>

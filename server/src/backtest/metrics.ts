@@ -175,7 +175,7 @@ function calculateTradeStats(trades: BacktestTradeRow[]): {
 
 function calculatePerSymbolAttribution(
   trades: BacktestTradeRow[]
-): Record<string, { return: number; trades: number }> | null {
+): Record<string, { return: number | null; trades: number }> | null {
   const symbolTrades = new Map<string, BacktestTradeRow[]>();
   for (const trade of trades) {
     const existing = symbolTrades.get(trade.symbol) ?? [];
@@ -185,13 +185,14 @@ function calculatePerSymbolAttribution(
 
   if (symbolTrades.size === 0) return null;
 
-  const result: Record<string, { return: number; trades: number }> = {};
+  const result: Record<string, { return: number | null; trades: number }> = {};
 
   for (const [symbol, symbolTradeList] of symbolTrades) {
     let totalPnlCents = 0;
     let totalCostCents = 0;
     let position = 0;
     let costBasis = 0;
+    let hasSells = false;
 
     for (const trade of symbolTradeList.sort((a, b) => a.tradeDate.localeCompare(b.tradeDate))) {
       if (trade.side === 'buy') {
@@ -199,6 +200,7 @@ function calculatePerSymbolAttribution(
         totalCostCents += trade.qty * trade.priceCents;
         position += trade.qty;
       } else {
+        hasSells = true;
         const avgCost = position > 0 ? costBasis / position : 0;
         totalPnlCents += trade.qty * (trade.priceCents - avgCost);
         position -= trade.qty;
@@ -207,7 +209,8 @@ function calculatePerSymbolAttribution(
     }
 
     result[symbol] = {
-      return: totalCostCents > 0 ? totalPnlCents / totalCostCents : 0,
+      // Return null if no sells (position still open, can't calculate realized return)
+      return: hasSells && totalCostCents > 0 ? totalPnlCents / totalCostCents : null,
       trades: symbolTradeList.length,
     };
   }

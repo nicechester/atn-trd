@@ -20,6 +20,7 @@ export interface BacktestConfig {
   symbols: string[];
   startingCashCents?: number;
   slippageBps?: number;
+  tradingIntervalDays?: number; // How often to run trading logic (default: 7 = weekly)
 }
 
 export interface BacktestResult {
@@ -98,30 +99,38 @@ export class BacktestRunner {
 
       // Iterate through each trading day (start after initial snapshot)
       let currentDate = nextTradingDateStr(config.startDate);
+      let daysSinceLastTrade = 0;
+      const tradingInterval = config.tradingIntervalDays ?? 7; // Default: weekly
+
       while (currentDate <= config.endDate) {
         if (isTradingDayStr(currentDate)) {
           broker.setCurrentDate(currentDate);
+          daysSinceLastTrade++;
 
-          // Run trading logic for this day
-          await this.deps.runTradingLogic({
-            date: currentDate,
-            symbols: config.symbols,
-            broker,
-            settings: this.deps.settings,
-          });
+          // Run trading logic on interval (e.g., weekly)
+          const shouldTrade = daysSinceLastTrade >= tradingInterval;
+          if (shouldTrade) {
+            await this.deps.runTradingLogic({
+              date: currentDate,
+              symbols: config.symbols,
+              broker,
+              settings: this.deps.settings,
+            });
+            daysSinceLastTrade = 0;
 
-          // Record any trades that occurred
-          const orders = await broker.listOrders({ status: ['filled'] });
-          for (const order of orders) {
-            if (order.status === 'filled') {
-              this.repo.createTrade({
-                backtestId,
-                tradeDate: currentDate,
-                symbol: order.symbol,
-                side: order.side,
-                qty: order.qty,
-                priceCents: order.fillPriceCents ?? order.limitPriceCents ?? 0,
-              });
+            // Record any trades that occurred TODAY (filter by fillDate)
+            const orders = await broker.listOrders({ status: ['filled'] });
+            for (const order of orders) {
+              if (order.status === 'filled' && order.fillDate === currentDate) {
+                this.repo.createTrade({
+                  backtestId,
+                  tradeDate: currentDate,
+                  symbol: order.symbol,
+                  side: order.side,
+                  qty: order.qty,
+                  priceCents: order.fillPriceCents ?? order.limitPriceCents ?? 0,
+                });
+              }
             }
           }
 

@@ -91,7 +91,7 @@ describe('calculateMetrics', () => {
 
     assert.ok(result.perSymbol !== null);
     assert.ok(result.perSymbol!['AAPL'] !== undefined);
-    assert.ok(Math.abs(result.perSymbol!['AAPL'].return - 0.20) < 0.01); // 20% return on AAPL
+    assert.ok(result.perSymbol!['AAPL'].return !== null && Math.abs(result.perSymbol!['AAPL'].return - 0.20) < 0.01); // 20% return on AAPL
     assert.strictEqual(result.perSymbol!['AAPL'].trades, 2);
   });
 });

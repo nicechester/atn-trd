@@ -23,6 +23,7 @@ export interface OrderState {
   type: "market" | "limit";
   limitPriceCents: number | null;
   fillPriceCents?: number | null;  // Actual fill price (for backtesting)
+  fillDate?: string | null;        // Date when filled (for backtesting)
   tif: "day" | "gtc";
   status: OrderStatus;
   rejectReason: string | null;

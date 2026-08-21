@@ -46,7 +46,7 @@ export interface BacktestMetricsRow {
   avgWin: number | null;
   avgLoss: number | null;
   totalTrades: number;
-  perSymbol: Record<string, { return: number; trades: number }> | null;
+  perSymbol: Record<string, { return: number | null; trades: number }> | null;
 }
 
 export class BacktestRepo {
