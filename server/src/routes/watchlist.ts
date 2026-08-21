@@ -61,8 +61,8 @@ export async function addWatchlistHandler(
         currency: validated.currency,
       },
     });
-    // Queue auto-backtest in background
-    queueWatchlistBacktest(getDatabase()).catch(() => {});
+    // Queue auto-backtest in background (fire-and-forget)
+    queueWatchlistBacktest(getDatabase());
   } catch (err) {
     next(err);
   }
@@ -76,8 +76,8 @@ export function removeWatchlistHandler(req: Request, res: Response, next: NextFu
       throw new NotFoundError(`"${symbol}" is not on the watchlist`);
     }
     res.json({ ok: true, data: { symbol } });
-    // Queue auto-backtest in background
-    queueWatchlistBacktest(getDatabase()).catch(() => {});
+    // Queue auto-backtest in background (fire-and-forget)
+    queueWatchlistBacktest(getDatabase());
   } catch (err) {
     next(err);
   }
@@ -97,8 +97,8 @@ export function patchWatchlistHandler(req: Request, res: Response, next: NextFun
       throw new NotFoundError(`"${symbol}" is not on the watchlist`);
     }
     res.json({ ok: true, data: repo.get(symbol) });
-    // Queue auto-backtest in background
-    queueWatchlistBacktest(getDatabase()).catch(() => {});
+    // Queue auto-backtest in background (fire-and-forget)
+    queueWatchlistBacktest(getDatabase());
   } catch (err) {
     next(err);
   }

@@ -12,13 +12,14 @@ const runningBacktests = new Set<string>();
 /**
  * Queue an auto-backtest for the current watchlist if enabled.
  * Called when watchlist changes (add/remove/toggle).
+ * Fully async - returns immediately, backtest runs in background.
  */
-export async function queueWatchlistBacktest(db: Database.Database): Promise<string | null> {
+export function queueWatchlistBacktest(db: Database.Database): void {
   const settings = getSettings();
   
   if (!settings.watchlist.autoBacktest) {
     log.debug('auto-backtest disabled, skipping');
-    return null;
+    return;
   }
 
   const watchlistRepo = new WatchlistRepo(db);
@@ -28,58 +29,59 @@ export async function queueWatchlistBacktest(db: Database.Database): Promise<str
 
   if (enabledSymbols.length === 0) {
     log.debug('no enabled symbols, skipping auto-backtest');
-    return null;
+    return;
   }
 
   // Create a fingerprint to avoid duplicate runs
   const fingerprint = enabledSymbols.sort().join(',');
   if (runningBacktests.has(fingerprint)) {
     log.debug('auto-backtest already running for this watchlist');
-    return null;
+    return;
   }
 
-  // Calculate date range
-  const months = settings.watchlist.autoBacktestMonths || 12;
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setMonth(startDate.getMonth() - months);
+  // Run everything else in background
+  setImmediate(async () => {
+    try {
+      const months = settings.watchlist.autoBacktestMonths || 12;
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setMonth(startDate.getMonth() - months);
+      const formatDate = (d: Date) => d.toISOString().slice(0, 10);
 
-  const formatDate = (d: Date) => d.toISOString().slice(0, 10);
+      const allSymbols = enabledSymbols.includes('SPY') 
+        ? enabledSymbols 
+        : [...enabledSymbols, 'SPY'];
 
-  // Ensure SPY for benchmark
-  const allSymbols = enabledSymbols.includes('SPY') 
-    ? enabledSymbols 
-    : [...enabledSymbols, 'SPY'];
+      const backtestRepo = new BacktestRepo(db);
+      const backtestId = backtestRepo.createRun({
+        name: `Auto: Watchlist (${allSymbols.length - 1} symbols)`,
+        startDate: formatDate(startDate),
+        endDate: formatDate(endDate),
+        symbols: allSymbols,
+        settingsSnapshot: JSON.stringify({ autoBacktest: true }),
+      });
 
-  const backtestRepo = new BacktestRepo(db);
-  const backtestId = backtestRepo.createRun({
-    name: `Auto: Watchlist (${allSymbols.length - 1} symbols)`,
-    startDate: formatDate(startDate),
-    endDate: formatDate(endDate),
-    symbols: allSymbols,
-    settingsSnapshot: JSON.stringify({ autoBacktest: true }),
+      log.info('queued auto-backtest', { 
+        backtestId, 
+        symbols: allSymbols.length, 
+        months,
+        startDate: formatDate(startDate),
+        endDate: formatDate(endDate),
+      });
+
+      runningBacktests.add(fingerprint);
+
+      const { runBacktestInBackground } = await import('../routes/backtest.js');
+      
+      await runBacktestInBackground(db, backtestId, {
+        startDate: formatDate(startDate),
+        endDate: formatDate(endDate),
+        symbols: allSymbols,
+      });
+    } catch (err) {
+      log.error('auto-backtest failed', { error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      runningBacktests.delete(fingerprint);
+    }
   });
-
-  log.info('queued auto-backtest', { 
-    backtestId, 
-    symbols: allSymbols.length, 
-    months,
-    startDate: formatDate(startDate),
-    endDate: formatDate(endDate),
-  });
-
-  runningBacktests.add(fingerprint);
-
-  // Import dynamically to avoid circular deps
-  const { runBacktestInBackground } = await import('../routes/backtest.js');
-  
-  runBacktestInBackground(db, backtestId, {
-    startDate: formatDate(startDate),
-    endDate: formatDate(endDate),
-    symbols: allSymbols,
-  }).finally(() => {
-    runningBacktests.delete(fingerprint);
-  });
-
-  return backtestId;
 }
