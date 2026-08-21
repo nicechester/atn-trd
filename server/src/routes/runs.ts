@@ -94,6 +94,30 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
   }
 }
 
+/** GET /api/runs/:id/coverage */
+export function getRunCoverageHandler(req: Request, res: Response, next: NextFunction): void {
+  try {
+    const { id } = req.params;
+
+    const db = getDatabase();
+    const runsRepo = new RunsRepo(db);
+    const artifactsRepo = new ArtifactsRepo(db);
+    const assessmentsRepo = new AssessmentsRepo(db);
+
+    const run = runsRepo.get(id);
+    if (!run) {
+      throw new NotFoundError(`Run "${id}" not found`);
+    }
+
+    const coverageService = new CoverageServiceImpl(artifactsRepo, assessmentsRepo);
+    const coverage = coverageService.getCoverage(id);
+
+    res.json(coverage);
+  } catch (err) {
+    next(err);
+  }
+}
+
 /** POST /api/runs */
 export async function triggerRunHandler(
   _req: Request,

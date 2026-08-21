@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { ChatOpenAI } from '@langchain/openai';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
-import { convertToOpenAITool } from '@langchain/core/utils/function_calling';
 import { resolveConfig, resolveApiKey, LlmNotConfiguredError } from '../llm/openaiChatModel.js';
 import { ANALYST_SYSTEM_PROMPT } from '../llm/prompts/analyst.js';
 import { createAgentTools, type AgentToolsDeps } from './tools.js';
@@ -10,6 +9,7 @@ import { RunCollector } from './runCollector.js';
 import type { AgentMessagesRepo } from '../repos/agentMessagesRepo.js';
 import type { ArtifactsRepo } from '../repos/artifactsRepo.js';
 import { logger } from '../lib/logger.js';
+import { emitProgress } from '../services/runProgress.js';
 
 const AssessmentSchema = z.object({
   score: z
@@ -68,12 +68,7 @@ export async function runAnalystAgent(
       ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
     });
 
-    // Patch bindTools if missing (@langchain/openai <0.1.0 doesn't include it)
-    if (!('bindTools' in reactLlm)) {
-      (reactLlm as any).bindTools = function (tools: any[]) {
-        return this.bind({ tools: tools.map(convertToOpenAITool) });
-      };
-    }
+    // Patch bindTools if missing (no longer needed with newer @langchain/openai)
 
     const synthesisLlm = new ChatOpenAI({
       apiKey,
@@ -104,15 +99,26 @@ export async function runAnalystAgent(
       recursionLimit,
     });
 
-    const agent = createReactAgent({ llm: reactLlm as any, tools: tools as any });
+    const agent = createReactAgent({
+      llm: reactLlm,
+      tools,
+      stateModifier: ANALYST_SYSTEM_PROMPT,
+    });
 
     let finalReasoningText = '';
+    let eventCount = 0;
     const stream = agent.streamEvents(
       { messages: [new HumanMessage(humanContent)] },
       { version: 'v2', recursionLimit }
     );
 
     for await (const event of stream) {
+      eventCount++;
+      // Emit progress for UI
+      if (event.event === 'on_tool_start') {
+        const toolName = event.name?.replace('get_', '') ?? 'tool';
+        emitProgress(runId, 'analyst', `${symbol}: fetching ${toolName}`, { symbol, tool: event.name });
+      }
       collector.handleEvent(event as any);
       if (event.event === 'on_chat_model_end') {
         const output = event.data?.output;
@@ -122,6 +128,9 @@ export async function runAnalystAgent(
         }
       }
     }
+
+    log.debug('stream complete', { symbol, eventCount });
+    emitProgress(runId, 'analyst', `${symbol}: synthesizing assessment`, { symbol });
 
     // 6. Structured synthesis with 1 retry
     const synthesisMessages = [

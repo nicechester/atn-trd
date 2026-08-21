@@ -46,6 +46,29 @@ function chunkText(chunk: unknown): string {
   return '';
 }
 
+/**
+ * Extract the actual content from a tool output.
+ * New LangGraph versions wrap tool results in ToolMessage objects.
+ */
+function extractToolContent(output: unknown): string {
+  if (typeof output === 'string') return output;
+  if (!output || typeof output !== 'object') return safeStringify(output);
+
+  // Handle LangChain ToolMessage wrapper
+  const obj = output as Record<string, unknown>;
+  
+  // Direct content property
+  if (typeof obj.content === 'string') return obj.content;
+  
+  // LangChain serialized format: { kwargs: { content: "..." } }
+  if (obj.kwargs && typeof obj.kwargs === 'object') {
+    const kwargs = obj.kwargs as Record<string, unknown>;
+    if (typeof kwargs.content === 'string') return kwargs.content;
+  }
+  
+  return safeStringify(output);
+}
+
 function safeStringify(value: unknown): string {
   if (typeof value === 'string') return value;
   try {
@@ -126,7 +149,7 @@ export class RunCollector {
               toolResultJson: null,
               createdAt,
             });
-            log.debug('wrote ai message', { seq: this.seq - 1, length: content.length });
+            // log.debug('wrote ai message', { seq: this.seq - 1, length: content.length });
           }
           break;
         }
@@ -148,7 +171,9 @@ export class RunCollector {
             log.warn('orphaned tool_end event', { runId: event.run_id, toolName: event.name });
             return;
           }
-          const toolResultJson = safeStringify(event.data?.output ?? null);
+          const rawOutput = event.data?.output;
+          const toolContent = extractToolContent(rawOutput);
+          const toolResultJson = safeStringify(rawOutput);
           this.messagesRepo.create({
             runId: this.runId,
             symbol: this.symbol,
@@ -160,9 +185,10 @@ export class RunCollector {
             toolResultJson,
             createdAt: pending.startedAt,
           });
-          log.debug('wrote tool message', { toolName: pending.toolName, seq: pending.seq });
+          // log.debug('wrote tool message', { toolName: pending.toolName, seq: pending.seq });
           this.pendingTools.delete(event.run_id);
-          this.writeArtifact(pending.toolName, toolResultJson, pending.startedAt);
+          // Use extracted content for artifact, not the wrapped message
+          this.writeArtifact(pending.toolName, toolContent, pending.startedAt);
           break;
         }
       }

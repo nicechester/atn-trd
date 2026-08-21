@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { AgentRunRow, Portfolio } from '../api/client';
@@ -20,6 +20,9 @@ export default function DashboardPage(): JSX.Element {
   const navigate = useNavigate();
   const [state, setState] = useState<DashState | null>(null);
   const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<string[]>([]);
+  const [expanded, setExpanded] = useState(true);
+  const progressRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -65,12 +68,34 @@ export default function DashboardPage(): JSX.Element {
 
   async function runNow() {
     setRunning(true);
+    setProgress([]);
+    setExpanded(true);
+
+    // Start SSE connection for progress
+    const eventSource = new EventSource('/api/runs/progress/stream');
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setProgress(prev => [...prev.slice(-19), data.message]); // Keep last 20
+        // Auto-scroll
+        if (progressRef.current) {
+          progressRef.current.scrollTop = progressRef.current.scrollHeight;
+        }
+        if (data.phase === 'complete') {
+          eventSource.close();
+          setExpanded(false);
+        }
+      } catch {}
+    };
+
     try {
       const result = await api.runs.trigger();
-      addToast('Run started', 'success');
-      navigate(`/runs/${result.runId}`);
+      addToast('Run completed', 'success');
+      // Small delay to show final progress
+      setTimeout(() => navigate(`/runs/${result.runId}`), 1000);
     } catch (e) {
       addToast(e instanceof Error ? e.message : 'Failed to trigger run', 'error');
+      eventSource.close();
     } finally {
       setRunning(false);
     }
@@ -161,6 +186,23 @@ export default function DashboardPage(): JSX.Element {
           >
             {running ? 'Running…' : 'Run Now'}
           </button>
+          {progress.length > 0 && (
+            <div className={styles.progressContainer}>
+              <button
+                className={styles.collapseBtn}
+                onClick={() => setExpanded(!expanded)}
+              >
+                {expanded ? '▼' : '▶'} Progress ({progress.length})
+              </button>
+              {expanded && (
+                <div ref={progressRef} className={styles.progressLog}>
+                  {progress.map((msg, i) => (
+                    <div key={i} className={styles.progressLine}>{msg}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </Card>
       </div>
     </div>

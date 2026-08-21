@@ -239,7 +239,7 @@ export class YahooFundamentalsDataSource extends BaseDataSource<
       new HttpClient({
         name: YAHOO_FUNDAMENTALS_SOURCE,
         rateLimit: { capacity: 5, refillPerSecond: 2 },
-        retry: { retries: 2, baseDelayMs: 400, maxDelayMs: 4000 },
+        retry: { retries: 0, baseDelayMs: 400, maxDelayMs: 4000 }, // fail fast, fallback to Finnhub
       });
   }
 
