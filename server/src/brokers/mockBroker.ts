@@ -271,6 +271,7 @@ export class MockBroker implements Broker {
       qty: order.qty,
       type: order.type,
       limitPriceCents: order.limitPriceCents ?? null,
+      fillPriceCents: order.fillPriceCents ?? null,
       tif: order.tif,
       status: order.status,
       rejectReason: order.rejectReason ?? null,

@@ -80,6 +80,30 @@
   margin-bottom: 1.5rem;
 }
 
+.runningBox {
+  background: var(--warning-bg);
+  color: var(--warning);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--warning);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .metricsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -121,6 +145,12 @@
   margin-bottom: 1rem;
 }
 
+.chartContainer {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.5rem;
+}
+
 .chart {
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -129,13 +159,13 @@
 
 .strategyLine {
   fill: none;
-  stroke: var(--primary);
+  stroke: var(--primary, #3b82f6);
   stroke-width: 2;
 }
 
 .benchmarkLine {
   fill: none;
-  stroke: var(--text-muted);
+  stroke: var(--text-muted, #9ca3af);
   stroke-width: 1.5;
   stroke-dasharray: 4 2;
 }
@@ -143,11 +173,50 @@
 .zeroLine {
   stroke: var(--border);
   stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.axisLine {
+  stroke: var(--border, #374151);
+  stroke-width: 1;
+}
+
+.axisLabel {
+  font-size: 0.7rem;
+  fill: var(--text-muted, #9ca3af);
 }
 
 .legendText {
   font-size: 0.75rem;
   fill: var(--text);
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 2rem;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text);
+}
+
+.legendLineStrategy {
+  width: 24px;
+  height: 3px;
+  background: var(--primary, #3b82f6);
+  border-radius: 2px;
+}
+
+.legendLineBenchmark {
+  width: 24px;
+  height: 0;
+  border-top: 2px dashed var(--text-muted, #9ca3af);
 }
 
 .tradesSection {

@@ -100,6 +100,13 @@ function BacktestDetail({ id }: { id: string }) {
     loadBacktest();
   }, [id]);
 
+  // Poll while running
+  useEffect(() => {
+    if (run?.status !== 'running') return;
+    const interval = setInterval(loadBacktest, 3000);
+    return () => clearInterval(interval);
+  }, [run?.status]);
+
   async function loadBacktest() {
     try {
       const result = await backtestApi.get(id);
@@ -108,8 +115,8 @@ function BacktestDetail({ id }: { id: string }) {
       if (result.equityCurve) setEquity(result.equityCurve);
       if (result.trades) setTrades(result.trades);
 
-      // Load equity curve separately if not included
-      if (!result.equityCurve) {
+      // Load equity curve separately if not included and backtest is done
+      if (!result.equityCurve && result.run.status !== 'running') {
         const eqResult = await backtestApi.getEquity(id);
         setEquity(eqResult.equityCurve);
       }
@@ -128,6 +135,12 @@ function BacktestDetail({ id }: { id: string }) {
       <Link to="/backtest" className={styles.backLink}>← Back to Backtests</Link>
       <h1>{run.name || `Backtest ${run.id.slice(0, 8)}`}</h1>
       <p className={styles.dateRange}>{run.startDate} → {run.endDate}</p>
+
+      {run.status === 'running' && (
+        <div className={styles.runningBox}>
+          <span className={styles.spinner} /> Running backtest... (backfilling prices, then simulating trades)
+        </div>
+      )}
 
       {run.status === 'failed' && run.error && (
         <div className={styles.errorBox}>{run.error}</div>
@@ -194,8 +207,8 @@ function EquityChart({ equity }: { equity: BacktestEquityPoint[] }) {
   // Normalize to returns
   const returns = equity.map(p => ({
     date: p.date,
-    strategy: (p.value - startValue) / startValue,
-    benchmark: p.benchmark ? (p.benchmark - startBenchmark) / startBenchmark : 0,
+    strategy: startValue > 0 ? (p.value - startValue) / startValue : 0,
+    benchmark: p.benchmark && startBenchmark > 0 ? (p.benchmark - startBenchmark) / startBenchmark : 0,
   }));
 
   const allReturns = [...returns.map(r => r.strategy), ...returns.map(r => r.benchmark)];
@@ -203,37 +216,83 @@ function EquityChart({ equity }: { equity: BacktestEquityPoint[] }) {
   const maxReturn = Math.max(...allReturns, 0);
   const returnRange = maxReturn - minReturn || 0.01;
 
-  const chartHeight = 250;
+  const chartHeight = 280;
   const chartWidth = Math.max(600, Math.min(900, returns.length * 3));
-  const padding = 50;
+  const paddingLeft = 60;
+  const paddingRight = 20;
+  const paddingTop = 30;
+  const paddingBottom = 50;
 
-  const scaleX = (i: number) => padding + (i / (returns.length - 1)) * (chartWidth - 2 * padding);
-  const scaleY = (v: number) => chartHeight - padding - ((v - minReturn) / returnRange) * (chartHeight - 2 * padding);
+  const xRange = returns.length > 1 ? returns.length - 1 : 1;
+  const scaleX = (i: number) => paddingLeft + (i / xRange) * (chartWidth - paddingLeft - paddingRight);
+  const scaleY = (v: number) => chartHeight - paddingBottom - ((v - minReturn) / returnRange) * (chartHeight - paddingTop - paddingBottom);
 
-  const strategyPath = returns.map((r, i) => `${scaleX(i)},${scaleY(r.strategy)}`).join(' L ');
-  const benchmarkPath = returns.map((r, i) => `${scaleX(i)},${scaleY(r.benchmark)}`).join(' L ');
+  const strategyPoints = returns.map((r, i) => `${scaleX(i).toFixed(2)},${scaleY(r.strategy).toFixed(2)}`);
+  const benchmarkPoints = returns.map((r, i) => `${scaleX(i).toFixed(2)},${scaleY(r.benchmark).toFixed(2)}`);
+  const strategyPath = `M${strategyPoints[0]} L${strategyPoints.slice(1).join(' L')}`;
+  const benchmarkPath = `M${benchmarkPoints[0]} L${benchmarkPoints.slice(1).join(' L')}`;
+
+  // Y-axis ticks (return %)
+  const yTickCount = 5;
+  const yTicks = Array.from({ length: yTickCount }, (_, i) => minReturn + (returnRange * i) / (yTickCount - 1));
+
+  // X-axis ticks (dates) - show ~5 evenly spaced dates
+  const xTickCount = Math.min(5, returns.length);
+  const xTickIndices = Array.from({ length: xTickCount }, (_, i) => Math.round((i / (xTickCount - 1)) * (returns.length - 1)));
 
   return (
     <div className={styles.chartSection}>
       <h3>Equity Curve</h3>
-      <svg width={chartWidth} height={chartHeight} className={styles.chart}>
+      <div className={styles.chartContainer}>
+        <svg width={chartWidth} height={chartHeight} className={styles.chart}>
+        {/* Y-axis line */}
+        <line x1={paddingLeft} y1={paddingTop} x2={paddingLeft} y2={chartHeight - paddingBottom} className={styles.axisLine} />
+        {/* X-axis line */}
+        <line x1={paddingLeft} y1={chartHeight - paddingBottom} x2={chartWidth - paddingRight} y2={chartHeight - paddingBottom} className={styles.axisLine} />
+
+        {/* Y-axis ticks and labels */}
+        {yTicks.map((tick, i) => (
+          <g key={`y-${i}`}>
+            <line x1={paddingLeft - 5} y1={scaleY(tick)} x2={paddingLeft} y2={scaleY(tick)} className={styles.axisLine} />
+            <text x={paddingLeft - 8} y={scaleY(tick) + 4} className={styles.axisLabel} textAnchor="end">
+              {(tick * 100).toFixed(0)}%
+            </text>
+          </g>
+        ))}
+
+        {/* X-axis ticks and labels */}
+        {xTickIndices.map((idx) => (
+          <g key={`x-${idx}`}>
+            <line x1={scaleX(idx)} y1={chartHeight - paddingBottom} x2={scaleX(idx)} y2={chartHeight - paddingBottom + 5} className={styles.axisLine} />
+            <text x={scaleX(idx)} y={chartHeight - paddingBottom + 18} className={styles.axisLabel} textAnchor="middle">
+              {returns[idx].date.slice(5)}
+            </text>
+          </g>
+        ))}
+
         {/* Zero line */}
-        <line x1={padding} y1={scaleY(0)} x2={chartWidth - padding} y2={scaleY(0)} className={styles.zeroLine} />
+        {minReturn < 0 && maxReturn > 0 && (
+          <line x1={paddingLeft} y1={scaleY(0)} x2={chartWidth - paddingRight} y2={scaleY(0)} className={styles.zeroLine} />
+        )}
 
         {/* Benchmark */}
-        <polyline points={benchmarkPath} className={styles.benchmarkLine} />
+        <path d={benchmarkPath} className={styles.benchmarkLine} />
 
         {/* Strategy */}
-        <polyline points={strategyPath} className={styles.strategyLine} />
+        <path d={strategyPath} className={styles.strategyLine} />
 
-        {/* Legend */}
-        <g transform={`translate(${chartWidth - 150}, ${padding})`}>
-          <line x1={0} y1={0} x2={20} y2={0} className={styles.strategyLine} />
-          <text x={25} y={4} className={styles.legendText}>Strategy</text>
-          <line x1={0} y1={20} x2={20} y2={20} className={styles.benchmarkLine} />
-          <text x={25} y={24} className={styles.legendText}>SPY</text>
-        </g>
       </svg>
+      <div className={styles.legend}>
+        <div className={styles.legendItem}>
+          <span className={styles.legendLineStrategy} />
+          <span>Strategy</span>
+        </div>
+        <div className={styles.legendItem}>
+          <span className={styles.legendLineBenchmark} />
+          <span>SPY (Benchmark)</span>
+        </div>
+      </div>
+      </div>
     </div>
   );
 }

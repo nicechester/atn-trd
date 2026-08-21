@@ -13,6 +13,7 @@ import { nextTradingDateStr, isTradingDayStr } from '../scheduler/marketCalendar
 const log = logger.child({ component: 'backtest-runner' });
 
 export interface BacktestConfig {
+  backtestId?: string; // If provided, use existing record instead of creating new
   name?: string;
   startDate: string; // YYYY-MM-DD
   endDate: string;   // YYYY-MM-DD
@@ -59,7 +60,8 @@ export class BacktestRunner {
   }
 
   async run(config: BacktestConfig): Promise<BacktestResult> {
-    const backtestId = this.repo.createRun({
+    // Use existing backtestId or create new
+    const backtestId = config.backtestId ?? this.repo.createRun({
       name: config.name,
       startDate: config.startDate,
       endDate: config.endDate,
@@ -94,8 +96,8 @@ export class BacktestRunner {
         benchmarkValueCents: initialBenchmark ?? undefined,
       });
 
-      // Iterate through each trading day
-      let currentDate = config.startDate;
+      // Iterate through each trading day (start after initial snapshot)
+      let currentDate = nextTradingDateStr(config.startDate);
       while (currentDate <= config.endDate) {
         if (isTradingDayStr(currentDate)) {
           broker.setCurrentDate(currentDate);
@@ -118,7 +120,7 @@ export class BacktestRunner {
                 symbol: order.symbol,
                 side: order.side,
                 qty: order.qty,
-                priceCents: order.limitPriceCents ?? 0, // Will be filled price
+                priceCents: order.fillPriceCents ?? order.limitPriceCents ?? 0,
               });
             }
           }
