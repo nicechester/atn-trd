@@ -193,3 +193,70 @@ export const ListTradesResponseSchema = z.object({
 });
 
 export type ListTradesResponse = z.infer<typeof ListTradesResponseSchema>;
+
+// Backtest API
+export const BacktestRunSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  startDate: z.string(),
+  endDate: z.string(),
+  symbols: z.array(z.string()),
+  status: z.enum(['running', 'succeeded', 'failed']),
+  startedAt: z.number().int(),
+  finishedAt: z.number().int().nullable(),
+  error: z.string().nullable(),
+});
+
+export type BacktestRun = z.infer<typeof BacktestRunSchema>;
+
+export const BacktestMetricsSchema = z.object({
+  totalReturn: z.number(),
+  benchmarkReturn: z.number(),
+  sharpeRatio: z.number().nullable(),
+  sortinoRatio: z.number().nullable(),
+  maxDrawdown: z.number(),
+  winRate: z.number().nullable(),
+  avgWin: z.number().nullable(),
+  avgLoss: z.number().nullable(),
+  totalTrades: z.number().int(),
+  perSymbol: z.record(z.object({
+    return: z.number(),
+    trades: z.number().int(),
+  })).nullable(),
+});
+
+export type BacktestMetrics = z.infer<typeof BacktestMetricsSchema>;
+
+export const BacktestTradeSchema = z.object({
+  date: z.string(),
+  symbol: z.string(),
+  side: z.enum(['buy', 'sell']),
+  qty: z.number(),
+  price: z.number(),
+  rationale: z.string().nullable(),
+});
+
+export type BacktestTrade = z.infer<typeof BacktestTradeSchema>;
+
+export const BacktestEquityPointSchema = z.object({
+  date: z.string(),
+  value: z.number(),
+  benchmark: z.number().nullable(),
+});
+
+export type BacktestEquityPoint = z.infer<typeof BacktestEquityPointSchema>;
+
+export const ListBacktestsResponseSchema = z.object({
+  runs: z.array(BacktestRunSchema),
+});
+
+export type ListBacktestsResponse = z.infer<typeof ListBacktestsResponseSchema>;
+
+export const GetBacktestResponseSchema = z.object({
+  run: BacktestRunSchema,
+  metrics: BacktestMetricsSchema.nullable(),
+  equityCurve: z.array(BacktestEquityPointSchema).optional(),
+  trades: z.array(BacktestTradeSchema).optional(),
+});
+
+export type GetBacktestResponse = z.infer<typeof GetBacktestResponseSchema>;
