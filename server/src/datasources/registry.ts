@@ -78,7 +78,8 @@ function defaultReadSettings(): DataSourcesSettings {
 function defaultCreateSource(id: DataSourceId, provider: string): AnyDataSource {
   switch (id) {
     case 'news':
-      return createNewsDataSource(provider as NewsProvider);
+      // Disable Finnhub sentiment - LLM judges sentiment from article text
+      return createNewsDataSource(provider as NewsProvider, { sentiment: false });
     case 'fundamentals':
       return createFundamentalsDataSource(provider as FundamentalsProvider);
     case 'macro':

@@ -4,6 +4,7 @@ import type { NewsDataSource } from '../datasources/news/index.js';
 import type { FundamentalsDataSource } from '../datasources/fundamentals/index.js';
 import type { MacroDataSource } from '../datasources/macro/index.js';
 import type { OptionsDataSource } from '../datasources/options/index.js';
+import type { YahooSectorPerformance } from '../datasources/sectors/index.js';
 import type { PricesRepo } from '../repos/pricesRepo.js';
 import type { PriceBarRow } from '../repos/pricesRepo.js';
 import type { PortfolioService, PositionDetail } from '../services/portfolioService.js';
@@ -16,6 +17,7 @@ export interface AgentToolsDeps {
   fundamentalsSource: FundamentalsDataSource;
   macroSource: MacroDataSource;
   optionsSource: OptionsDataSource;
+  sectorSource: YahooSectorPerformance;
   pricesRepo: PricesRepo;
   portfolioService: PortfolioService;
   decisionsRepo: DecisionsRepo;
@@ -44,9 +46,10 @@ function makeGetNews(deps: AgentToolsDeps) {
         // Clamp limit to 1–50
         const clampedLimit = Math.max(1, Math.min(50, limit));
 
-        const cacheKey = `news:${symbol}:${clampedDays}`;
+        // Cache by symbol only (ignore days) - news doesn't change that fast
+        const cacheKey = `news:${symbol}`;
 
-        const result = await deps.cache.getOrFetch(cacheKey, 60_000, async () => {
+        const result = await deps.cache.getOrFetch(cacheKey, 300_000, async () => {
           const now = Date.now();
           const fromMs = now - clampedDays * 86_400_000;
           const from = toIsoDate(fromMs);
@@ -140,7 +143,12 @@ function makeGetOptionsSnapshot(deps: AgentToolsDeps) {
     func: async (input: z.infer<typeof schema>) => {
       try {
         const symbol = input.symbol;
-        const result = await deps.optionsSource.fetch({ symbol });
+        const cacheKey = `options:${symbol}`;
+
+        const result = await deps.cache.getOrFetch(cacheKey, 300_000, async () => {
+          return await deps.optionsSource.fetch({ symbol });
+        });
+
         return JSON.stringify(result.data);
       } catch (err) {
         return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
@@ -258,14 +266,68 @@ function makeGetPriorDecisions(deps: AgentToolsDeps) {
   });
 }
 
+function makeGetSectorPerformance(deps: AgentToolsDeps) {
+  const schema = z.object({
+    limit: z.number().int().optional().describe('Max sectors to return (default all)'),
+  });
+
+  return new DynamicStructuredTool({
+    name: 'get_sector_performance',
+    description: 'Fetch sector performance metrics (returns, PE, volatility) for sector rotation signals',
+    schema,
+    func: async (input: z.infer<typeof schema>) => {
+      try {
+        // Cache sector data for 5 minutes - doesn't change frequently
+        const cacheKey = 'sectors:all';
+        const sectors = await deps.cache.getOrFetch(cacheKey, 300_000, async () => {
+          return await deps.sectorSource.fetch();
+        });
+        const limit = input.limit ?? sectors.length;
+        return JSON.stringify(sectors.slice(0, limit));
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  });
+}
+
 export function createAgentTools(deps: AgentToolsDeps) {
   return [
     makeGetNews(deps),
     makeGetFundamentals(deps),
     makeGetMacro(deps),
     makeGetOptionsSnapshot(deps),
+    makeGetSectorPerformance(deps),
     makeGetPriceHistory(deps),
     makeGetPortfolio(deps),
     makeGetPriorDecisions(deps),
   ];
+}
+
+/**
+ * Prefetch datasources concurrently to warm the cache before agent runs.
+ * Failures are silently ignored - agent tools will retry if needed.
+ */
+export async function prefetchForSymbol(symbol: string, deps: AgentToolsDeps): Promise<void> {
+  const now = Date.now();
+  const from = toIsoDate(now - 7 * 86_400_000);
+  const to = toIsoDate(now);
+
+  await Promise.allSettled([
+    deps.cache.getOrFetch(`news:${symbol}`, 300_000, () =>
+      deps.newsSource.fetch({ symbol, from, to, limit: 20 })
+    ),
+    deps.cache.getOrFetch(`fundamentals:${symbol}`, 60_000, () =>
+      deps.fundamentalsSource.fetch({ symbol })
+    ),
+    deps.cache.getOrFetch(`options:${symbol}`, 300_000, () =>
+      deps.optionsSource.fetch({ symbol })
+    ),
+    deps.cache.getOrFetch('macro:default', 300_000, () =>
+      deps.macroSource.fetch({})
+    ),
+    deps.cache.getOrFetch('sectors:all', 300_000, () =>
+      deps.sectorSource.fetch()
+    ),
+  ]);
 }
