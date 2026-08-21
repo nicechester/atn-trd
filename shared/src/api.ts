@@ -16,15 +16,8 @@ export const GetSettingsResponseSchema = z.object({
 
 export type GetSettingsResponse = z.infer<typeof GetSettingsResponseSchema>;
 
-export const PatchSettingsRequestSchema = z.object({
-  trading: SettingsSchema.shape.trading.optional(),
-  watchlist: SettingsSchema.shape.watchlist.optional(),
-  dataSources: SettingsSchema.shape.dataSources.optional(),
-  llm: SettingsSchema.shape.llm.optional(),
-  schedule: SettingsSchema.shape.schedule.optional(),
-  risk: SettingsSchema.shape.risk.optional(),
-  paperAccount: SettingsSchema.shape.paperAccount.optional(),
-});
+// Patch request allows partial updates at any nesting level
+export const PatchSettingsRequestSchema = z.record(z.any());
 
 export type PatchSettingsRequest = z.infer<typeof PatchSettingsRequestSchema>;
 

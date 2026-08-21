@@ -14,8 +14,9 @@ const log = logger.child({ component: 'backtest-routes' });
 
 /**
  * Run backtest in background (fire-and-forget from HTTP handler).
+ * Exported for use by auto-backtest service.
  */
-async function runBacktestAsync(
+export async function runBacktestInBackground(
   db: Database.Database,
   backtestId: string,
   config: { name?: string; startDate: string; endDate: string; symbols: string[]; startingCashCents?: number }
@@ -163,7 +164,7 @@ export function createBacktestRoutes(db: Database.Database): Router {
     res.status(202).json({ backtestId, status: 'running' });
 
     // Run backtest in background
-    runBacktestAsync(db, backtestId, { ...config, symbols: allSymbols }).catch(err => {
+    runBacktestInBackground(db, backtestId, { ...config, symbols: allSymbols }).catch(err => {
       log.error('background backtest failed', { backtestId, error: err instanceof Error ? err.message : String(err) });
     });
   });
