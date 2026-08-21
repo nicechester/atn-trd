@@ -11,9 +11,9 @@
   },
   "dependencies": {
     "@atn-trd/shared": "file:../shared",
-    "@langchain/core": "^0.1.52",
-    "@langchain/openai": "^0.0.27",
-    "@langchain/langgraph": "^0.0.33",
+    "@langchain/core": "^1.2.9",
+    "@langchain/openai": "^1.5.10",
+    "@langchain/langgraph": "^1.4.12",
     "better-sqlite3": "^13.0.3",
     "croner": "^8.0.1",
     "express": "^4.18.2",

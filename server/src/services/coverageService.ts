@@ -212,23 +212,39 @@ export class CoverageServiceImpl implements CoverageService {
 
   /**
    * Check if payload_json represents a successful data fetch.
-   * For news: if it's an array, assume success (don't check for error field).
-   * For others: check if it's an object with error field (error = failure).
+   * Success = valid JSON object/array without an error field.
    */
-  private isPayloadSuccess(payloadJson: string, source: CoverageSource): boolean {
+  private isPayloadSuccess(payloadJson: string, _source: CoverageSource): boolean {
     try {
       const payload = JSON.parse(payloadJson);
 
-      if (source === 'news') {
-        // News payload is array → short-circuit to ok
-        return Array.isArray(payload);
+      // If it's an array, assume success (e.g., old news format)
+      if (Array.isArray(payload)) {
+        return true;
       }
 
-      // For other sources: check if it's an object with error field
+      // For objects: check if it has an error field
       if (typeof payload === 'object' && payload !== null) {
         // If it has an error field, it's a failure
         if ('error' in payload && payload.error) {
           return false;
+        }
+        // Check for LangChain wrapper - if it has lc/type/kwargs, it's wrapped
+        if ('lc' in payload && 'kwargs' in payload) {
+          // Try to extract and validate the inner content
+          const kwargs = payload.kwargs as Record<string, unknown>;
+          if (typeof kwargs.content === 'string') {
+            try {
+              const inner = JSON.parse(kwargs.content);
+              // Check inner content for error
+              if (typeof inner === 'object' && inner !== null && 'error' in inner && inner.error) {
+                return false;
+              }
+              return true;
+            } catch {
+              return false;
+            }
+          }
         }
         // Otherwise, it's likely a success (has data structure)
         return true;

@@ -18,13 +18,14 @@ import type { PortfolioContext, PortfolioConstraints } from '../agent/portfolioM
 import { createRiskService, type RiskConstraints } from './riskService.js';
 import { isTradingDay } from '../scheduler/marketCalendar.js';
 import { logger } from '../lib/logger.js';
+import { emitProgress } from './runProgress.js';
 import type { OrderRequest } from '../brokers/types.js';
 import type { Decision } from '@atn-trd/shared';
 
 const log = logger.child({ component: 'trading-cycle' });
 
 const RUN_TIMEOUT_MS = 60 * 60 * 1000;
-const ANALYST_CONCURRENCY = 3;
+const ANALYST_CONCURRENCY = 7;
 
 /**
  * Run items with bounded concurrency.
@@ -77,7 +78,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
   constructor(private readonly deps: TradingCycleDeps) {}
 
   async execute(trigger: 'scheduled' | 'manual'): Promise<void> {
-    // ── Step A: Pre-run guards ────────────────────────────────────────
+    // -- Step A: Pre-run guards ----------------------------------------
     const settings = this.deps.getSettings();
 
     if (settings.trading.killSwitch) {
@@ -128,7 +129,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
       return;
     }
 
-    // ── Step B: Run lock ──────────────────────────────────────────────
+    // -- Step B: Run lock ----------------------------------------------
     const recentRuns = this.deps.runsRepo.list(10);
     const activeRun = recentRuns.find(r => r.status === 'running');
     if (activeRun) {
@@ -141,7 +142,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
       }
     }
 
-    // ── Step C: Create run record ─────────────────────────────────────
+    // -- Step C: Create run record -------------------------------------
     const runId = this.deps.runsRepo.create({
       trigger,
       status: 'running',
@@ -156,7 +157,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
 
     // From here — try/catch wrapper
     try {
-      // ── Step C1: Process pending orders from prior session ─────────
+      // -- Step C1: Process pending orders from prior session ---------
       if (this.deps.broker.processPendingOrders) {
         try {
           await this.deps.broker.processPendingOrders();
@@ -168,10 +169,10 @@ class TradingCycleServiceImpl implements TradingCycleService {
         }
       }
 
-      // ── Step D: Snapshot portfolio ────────────────────────────────
+      // -- Step D: Snapshot portfolio --------------------------------
       const portfolio = await this.deps.portfolioService.getPortfolio();
 
-      // ── Step E: Get symbols ───────────────────────────────────────
+      // -- Step E: Get symbols ---------------------------------------
       const symbols = this.deps.watchlistRepo.list()
         .filter(s => s.enabled)
         .map(s => s.symbol);
@@ -181,8 +182,9 @@ class TradingCycleServiceImpl implements TradingCycleService {
         return;
       }
 
-      // ── Step F: Run analysts (bounded concurrency) ────────────────
+      // -- Step F: Run analysts (bounded concurrency) ----------------
       const llmConfig = { model: settings.llm.model, temperature: settings.llm.temperature };
+      emitProgress(runId, 'analyst', `Starting analysis for ${symbols.length} symbols`);
 
       const rawResults = await runWithConcurrency(symbols, ANALYST_CONCURRENCY, async (symbol) => {
         try {
@@ -209,7 +211,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
         return;
       }
 
-      // ── Step G: Persist assessments ───────────────────────────────
+      // -- Step G: Persist assessments -------------------------------
       const assessmentIdBySymbol = new Map<string, string>();
       for (const a of assessments) {
         const id = this.deps.assessmentsRepo.create({
@@ -225,7 +227,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
         assessmentIdBySymbol.set(a.symbol, id);
       }
 
-      // ── Step H: Build portfolio context and constraints ───────────
+      // -- Step H: Build portfolio context and constraints -----------
       const portfolioContext: PortfolioContext = {
         cashPercent:
           portfolio.totalValueCents > 0
@@ -244,7 +246,8 @@ class TradingCycleServiceImpl implements TradingCycleService {
         symbolBlocklist: settings.risk.symbolBlocklist,
       };
 
-      // ── Step I: Portfolio manager ────────────────────────────────
+      // -- Step I: Portfolio manager ------------------------------
+      emitProgress(runId, 'portfolio-manager', 'Portfolio manager making decisions');
       const decisionSet = await runPortfolioManagerAgent(
         runId,
         assessments,
@@ -258,7 +261,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
         return;
       }
 
-      // ── Step J: Persist decisions ────────────────────────────────
+      // -- Step J: Persist decisions --------------------------------
       const persistedDecisions: Decision[] = decisionSet.decisions.map(d => {
         const id = this.deps.decisionsRepo.create({
           runId,
@@ -274,7 +277,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
 
       const decisionSetWithIds = { decisions: persistedDecisions, timestamp: decisionSet.timestamp };
 
-      // ── Step J2: Record calibration baselines ────────────────────────
+      // -- Step J2: Record calibration baselines ------------------------
       if (this.deps.calibrationRepo) {
         for (const d of persistedDecisions) {
           const predictedDirection: 'long' | 'short' | 'hold' =
@@ -293,7 +296,8 @@ class TradingCycleServiceImpl implements TradingCycleService {
         }
       }
 
-      // ── Step K: Risk engine ──────────────────────────────────────
+      // -- Step K: Risk engine ----------------------------------
+      emitProgress(runId, 'risk', 'Evaluating risk constraints');
       const riskConstraints: RiskConstraints = {
         maxPositionWeightPercent: settings.risk.maxPositionWeightPercent,
         maxConcurrentPositions: settings.risk.maxConcurrentPositions,
@@ -320,7 +324,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
         log.debug('order rejected', { symbol: r.symbol, reason: r.reason });
       }
 
-      // ── Step L: Submit orders ────────────────────────────────────
+      // -- Step L: Submit orders ------------------------------------
       let ordersSubmitted = 0;
       for (const proposal of orders) {
         try {
@@ -350,8 +354,9 @@ class TradingCycleServiceImpl implements TradingCycleService {
         }
       }
 
-      // ── Step M: Mark succeeded ───────────────────────────────────
+      // -- Step M: Mark succeeded -----------------------------------
       this.deps.runsRepo.updateStatus(runId, 'succeeded');
+      emitProgress(runId, 'complete', `Run complete: ${ordersSubmitted} orders submitted`);
       log.info('trading cycle complete', {
         runId,
         ordersSubmitted,
