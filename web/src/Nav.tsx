@@ -23,6 +23,9 @@ export default function Nav(): JSX.Element {
       <NavLink to="/calibration" className={({ isActive }) => isActive ? styles.activeLink : styles.link}>
         Calibration
       </NavLink>
+      <NavLink to="/backtest" className={({ isActive }) => isActive ? styles.activeLink : styles.link}>
+        Backtest
+      </NavLink>
       <NavLink to="/settings" className={({ isActive }) => isActive ? styles.activeLink : styles.link}>
         Settings
       </NavLink>

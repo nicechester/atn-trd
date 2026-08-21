@@ -1,0 +1,185 @@
+.description {
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.table th,
+.table td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.table th {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.link {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.status {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.status.running {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.status.succeeded {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.status.failed {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.backLink {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.backLink:hover {
+  color: var(--text);
+}
+
+.dateRange {
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.errorBox {
+  background: var(--error-bg);
+  color: var(--error);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.metricCard {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.metricLabel {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.metricValue {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.positive {
+  color: var(--success);
+}
+
+.negative {
+  color: var(--error);
+}
+
+.chartSection {
+  margin-bottom: 2rem;
+}
+
+.chartSection h3 {
+  margin-bottom: 1rem;
+}
+
+.chart {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.strategyLine {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+
+.benchmarkLine {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 2;
+}
+
+.zeroLine {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.legendText {
+  font-size: 0.75rem;
+  fill: var(--text);
+}
+
+.tradesSection {
+  margin-bottom: 2rem;
+}
+
+.tradesSection h3 {
+  margin-bottom: 1rem;
+}
+
+.buy {
+  color: var(--success);
+}
+
+.sell {
+  color: var(--error);
+}
+
+.showMoreBtn {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.showMoreBtn:hover {
+  background: var(--border);
+}
+
+.attributionSection h3 {
+  margin-bottom: 1rem;
+}
