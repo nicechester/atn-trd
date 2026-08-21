@@ -540,6 +540,9 @@ export const backtest = {
   getTrades(id: string): Promise<{ trades: BacktestTrade[] }> {
     return request(`/backtest/${encodeURIComponent(id)}/trades`);
   },
+  create(config: { name?: string; startDate: string; endDate: string; symbols: string[]; startingCashCents?: number }): Promise<{ backtestId: string }> {
+    return request('/backtest', { method: 'POST', body: JSON.stringify(config) });
+  },
 };
 
 // Unified API object

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { backtest as backtestApi, type BacktestRun, type BacktestMetrics, type BacktestEquityPoint, type BacktestTrade } from '../api/client';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { backtest as backtestApi, watchlist as watchlistApi, type BacktestRun, type BacktestMetrics, type BacktestEquityPoint, type BacktestTrade } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import styles from './Backtest.module.css';
 
@@ -16,6 +16,7 @@ export default function BacktestPage() {
 function BacktestList() {
   const [runs, setRuns] = useState<BacktestRun[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -37,14 +38,21 @@ function BacktestList() {
 
   return (
     <div>
-      <h1>Backtests</h1>
+      <div className={styles.header}>
+        <h1>Backtests</h1>
+        <button onClick={() => setShowForm(!showForm)} className={styles.newBtn}>
+          {showForm ? 'Cancel' : '+ New Backtest'}
+        </button>
+      </div>
       <p className={styles.description}>
         Historical strategy validation. Run backtests to answer "Would this have worked in the past?"
       </p>
 
-      {runs.length === 0 ? (
-        <p className={styles.muted}>No backtests yet. Use the CLI to run a backtest.</p>
-      ) : (
+      {showForm && <NewBacktestForm onCreated={() => { setShowForm(false); loadRuns(); }} />}
+
+      {runs.length === 0 && !showForm ? (
+        <p className={styles.muted}>No backtests yet. Click "+ New Backtest" to run one.</p>
+      ) : runs.length === 0 ? null : (
         <table className={styles.table}>
           <thead>
             <tr>
@@ -295,5 +303,101 @@ function SymbolAttribution({ perSymbol }: { perSymbol: Record<string, { return: 
         </tbody>
       </table>
     </div>
+  );
+}
+
+interface WatchlistItem { symbol: string; enabled: boolean }
+
+function NewBacktestForm({ onCreated }: { onCreated: () => void }) {
+  const navigate = useNavigate();
+  const { addToast } = useToast();
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Form state
+  const [name, setName] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [symbolsInput, setSymbolsInput] = useState('');
+  const [useWatchlist, setUseWatchlist] = useState(true);
+  const [startingCash, setStartingCash] = useState('100000');
+
+  useEffect(() => {
+    watchlistApi.list().then(res => {
+      setWatchlist(res.data.filter(w => w.enabled));
+    }).catch(() => {});
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!startDate || !endDate) {
+      addToast('Start and end dates are required', 'error');
+      return;
+    }
+
+    const symbols = useWatchlist
+      ? watchlist.map(w => w.symbol)
+      : symbolsInput.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+
+    if (symbols.length === 0) {
+      addToast('At least one symbol is required', 'error');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await backtestApi.create({
+        name: name || undefined,
+        startDate,
+        endDate,
+        symbols,
+        startingCashCents: Math.round(parseFloat(startingCash) * 100),
+      });
+      addToast('Backtest started', 'success');
+      onCreated();
+      if (result.backtestId) {
+        navigate(`/backtest/${result.backtestId}`);
+      }
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to start backtest', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className={styles.form}>
+      <div className={styles.formRow}>
+        <label>Name (optional)</label>
+        <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="My Backtest" />
+      </div>
+      <div className={styles.formRow}>
+        <label>Start Date</label>
+        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required />
+      </div>
+      <div className={styles.formRow}>
+        <label>End Date</label>
+        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required />
+      </div>
+      <div className={styles.formRow}>
+        <label>Starting Cash ($)</label>
+        <input type="number" value={startingCash} onChange={e => setStartingCash(e.target.value)} min="1000" step="1000" />
+      </div>
+      <div className={styles.formRow}>
+        <label>
+          <input type="checkbox" checked={useWatchlist} onChange={e => setUseWatchlist(e.target.checked)} />
+          {' '}Use watchlist ({watchlist.length} symbols)
+        </label>
+      </div>
+      {!useWatchlist && (
+        <div className={styles.formRow}>
+          <label>Symbols (comma-separated)</label>
+          <input type="text" value={symbolsInput} onChange={e => setSymbolsInput(e.target.value)} placeholder="AAPL, MSFT, GOOGL" />
+        </div>
+      )}
+      <button type="submit" disabled={loading} className={styles.submitBtn}>
+        {loading ? 'Running...' : 'Run Backtest'}
+      </button>
+    </form>
   );
 }

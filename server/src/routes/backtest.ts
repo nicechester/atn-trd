@@ -2,6 +2,14 @@ import { Router, type Request, type Response } from 'express';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { BacktestRepo } from '../repos/backtestRepo.js';
+import { BacktestRunner, type BacktestConfig, type BacktestDeps } from '../backtest/runner.js';
+import { createHistoricalPriceProvider, createBenchmarkPriceProvider } from '../backtest/priceProvider.js';
+import { PricesRepo } from '../repos/pricesRepo.js';
+import { SettingsRepo } from '../repos/settingsRepo.js';
+import { DEFAULT_SETTINGS } from '@atn-trd/shared';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child({ component: 'backtest-routes' });
 
 const BacktestRequestSchema = z.object({
   name: z.string().optional(),
@@ -45,8 +53,8 @@ export function createBacktestRoutes(db: Database.Database): Router {
     }
   });
 
-  // Start a new backtest (placeholder - actual execution requires full deps)
-  router.post('/', (req: Request, res: Response) => {
+  // Start a new backtest
+  router.post('/', async (req: Request, res: Response) => {
     try {
       const parsed = BacktestRequestSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -54,14 +62,61 @@ export function createBacktestRoutes(db: Database.Database): Router {
         return;
       }
 
-      // For now, just validate and return - actual backtest execution
-      // requires full trading cycle dependencies
-      res.status(501).json({
-        error: 'Backtest execution not yet implemented via API',
-        message: 'Use the CLI or programmatic interface to run backtests',
-        config: parsed.data,
-      });
+      const config = parsed.data;
+
+      // Load settings
+      const settingsRepo = new SettingsRepo(db);
+      const settingsRow = settingsRepo.read();
+      const settings = settingsRow ? JSON.parse(settingsRow.doc) : DEFAULT_SETTINGS;
+
+      // Create price providers
+      const pricesRepo = new PricesRepo(db);
+      const priceProvider = createHistoricalPriceProvider(pricesRepo);
+      const getBenchmarkPrice = createBenchmarkPriceProvider(pricesRepo);
+
+      // Simple buy-and-hold strategy for backtest
+      const runTradingLogic: BacktestDeps['runTradingLogic'] = async ({ date, symbols, broker }) => {
+        const positions = broker.getPositionsSnapshot();
+        if (Object.keys(positions).length === 0) {
+          const cashCents = broker.getCashCents();
+          const perSymbolCents = Math.floor(cashCents / symbols.length);
+
+          for (const symbol of symbols) {
+            const price = await priceProvider.getPrice(symbol, date);
+            if (price && price.openCents > 0) {
+              const qty = Math.floor(perSymbolCents / price.openCents);
+              if (qty > 0) {
+                await broker.submitOrder({
+                  clientOrderId: `bt-${date}-${symbol}`,
+                  symbol,
+                  side: 'buy',
+                  qty,
+                  type: 'market',
+                  tif: 'day',
+                });
+              }
+            }
+          }
+        }
+      };
+
+      const deps: BacktestDeps = {
+        db,
+        priceProvider,
+        getBenchmarkPrice,
+        runTradingLogic,
+        settings,
+      };
+
+      const runner = new BacktestRunner(deps);
+
+      // Run backtest asynchronously
+      log.info('starting backtest', { config });
+      const result = await runner.run(config as BacktestConfig);
+
+      res.json({ backtestId: result.backtestId, status: result.status, metrics: result.metrics });
     } catch (err) {
+      log.error('backtest failed', { error: err instanceof Error ? err.message : String(err) });
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
