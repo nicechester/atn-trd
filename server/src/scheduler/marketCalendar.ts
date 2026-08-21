@@ -206,6 +206,16 @@ export function isTradingDay(date: Date): boolean {
   return dow >= 1 && dow <= 5; // Mon–Fri
 }
 
+/**
+ * True if the given YYYY-MM-DD string is a NYSE trading day.
+ */
+export function isTradingDayStr(dateStr: string): boolean {
+  if (NYSE_HOLIDAYS.has(dateStr)) return false;
+  const probe = new Date(dateStr + 'T12:00:00Z');
+  const dow = probe.getUTCDay();
+  return dow >= 1 && dow <= 5; // Mon–Fri
+}
+
 /** True if the given ET date string is an early-close day. */
 export function isEarlyClose(dateStr: string): boolean {
   return NYSE_EARLY_CLOSES.has(dateStr);

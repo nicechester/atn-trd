@@ -16,6 +16,8 @@ export const SettingsSchema = z.object({
       addedAt: z.number().int().optional(),
       note: z.string().optional(),
     })).default([]),
+    autoBacktest: z.boolean().default(true),
+    autoBacktestMonths: z.number().int().min(1).max(36).default(12),
   }).default({}),
 
   dataSources: z.object({
@@ -87,6 +89,8 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   watchlist: {
     symbols: [],
+    autoBacktest: true,
+    autoBacktestMonths: 12,
   },
   dataSources: {
     news: { provider: 'finnhub', enabled: true },

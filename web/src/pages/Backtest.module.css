@@ -1,0 +1,329 @@
+.description {
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.table th,
+.table td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.table th {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.link {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.status {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.status.running {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.status.succeeded {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.status.failed {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.backLink {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.backLink:hover {
+  color: var(--text);
+}
+
+.dateRange {
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.errorBox {
+  background: var(--error-bg);
+  color: var(--error);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.runningBox {
+  background: var(--warning-bg);
+  color: var(--warning);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--warning);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.metricCard {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.metricLabel {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.metricValue {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.positive {
+  color: var(--success);
+}
+
+.negative {
+  color: var(--error);
+}
+
+.chartSection {
+  margin-bottom: 2rem;
+}
+
+.chartSection h3 {
+  margin-bottom: 1rem;
+}
+
+.chartContainer {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.5rem;
+}
+
+.chart {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.strategyLine {
+  fill: none;
+  stroke: var(--primary, #3b82f6);
+  stroke-width: 2;
+}
+
+.benchmarkLine {
+  fill: none;
+  stroke: var(--text-muted, #9ca3af);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 2;
+}
+
+.zeroLine {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.axisLine {
+  stroke: var(--border, #374151);
+  stroke-width: 1;
+}
+
+.axisLabel {
+  font-size: 0.7rem;
+  fill: var(--text-muted, #9ca3af);
+}
+
+.legendText {
+  font-size: 0.75rem;
+  fill: var(--text);
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 2rem;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text);
+}
+
+.legendLineStrategy {
+  width: 24px;
+  height: 3px;
+  background: var(--primary, #3b82f6);
+  border-radius: 2px;
+}
+
+.legendLineBenchmark {
+  width: 24px;
+  height: 0;
+  border-top: 2px dashed var(--text-muted, #9ca3af);
+}
+
+.tradesSection {
+  margin-bottom: 2rem;
+}
+
+.tradesSection h3 {
+  margin-bottom: 1rem;
+}
+
+.buy {
+  color: var(--success);
+}
+
+.sell {
+  color: var(--error);
+}
+
+.showMoreBtn {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.showMoreBtn:hover {
+  background: var(--border);
+}
+
+.attributionSection h3 {
+  margin-bottom: 1rem;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.newBtn {
+  padding: 0.5rem 1rem;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.newBtn:hover {
+  opacity: 0.9;
+}
+
+.form {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.formRow {
+  margin-bottom: 1rem;
+}
+
+.formRow label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.formRow input[type="text"],
+.formRow input[type="date"],
+.formRow input[type="number"] {
+  width: 100%;
+  max-width: 300px;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.formRow input[type="checkbox"] {
+  margin-right: 0.5rem;
+}
+
+.submitBtn {
+  padding: 0.75rem 1.5rem;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.submitBtn:hover {
+  opacity: 0.9;
+}
+
+.submitBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

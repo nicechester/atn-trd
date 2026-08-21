@@ -5,6 +5,7 @@ import { useToast } from '../context/ToastContext';
 import styles from './SettingsForm.module.css';
 
 type WatchlistRow = { symbol: string; enabled: boolean; addedAt: number | null; note: string | null };
+type WatchlistSettings = { autoBacktest: boolean; autoBacktestMonths: number };
 
 export default function SettingsWatchlist(): JSX.Element {
   const { addToast } = useToast();
@@ -13,11 +14,21 @@ export default function SettingsWatchlist(): JSX.Element {
   const [input, setInput] = useState('');
   const [adding, setAdding] = useState(false);
   const [toggling, setToggling] = useState<Set<string>>(new Set());
+  const [watchlistSettings, setWatchlistSettings] = useState<WatchlistSettings>({ autoBacktest: true, autoBacktestMonths: 12 });
 
   useEffect(() => {
-    api.watchlist.list()
-      .then(res => setSymbols(res.data))
-      .catch(err => addToast(err instanceof Error ? err.message : 'Failed to load watchlist', 'error'))
+    Promise.all([
+      api.watchlist.list(),
+      api.settings.get(),
+    ]).then(([watchlistRes, settingsRes]) => {
+      setSymbols(watchlistRes.data);
+      if (settingsRes.data?.watchlist) {
+        setWatchlistSettings({
+          autoBacktest: settingsRes.data.watchlist.autoBacktest ?? true,
+          autoBacktestMonths: settingsRes.data.watchlist.autoBacktestMonths ?? 12,
+        });
+      }
+    }).catch(err => addToast(err instanceof Error ? err.message : 'Failed to load', 'error'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -70,8 +81,33 @@ export default function SettingsWatchlist(): JSX.Element {
     }
   }
 
+  async function handleAutoBacktestToggle(enabled: boolean) {
+    try {
+      await api.settings.patch({ watchlist: { autoBacktest: enabled } });
+      setWatchlistSettings(prev => ({ ...prev, autoBacktest: enabled }));
+      addToast(`Auto-backtest ${enabled ? 'enabled' : 'disabled'}`, 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to update setting', 'error');
+    }
+  }
+
   return (
     <div>
+      <Card title="Watchlist Settings">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={watchlistSettings.autoBacktest}
+            onChange={e => handleAutoBacktestToggle(e.target.checked)}
+          />
+          <span>Run backtest automatically when watchlist changes</span>
+        </label>
+        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginTop: 'var(--spacing-sm)', marginBottom: 0 }}>
+          Backtests the last {watchlistSettings.autoBacktestMonths} months to help the agent learn from historical patterns.
+        </p>
+      </Card>
+
+      <div style={{ marginTop: 'var(--spacing-md)' }}>
       <Card title="Watchlist">
         {loading ? <p>Loading...</p> : symbols.length === 0 ? (
           <p style={{ color: 'var(--color-text-muted)' }}>No symbols in watchlist.</p>
@@ -111,6 +147,7 @@ export default function SettingsWatchlist(): JSX.Element {
           </table>
         )}
       </Card>
+      </div>
       <div style={{ marginTop: 'var(--spacing-md)' }}>
         <Card title="Add Symbol">
           <form onSubmit={handleAdd} style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'flex-end' }}>

@@ -3,6 +3,7 @@ import { getDatabase } from '../db/index.js';
 import { WatchlistRepo } from '../repos/watchlistRepo.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import { normalizeSymbol, validateSymbol } from '../services/symbolService.js';
+import { queueWatchlistBacktest } from '../services/autoBacktestService.js';
 
 function getRepo(): WatchlistRepo {
   return new WatchlistRepo(getDatabase());
@@ -60,6 +61,8 @@ export async function addWatchlistHandler(
         currency: validated.currency,
       },
     });
+    // Queue auto-backtest in background (fire-and-forget)
+    queueWatchlistBacktest(getDatabase());
   } catch (err) {
     next(err);
   }
@@ -73,6 +76,8 @@ export function removeWatchlistHandler(req: Request, res: Response, next: NextFu
       throw new NotFoundError(`"${symbol}" is not on the watchlist`);
     }
     res.json({ ok: true, data: { symbol } });
+    // Queue auto-backtest in background (fire-and-forget)
+    queueWatchlistBacktest(getDatabase());
   } catch (err) {
     next(err);
   }
@@ -92,6 +97,8 @@ export function patchWatchlistHandler(req: Request, res: Response, next: NextFun
       throw new NotFoundError(`"${symbol}" is not on the watchlist`);
     }
     res.json({ ok: true, data: repo.get(symbol) });
+    // Queue auto-backtest in background (fire-and-forget)
+    queueWatchlistBacktest(getDatabase());
   } catch (err) {
     next(err);
   }

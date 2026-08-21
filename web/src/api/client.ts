@@ -486,5 +486,64 @@ export const performance = {
   },
 };
 
+// Backtest
+export interface BacktestRun {
+  id: string;
+  name: string | null;
+  startDate: string;
+  endDate: string;
+  symbols: string[];
+  status: 'running' | 'succeeded' | 'failed';
+  startedAt: number;
+  finishedAt: number | null;
+  error: string | null;
+}
+
+export interface BacktestMetrics {
+  totalReturn: number;
+  benchmarkReturn: number;
+  sharpeRatio: number | null;
+  sortinoRatio: number | null;
+  maxDrawdown: number;
+  winRate: number | null;
+  avgWin: number | null;
+  avgLoss: number | null;
+  totalTrades: number;
+  perSymbol: Record<string, { return: number; trades: number }> | null;
+}
+
+export interface BacktestEquityPoint {
+  date: string;
+  value: number;
+  benchmark: number | null;
+}
+
+export interface BacktestTrade {
+  date: string;
+  symbol: string;
+  side: 'buy' | 'sell';
+  qty: number;
+  price: number;
+  rationale: string | null;
+}
+
+export const backtest = {
+  list(): Promise<{ runs: BacktestRun[] }> {
+    return request<{ runs: BacktestRun[] }>('/backtest');
+  },
+  get(id: string): Promise<{ run: BacktestRun; metrics: BacktestMetrics | null; equityCurve?: BacktestEquityPoint[]; trades?: BacktestTrade[] }> {
+    return request(`/backtest/${encodeURIComponent(id)}`);
+  },
+  getEquity(id: string): Promise<{ equityCurve: BacktestEquityPoint[] }> {
+    return request(`/backtest/${encodeURIComponent(id)}/equity`);
+  },
+  getTrades(id: string): Promise<{ trades: BacktestTrade[] }> {
+    return request(`/backtest/${encodeURIComponent(id)}/trades`);
+  },
+  create(config: { name?: string; startDate: string; endDate: string; symbols: string[]; startingCashCents?: number }): Promise<{ backtestId: string }> {
+    return request('/backtest', { method: 'POST', body: JSON.stringify(config) });
+  },
+};
+
 // Unified API object
-export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades, calibration, performance };
+export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades, calibration, performance, backtest };

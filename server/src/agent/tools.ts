@@ -9,6 +9,7 @@ import type { PricesRepo } from '../repos/pricesRepo.js';
 import type { PriceBarRow } from '../repos/pricesRepo.js';
 import type { PortfolioService, PositionDetail } from '../services/portfolioService.js';
 import type { DecisionsRepo } from '../repos/decisionsRepo.js';
+import type { SemanticMemoryService } from '../services/semanticMemoryService.js';
 import { toIsoDate } from '../datasources/news/types.js';
 import type { RunCache } from '../datasources/cache.js';
 
@@ -22,6 +23,7 @@ export interface AgentToolsDeps {
   portfolioService: PortfolioService;
   decisionsRepo: DecisionsRepo;
   cache: RunCache;
+  semanticMemory?: SemanticMemoryService;
 }
 
 function makeGetNews(deps: AgentToolsDeps) {
@@ -291,8 +293,43 @@ function makeGetSectorPerformance(deps: AgentToolsDeps) {
   });
 }
 
+function makeGetSimilarSituations(deps: AgentToolsDeps) {
+  const schema = z.object({
+    symbol: z.string().describe('Stock ticker symbol'),
+    description: z.string().describe('Description of the current situation to find similar historical cases'),
+    limit: z.number().int().optional().describe('Max results to return (1–10, default 5)'),
+  });
+
+  return new DynamicStructuredTool({
+    name: 'get_similar_situations',
+    description: 'Find similar historical situations for a symbol based on semantic similarity. Use this to learn from past assessments and research.',
+    schema,
+    func: async (input: z.infer<typeof schema>) => {
+      try {
+        if (!deps.semanticMemory) {
+          return JSON.stringify({ error: 'Semantic memory not available' });
+        }
+
+        const symbol = input.symbol;
+        const description = input.description;
+        const limit = Math.max(1, Math.min(10, input.limit ?? 5));
+
+        const results = await deps.semanticMemory.getSimilarSituations({
+          symbol,
+          description,
+          limit,
+        });
+
+        return JSON.stringify(results);
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  });
+}
+
 export function createAgentTools(deps: AgentToolsDeps) {
-  return [
+  const tools: DynamicStructuredTool[] = [
     makeGetNews(deps),
     makeGetFundamentals(deps),
     makeGetMacro(deps),
@@ -302,6 +339,13 @@ export function createAgentTools(deps: AgentToolsDeps) {
     makeGetPortfolio(deps),
     makeGetPriorDecisions(deps),
   ];
+
+  // Add semantic memory tool if available
+  if (deps.semanticMemory) {
+    tools.push(makeGetSimilarSituations(deps) as DynamicStructuredTool);
+  }
+
+  return tools;
 }
 
 /**

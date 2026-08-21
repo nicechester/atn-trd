@@ -62,20 +62,16 @@ function createAlpacaClient(): HttpClient | null {
 async function backfillSymbol(
   symbol: string,
   pricesRepo: PricesRepo,
-  days: number,
+  startDate: string,
   http: HttpClient
 ): Promise<number> {
-  const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
-
   const path = `stocks/${encodeURIComponent(symbol)}/bars?timeframe=1Day&start=${startDate}&limit=1000`;
 
   try {
     const result = await http.json<AlpacaBarsResponse>(path);
 
     if (!result.bars || result.bars.length === 0) {
-      log.debug('no bar data', { symbol });
+      log.debug('no bar data', { symbol, startDate });
       return 0;
     }
 
@@ -102,6 +98,7 @@ async function backfillSymbol(
   } catch (err) {
     log.warn('backfill failed for symbol', {
       symbol,
+      startDate,
       error: err instanceof Error ? err.message : String(err),
     });
     return 0;
@@ -125,9 +122,11 @@ export function getAllTrackedSymbols(db: Database.Database): string[] {
  */
 export async function runPriceBackfillJob(
   db: Database.Database,
-  options: { days?: number; symbols?: string[] } = {}
+  options: { days?: number; startDate?: string; symbols?: string[] } = {}
 ): Promise<{ total: number; succeeded: number; bars: number }> {
-  const days = options.days ?? BACKFILL_DAYS;
+  // Calculate start date: use explicit startDate, or days back from today
+  const startDate = options.startDate ?? 
+    new Date(Date.now() - (options.days ?? BACKFILL_DAYS) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const symbols = options.symbols ?? getAllTrackedSymbols(db);
   const pricesRepo = new PricesRepo(db);
 
@@ -137,13 +136,13 @@ export async function runPriceBackfillJob(
     return { total: 0, succeeded: 0, bars: 0 };
   }
 
-  log.info('starting price backfill', { symbolCount: symbols.length, days });
+  log.info('starting price backfill', { symbolCount: symbols.length, startDate });
 
   let succeeded = 0;
   let totalBars = 0;
 
   for (const symbol of symbols) {
-    const bars = await backfillSymbol(symbol, pricesRepo, days, http);
+    const bars = await backfillSymbol(symbol, pricesRepo, startDate, http);
     if (bars > 0) {
       succeeded++;
       totalBars += bars;

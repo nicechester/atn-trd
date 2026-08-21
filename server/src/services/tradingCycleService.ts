@@ -6,6 +6,7 @@ import type { WatchlistRepo } from '../repos/watchlistRepo.js';
 import type { CalibrationRepo } from '../repos/calibrationRepo.js';
 import { RejectionsRepo } from '../repos/rejectionsRepo.js';
 import type { PortfolioService } from './portfolioService.js';
+import type { SemanticMemoryService } from './semanticMemoryService.js';
 import type { Broker } from '../brokers/types.js';
 import type { AnalystAgentDeps } from '../agent/analystAgent.js';
 import type { RiskPriceFeed } from './riskService.js';
@@ -65,6 +66,7 @@ export interface TradingCycleDeps {
   getSettings: () => Settings;
   watchlistRepo: WatchlistRepo;
   calibrationRepo?: CalibrationRepo;
+  semanticMemory?: SemanticMemoryService;
 }
 
 export interface TradingCycleService {
@@ -230,6 +232,24 @@ class TradingCycleServiceImpl implements TradingCycleService {
           evidenceIdsJson: null,
         });
         assessmentIdBySymbol.set(a.symbol, id);
+
+        // Store embedding for semantic memory (fire-and-forget)
+        if (this.deps.semanticMemory) {
+          this.deps.semanticMemory.storeAssessmentEmbedding({
+            assessmentId: id,
+            runId,
+            symbol: a.symbol,
+            score: a.score,
+            thesis: a.thesis,
+            risks: a.risks,
+            catalysts: a.catalysts,
+          }).catch(err => {
+            log.warn('failed to store assessment embedding', {
+              assessmentId: id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        }
       }
 
       // -- Step H: Build portfolio context and constraints -----------
