@@ -89,9 +89,18 @@ validated against a live quote, enter OpenAI credentials and get a green
 Test, toggle and test each data source, set a schedule and see the next 5
 runs, restart the container and find everything persisted.
 
-## Phase 2 — Autonomous trading cycle
+## Phase 2 — Autonomous trading cycle ✅ SUBSTANTIALLY COMPLETE
 
-19. `[junior]` `db/migrations/002_trading.sql` per doc 01 Migration 002.
+**Status Update (Aug 2026):** Steps 19-35 complete. Delivered:
+- Volatility service (#85) — historical vol, agent tool, risk filtering
+- RSS news ingestion (#86) — free feeds with Finnhub fallback  
+- Full trading cycle orchestration, risk engine, PaperBroker
+- Run history, portfolio tracking, P&L snapshots
+- Web UI: runs, portfolio, trades, performance
+
+**See:** [STATUS.md](STATUS.md) for detailed progress
+
+19. `[junior]` `db/migrations/002_trading.sql` per doc 01 Migration 002. ✅
 20. `[senior]` `repos/` for runs, artifacts, agent messages, assessments,
     decisions, orders, fills, positions, prices, snapshots.
 21. `[senior]` `services/priceService.ts` — read-through `price_bars` cache

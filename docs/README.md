@@ -14,8 +14,17 @@ working end-to-end — including live "Test connection" calls to OpenAI and each
 data source. **No trading logic ships in Phase 1.** Phase 1 is validated before
 Phase 2 starts.
 
+## 📊 Current Status
+
+**Phase 2 Complete:** Volatility metrics (#85) + RSS news ingestion (#86) merged to main  
+**Phase 3 Queued:** 5 issues (backtesting, embeddings, screener agent, sentiment, memory)  
+**Phase 4 Deferred:** Multi-agent debate, event-driven runs
+
+→ [Full Status Report](STATUS.md)
+
 ## Documents
 
+0. [**STATUS** — Project Status & Roadmap](STATUS.md) — what's done, what's next, issue details
 1. [00 — Overview & Stack](00-overview.md) — summary, stack decisions, directory/module layout
 2. [01 — Data Model](01-data-model.md) — SQLite schema for both phases
 3. [02 — Broker & Data Sources](02-broker-and-data-sources.md) — `Broker`/`PaperBroker` contract, the four v1 data connectors
@@ -23,6 +32,7 @@ Phase 2 starts.
 5. [04 — UI & Deployment](04-ui-and-deployment.md) — Phase 1 web UI screens, single-container Docker setup
 6. [05 — Implementation Plan](05-implementation-plan.md) — 35-step spec, phase- and role-tagged (`[senior]`/`[junior]`)
 7. [06 — Edge Cases & Out of Scope](06-edge-cases-and-scope.md) — failure handling, explicit non-goals, key reference files
+8. [07 — Future Improvements](07-future-improvements.md) — Phase 3/4 roadmap, embedding stores, multi-agent, backtesting
 
 ## Confirmed decisions (do not re-litigate)
 
