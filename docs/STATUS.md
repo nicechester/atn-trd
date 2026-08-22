@@ -69,18 +69,33 @@ All core Phase 2 infrastructure now complete. The system:
 
 ---
 
-## Phase 3 — Advanced Autonomy ⏳ QUEUED
+## Phase 3 — Advanced Autonomy 🔄 IN PROGRESS
 
-**5 open issues, 4 unassigned**
+**4 open issues, 3 unassigned** (1 completed: backtesting)
 
-### High Priority (Blockers for Phase 4)
+### Completed
 
-#### #66 — Backtesting Infrastructure `[senior]`
+#### ✅ #66 — Backtesting Infrastructure
+- **Status:** Merged (commit 6c3186e, "Phase 3: Backtesting Infrastructure")
 - **What:** Replay historical data to validate strategy performance
 - **Scope:** BacktestRunner (date range, mock datasources, P&L metrics)
-- **Metrics:** Total return vs SPY, Sharpe/Sortino, max drawdown, win rate
-- **Complexity:** High (lookahead bias, data collection strategy)
-- **Impact:** Essential for strategy validation before Phase 4
+- **Features:**
+  - Historical price data replay via Alpaca backfill
+  - Buy-and-hold strategy simulation
+  - Performance vs SPY benchmark
+  - Sharpe/Sortino ratios, max drawdown tracking
+  - Auto-backtest debounce (configurable interval)
+- **Files:** `server/src/backtest/`, `server/src/routes/backtest.ts`, `server/src/repos/backtestRepo.ts`
+- **Database:** `006_backtest.sql` migration deployed
+- **Testing:** Integrated with settings, runs via `/api/backtest` endpoint
+
+### High Priority (Remaining)
+
+#### #67 — Embedding Store for Historical Context `[senior]`
+- **What:** Vector search over past assessments for "similar situations"
+- **Implementation:** sqlite-vss or ChromaDB
+- **Complexity:** Medium (embedding model calls, index maintenance)
+- **Impact:** Enables agent learning and improved risk assessment
 
 #### #67 — Embedding Store for Historical Context `[senior]`
 - **What:** Vector search over past assessments for "similar situations"
