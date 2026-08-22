@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { AgentRunRow, Portfolio } from '../api/client';
 import { Card } from '../components/Card';
+import LlmUsagePane from '../components/LlmUsagePane';
 import { useToast } from '../context/ToastContext';
 import { centsToUSD, formatTimestamp } from '../lib/format';
 import styles from './Dashboard.module.css';
@@ -113,6 +114,7 @@ export default function DashboardPage(): JSX.Element {
   return (
     <div>
       <h1>Dashboard</h1>
+      <LlmUsagePane />
       <div className={styles.grid}>
         <Card title="Trading Status">
           <div style={{ display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap' }}>

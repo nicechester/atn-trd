@@ -62,7 +62,7 @@ export default function RunDetailPage() {
 
   const { run, assessments, decisions, orders, messages, artifacts } = detail;
 
-  let tokenUsage: Record<string, number> | null = null;
+  let tokenUsage: Record<string, unknown> | null = null;
   try { if (run.tokenUsageJson) tokenUsage = JSON.parse(run.tokenUsageJson); } catch {}
 
   // Group messages by symbol
@@ -99,10 +99,48 @@ export default function RunDetailPage() {
         <div className={styles.fieldValue}>{formatTimestamp(run.startedAt)}</div>
         <div className={styles.fieldLabel}>Duration</div>
         <div className={styles.fieldValue}>{formatDuration(run.startedAt, run.finishedAt)}</div>
-        {run.model && <><div className={styles.fieldLabel}>Model</div><div className={styles.fieldValue}>{run.model}</div></>}
         {tokenUsage && (
-          <><div className={styles.fieldLabel}>Tokens</div>
-          <div className={styles.fieldValue}>{JSON.stringify(tokenUsage)}</div></>
+          <>
+            <div className={styles.fieldLabel}>LLM Telemetry</div>
+            <div className={styles.fieldValue}>
+              {(() => {
+                const models = (tokenUsage as any)?.models;
+                const tokens = (tokenUsage as any)?.tokens;
+                const cost = (tokenUsage as any)?.cost;
+                const latency = (tokenUsage as any)?.latency_ms;
+                return (
+                  <div style={{ fontSize: '0.85rem', lineHeight: '1.5' }}>
+                    {models && (
+                      <div>
+                        <strong>Models:</strong><br/>
+                        Analyst: {models.analyst}, Portfolio Manager: {models.portfolioManager}
+                      </div>
+                    )}
+                    {tokens && (
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <strong>Tokens:</strong><br/>
+                        Analyst: {tokens.analyst?.input} in / {tokens.analyst?.output} out
+                        <br/>
+                        Portfolio Manager: {tokens.portfolioManager?.input} in / {tokens.portfolioManager?.output} out
+                      </div>
+                    )}
+                    {cost && (
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <strong>Cost:</strong><br/>
+                        Analyst: ${cost.analyst?.toFixed(4)}, Portfolio Manager: ${cost.portfolioManager?.toFixed(4)}, Total: ${cost.total?.toFixed(4)}
+                      </div>
+                    )}
+                    {latency && (
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <strong>Latency:</strong><br/>
+                        Analyst: {latency.analyst}ms, Portfolio Manager: {latency.portfolioManager}ms, Total: {latency.total}ms
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          </>
         )}
         {run.error && <><div className={styles.fieldLabel}>Error</div><div className={styles.fieldValue} style={{ color: 'var(--color-error)' }}>{run.error}</div></>}
         {run.skipReason && <><div className={styles.fieldLabel}>Skip Reason</div><div className={styles.fieldValue}>{run.skipReason}</div></>}

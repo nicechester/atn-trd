@@ -169,7 +169,7 @@ const MAX_RETRY_DELAY_MS = 10_000;
 const log = logger.child({ component: 'llm' });
 
 /** Settings live in SQLite; tolerate the DB being unavailable (tests, CLI). */
-function readLlmSettings(): Partial<{ model: string; temperature: number; timeoutMs: number; baseUrl: string }> {
+function readLlmSettings(): Partial<{ model: string; temperature: number; timeoutMs: number; baseUrl: string; agents?: Record<string, { model?: string }> }> {
   try {
     return getSettings().llm;
   } catch (err) {
@@ -211,6 +211,29 @@ export function resolveConfig(config: OpenAIChatModelConfig = {}): ResolvedChatM
   const settings = readLlmSettings();
   return {
     model: config.model ?? settings.model ?? process.env.LLM_MODEL?.trim() ?? DEFAULT_MODEL,
+    temperature: config.temperature ?? settings.temperature ?? DEFAULT_TEMPERATURE,
+    timeoutMs: config.timeoutMs ?? settings.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    maxRetries: config.maxRetries ?? DEFAULT_MAX_RETRIES,
+    baseUrl: resolveBaseUrl(config.baseUrl, settings.baseUrl),
+    hasApiKey: resolveApiKey(config.apiKey) !== undefined,
+  };
+}
+
+export type AgentKey = 'analyst' | 'portfolioManager';
+
+/**
+ * Resolve LLM config for a specific agent, respecting per-agent model overrides.
+ * Precedence: explicit config → agent-specific override → global settings → env → defaults.
+ * Empty-string agent override ('') falls back to global default, not sent literally.
+ */
+export function resolveConfigForAgent(
+  agent: AgentKey,
+  config: OpenAIChatModelConfig = {}
+): ResolvedChatModelConfig {
+  const settings = readLlmSettings();
+  const agentModel = settings.agents?.[agent]?.model?.trim();
+  return {
+    model: config.model ?? (agentModel || undefined) ?? settings.model ?? process.env.LLM_MODEL?.trim() ?? DEFAULT_MODEL,
     temperature: config.temperature ?? settings.temperature ?? DEFAULT_TEMPERATURE,
     timeoutMs: config.timeoutMs ?? settings.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     maxRetries: config.maxRetries ?? DEFAULT_MAX_RETRIES,

@@ -10,6 +10,8 @@ type LlmFormState = {
   baseUrl: string;
   temperature: number;
   timeoutSeconds: number;
+  analystModel: string;
+  portfolioManagerModel: string;
 };
 
 type LlmTestResult = {
@@ -35,6 +37,8 @@ export default function SettingsLlm(): JSX.Element {
           baseUrl: llm.baseUrl ?? '',
           temperature: llm.temperature,
           timeoutSeconds: llm.timeoutMs / 1000,
+          analystModel: llm.agents?.analyst?.model ?? '',
+          portfolioManagerModel: llm.agents?.portfolioManager?.model ?? '',
         });
         setApiKeyIsSet(secretsRes.data.some((s: { name: string; isSet: boolean }) => s.name === 'LLM_API_KEY' && s.isSet));
       })
@@ -68,6 +72,10 @@ export default function SettingsLlm(): JSX.Element {
           baseUrl: form.baseUrl.trim(),
           temperature: form.temperature,
           timeoutMs: form.timeoutSeconds * 1000,
+          agents: {
+            analyst: { model: form.analystModel.trim() },
+            portfolioManager: { model: form.portfolioManagerModel.trim() },
+          },
         },
       });
       addToast('LLM settings saved', 'success');
@@ -144,6 +152,28 @@ export default function SettingsLlm(): JSX.Element {
               onChange={e => setForm({ ...form, timeoutSeconds: Number(e.target.value) })}
             />
             <p className={styles.hint}>Stored as milliseconds; min 1 second</p>
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label}>Analyst Model Override</label>
+            <input
+              className={styles.input}
+              type="text"
+              value={form.analystModel}
+              onChange={e => setForm({ ...form, analystModel: e.target.value })}
+              placeholder="e.g., gpt-4o"
+            />
+            <p className={styles.hint}>Leave blank to use the default model above.</p>
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label}>Portfolio Manager Model Override</label>
+            <input
+              className={styles.input}
+              type="text"
+              value={form.portfolioManagerModel}
+              onChange={e => setForm({ ...form, portfolioManagerModel: e.target.value })}
+              placeholder="e.g., gpt-4o-mini"
+            />
+            <p className={styles.hint}>Leave blank to use the default model above.</p>
           </div>
           <div className={styles.actions} style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
             <button

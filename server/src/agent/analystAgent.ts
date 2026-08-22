@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ChatOpenAI } from '@langchain/openai';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
-import { resolveConfig, resolveApiKey, LlmNotConfiguredError } from '../llm/openaiChatModel.js';
+import { resolveConfigForAgent, resolveApiKey, LlmNotConfiguredError } from '../llm/openaiChatModel.js';
 import { ANALYST_SYSTEM_PROMPT } from '../llm/prompts/analyst.js';
 import { createAgentTools, type AgentToolsDeps } from './tools.js';
 import { RunCollector } from './runCollector.js';
@@ -56,7 +56,7 @@ export async function runAnalystAgent(
 ): Promise<SymbolAssessment | null> {
   try {
     // 1. Resolve config and API key
-    const resolved = resolveConfig({ model: config?.model, temperature: config?.temperature });
+    const resolved = resolveConfigForAgent('analyst', { model: config?.model, temperature: config?.temperature });
     const apiKey = resolveApiKey();
     if (!apiKey) throw new LlmNotConfiguredError();
 
