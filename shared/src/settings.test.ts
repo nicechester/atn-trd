@@ -82,3 +82,43 @@ describe('StyleWeights validation', () => {
     assert.strictEqual(result.success, true);
   });
 });
+
+describe('Settings schema backwards-compat', () => {
+  it('should accept old configs without agents key', () => {
+    const settings = {
+      trading: { enabled: false },
+      watchlist: { symbols: [] },
+      dataSources: {},
+      llm: { model: 'gpt-4-turbo' },
+      schedule: {},
+      risk: {},
+      investorProfile: {
+        styleWeights: {
+          growth: 30,
+          value: 30,
+          stability: 20,
+          cashFlow: 10,
+          momentum: 10,
+        },
+        maxVolatility: 0.35,
+        sectorBias: {},
+      },
+      paperAccount: {},
+    };
+    const result = SettingsSchema.safeParse(settings);
+    assert.strictEqual(result.success, true);
+    if (result.success) {
+      assert.strictEqual(result.data.llm.agents.analyst.model, '');
+      assert.strictEqual(result.data.llm.agents.portfolioManager.model, '');
+    }
+  });
+
+  it('should parse empty config and populate agents with empty-string defaults', () => {
+    const result = SettingsSchema.safeParse({});
+    assert.strictEqual(result.success, true);
+    if (result.success) {
+      assert.strictEqual(result.data.llm.agents.analyst.model, '');
+      assert.strictEqual(result.data.llm.agents.portfolioManager.model, '');
+    }
+  });
+});

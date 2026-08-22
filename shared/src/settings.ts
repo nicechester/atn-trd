@@ -24,6 +24,12 @@ export const InvestorProfileSchema = z.object({
 
 export type InvestorProfile = z.infer<typeof InvestorProfileSchema>;
 
+export const AgentModelOverrideSchema = z.object({
+  model: z.string().default(''),
+}).default({});
+
+export type AgentModelOverride = z.infer<typeof AgentModelOverrideSchema>;
+
 export const SettingsSchema = z.object({
   trading: z.object({
     mode: z.enum(['paper', 'live']).default('paper'),
@@ -69,6 +75,10 @@ export const SettingsSchema = z.object({
     temperature: z.number().min(0).max(2).default(0.7),
     timeoutMs: z.number().int().positive().default(30000),
     baseUrl: z.string().default(''),
+    agents: z.object({
+      analyst: AgentModelOverrideSchema,
+      portfolioManager: AgentModelOverrideSchema,
+    }).default({}),
   }).default({}),
 
   schedule: z.object({
@@ -142,6 +152,10 @@ export const DEFAULT_SETTINGS: Settings = {
     temperature: 0.7,
     timeoutMs: 30000,
     baseUrl: '',
+    agents: {
+      analyst: { model: '' },
+      portfolioManager: { model: '' },
+    },
   },
   schedule: {
     timezone: 'America/New_York',

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ChatOpenAI } from '@langchain/openai';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
-import { resolveConfig, resolveApiKey, LlmNotConfiguredError } from '../llm/openaiChatModel.js';
+import { resolveConfigForAgent, resolveApiKey, LlmNotConfiguredError } from '../llm/openaiChatModel.js';
 import { PORTFOLIO_MANAGER_SYSTEM_PROMPT } from '../llm/prompts/portfolioManager.js';
 import type { SymbolAssessment } from './analystAgent.js';
 import type { DecisionSet, InvestorProfile } from '@atn-trd/shared';
@@ -142,7 +142,7 @@ export async function runPortfolioManagerAgent(
     }
 
     // 2. Resolve config and API key
-    const resolved = resolveConfig({
+    const resolved = resolveConfigForAgent('portfolioManager', {
       model: config?.model,
       temperature: config?.temperature ?? 0,
     });
