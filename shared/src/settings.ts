@@ -46,7 +46,7 @@ export const SettingsSchema = z.object({
 
   dataSources: z.object({
     news: z.object({
-      provider: z.enum(['finnhub', 'yahoo']).default('finnhub'),
+      provider: z.enum(['finnhub', 'yahoo', 'rss']).default('finnhub'),
       enabled: z.boolean().default(true),
     }).default({}),
     fundamentals: z.object({
