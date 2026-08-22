@@ -233,3 +233,28 @@ export function getCoverageHandler(req: Request, res: Response, next: NextFuncti
     next(err);
   }
 }
+
+/** POST /api/runs/:id/cancel */
+export function cancelRunHandler(req: Request, res: Response, next: NextFunction): void {
+  try {
+    const { id } = req.params;
+
+    const db = getDatabase();
+    const runsRepo = new RunsRepo(db);
+
+    const run = runsRepo.get(id);
+    if (!run) {
+      throw new NotFoundError(`Run "${id}" not found`);
+    }
+
+    if (run.status !== 'running') {
+      res.status(400).json({ ok: false, error: `Run is not running (status: ${run.status})` });
+      return;
+    }
+
+    runsRepo.updateStatus(id, 'failed', 'cancelled by user');
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}

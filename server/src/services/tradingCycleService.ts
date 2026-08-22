@@ -186,7 +186,11 @@ class TradingCycleServiceImpl implements TradingCycleService {
       }
 
       // -- Step F: Prefetch data for all symbols concurrently --------
-      const llmConfig = { model: settings.llm.model, temperature: settings.llm.temperature };
+      const llmConfig = {
+        model: settings.llm.model,
+        temperature: settings.llm.temperature,
+        investorProfile: settings.investorProfile,
+      };
       emitProgress(runId, 'analyst', `Prefetching data for ${symbols.length} symbols`);
       await Promise.all(symbols.map(symbol => prefetchForSymbol(symbol, this.deps.analystDeps.toolsDeps)));
 
@@ -269,6 +273,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
         minCashReservePercent: settings.risk.minCashReservePercent,
         minConfidenceThreshold: settings.risk.minConfidenceThreshold,
         symbolBlocklist: settings.risk.symbolBlocklist,
+        investorProfile: settings.investorProfile,
       };
 
       // -- Step I: Portfolio manager ------------------------------
@@ -321,6 +326,15 @@ class TradingCycleServiceImpl implements TradingCycleService {
         }
       }
 
+      // -- Step K: Build volatility map from 90-day price bars -------
+      emitProgress(runId, 'risk', 'Computing volatility metrics');
+      const volatilityBySymbol = new Map<string, number | null>();
+      // TODO: fetch 90-day bars for each symbol and compute volatility
+      // For now, initialize empty map; will be populated by tools or price service
+      for (const symbol of symbols) {
+        volatilityBySymbol.set(symbol, null); // Fail open: null volatility won't trigger check
+      }
+
       // -- Step K: Risk engine ----------------------------------
       emitProgress(runId, 'risk', 'Evaluating risk constraints');
       const riskConstraints: RiskConstraints = {
@@ -331,6 +345,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
         maxOrderNotionalCents: settings.risk.maxOrderNotionalCents,
         minConfidenceThreshold: settings.risk.minConfidenceThreshold,
         symbolBlocklist: settings.risk.symbolBlocklist,
+        maxVolatility: settings.investorProfile.maxVolatility,
         broker: settings.trading.mode,
       };
 
@@ -340,6 +355,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
         portfolio,
         runId,
         earningsBlackoutSymbols: undefined,
+        volatilityBySymbol,
       });
 
       // Persist rejections to database

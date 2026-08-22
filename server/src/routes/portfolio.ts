@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { getDatabase } from '../db/index.js';
 import { PositionsRepo } from '../repos/positionsRepo.js';
 import { PortfolioRepo } from '../repos/portfolioRepo.js';
@@ -6,6 +7,7 @@ import { PricesRepo } from '../repos/pricesRepo.js';
 import { SnapshotsRepo } from '../repos/snapshotsRepo.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
+import { ValidationError } from '../lib/errors.js';
 
 /** GET /api/portfolio */
 export async function getPortfolioHandler(
@@ -39,6 +41,51 @@ export function getPortfolioHistoryHandler(req: Request, res: Response, next: Ne
     const snapshots = snapshotsRepo.listPortfolioSnapshots(limit);
 
     res.json({ ok: true, data: snapshots });
+  } catch (err) {
+    next(err);
+  }
+}
+
+const TransferSchema = z.object({
+  amountCents: z.number().int(),
+  type: z.enum(['deposit', 'withdraw']),
+});
+
+/** POST /api/portfolio/transfer — deposit or withdraw cash */
+export function transferFundsHandler(req: Request, res: Response, next: NextFunction): void {
+  try {
+    const parsed = TransferSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError('Invalid transfer request', parsed.error.issues);
+    }
+
+    const { amountCents, type } = parsed.data;
+    if (amountCents <= 0) {
+      throw new ValidationError('Amount must be positive');
+    }
+
+    const db = getDatabase();
+    const portfolioRepo = new PortfolioRepo(db);
+    const portfolio = portfolioRepo.read();
+
+    if (!portfolio) {
+      throw new ValidationError('Portfolio not initialized');
+    }
+
+    const newCashCents = type === 'deposit'
+      ? portfolio.cashCents + amountCents
+      : portfolio.cashCents - amountCents;
+
+    if (newCashCents < 0) {
+      throw new ValidationError('Insufficient funds for withdrawal');
+    }
+
+    portfolioRepo.write({
+      ...portfolio,
+      cashCents: newCashCents,
+    });
+
+    res.json({ ok: true, data: { cashCents: newCashCents } });
   } catch (err) {
     next(err);
   }

@@ -7,9 +7,15 @@ import styles from './Portfolio.module.css';
 export default function PortfolioPage() {
   const [data, setData] = useState<Portfolio | null>(null);
   const [loading, setLoading] = useState(true);
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferring, setTransferring] = useState(false);
   const { addToast } = useToast();
 
   useEffect(() => {
+    loadPortfolio();
+  }, []);
+
+  function loadPortfolio() {
     portfolioApi.get()
       .then(res => setData(res.data))
       .catch(e => {
@@ -19,7 +25,26 @@ export default function PortfolioPage() {
         }
       })
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  async function handleTransfer(type: 'deposit' | 'withdraw') {
+    const amount = parseFloat(transferAmount);
+    if (isNaN(amount) || amount <= 0) {
+      addToast('Enter a valid amount', 'error');
+      return;
+    }
+    setTransferring(true);
+    try {
+      await portfolioApi.transfer(Math.round(amount * 100), type);
+      addToast(`${type === 'deposit' ? 'Deposited' : 'Withdrew'} ${centsToUSD(Math.round(amount * 100))}`, 'success');
+      setTransferAmount('');
+      loadPortfolio();
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Transfer failed', 'error');
+    } finally {
+      setTransferring(false);
+    }
+  }
 
   if (loading) return <p>Loading…</p>;
 
@@ -61,6 +86,36 @@ export default function PortfolioPage() {
           <div className={`${styles.statValue} ${data.totalReturnPercent >= 0 ? styles.positive : styles.negative}`}>
             {data.totalReturnPercent >= 0 ? '+' : ''}{data.totalReturnPercent.toFixed(2)}%
           </div>
+        </div>
+      </div>
+
+      <div className={styles.transferSection}>
+        <div className={styles.transferLabel}>Transfer Funds</div>
+        <div className={styles.transferRow}>
+          <span className={styles.dollarSign}>$</span>
+          <input
+            type="number"
+            className={styles.transferInput}
+            placeholder="0.00"
+            value={transferAmount}
+            onChange={e => setTransferAmount(e.target.value)}
+            min="0"
+            step="100"
+          />
+          <button
+            className={styles.depositBtn}
+            onClick={() => handleTransfer('deposit')}
+            disabled={transferring || !transferAmount}
+          >
+            Deposit
+          </button>
+          <button
+            className={styles.withdrawBtn}
+            onClick={() => handleTransfer('withdraw')}
+            disabled={transferring || !transferAmount}
+          >
+            Withdraw
+          </button>
         </div>
       </div>
 

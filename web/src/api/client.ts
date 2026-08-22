@@ -420,6 +420,9 @@ export const runs = {
   trigger(): Promise<{ ok: boolean; runId: string }> {
     return request('/runs', { method: 'POST', body: JSON.stringify({}) });
   },
+  cancel(id: string): Promise<{ ok: boolean }> {
+    return request(`/runs/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
+  },
 };
 
 export const portfolio = {
@@ -428,6 +431,12 @@ export const portfolio = {
   },
   history(limit = 30): Promise<{ ok: boolean; data: PortfolioSnapshotRow[] }> {
     return request(`/portfolio/history?limit=${limit}`);
+  },
+  transfer(amountCents: number, type: 'deposit' | 'withdraw'): Promise<{ ok: boolean; data: { cashCents: number } }> {
+    return request('/portfolio/transfer', {
+      method: 'POST',
+      body: JSON.stringify({ amountCents, type }),
+    });
   },
 };
 

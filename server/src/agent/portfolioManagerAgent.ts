@@ -4,7 +4,7 @@ import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { resolveConfig, resolveApiKey, LlmNotConfiguredError } from '../llm/openaiChatModel.js';
 import { PORTFOLIO_MANAGER_SYSTEM_PROMPT } from '../llm/prompts/portfolioManager.js';
 import type { SymbolAssessment } from './analystAgent.js';
-import type { DecisionSet } from '@atn-trd/shared';
+import type { DecisionSet, InvestorProfile } from '@atn-trd/shared';
 import { logger } from '../lib/logger.js';
 
 /* -------------------------------------------------------------------------- */
@@ -41,6 +41,7 @@ export interface PortfolioConstraints {
   minCashReservePercent: number;
   minConfidenceThreshold: number;
   symbolBlocklist: string[];
+  investorProfile?: InvestorProfile;
 }
 
 export interface PortfolioManagerAgentConfig {
@@ -83,10 +84,13 @@ function buildHumanMessage(
     `Min confidence threshold: ${constraints.minConfidenceThreshold.toFixed(2)}`,
     `Blocked symbols: ${blocklist}`,
     '',
+  ];
+
+  parts.push(
     `ANALYST ASSESSMENTS (${assessments.length} symbols)`,
     '================================',
-    '',
-  ];
+    ''
+  );
 
   // Format each assessment
   for (const assessment of assessments) {

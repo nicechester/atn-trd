@@ -9,15 +9,34 @@ export default function RunsListPage() {
   const [runList, setRunList] = useState<AgentRunRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [cancelling, setCancelling] = useState<string | null>(null);
   const navigate = useNavigate();
   const { addToast } = useToast();
 
   useEffect(() => {
+    loadRuns();
+  }, []);
+
+  function loadRuns() {
     runsApi.list(100, 0)
       .then(res => setRunList(res.data))
       .catch(e => addToast(e instanceof Error ? e.message : 'Failed to load runs', 'error'))
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  async function handleCancel(e: React.MouseEvent, runId: string) {
+    e.stopPropagation();
+    setCancelling(runId);
+    try {
+      await runsApi.cancel(runId);
+      addToast('Run cancelled', 'success');
+      loadRuns();
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to cancel', 'error');
+    } finally {
+      setCancelling(null);
+    }
+  }
 
   const filtered = statusFilter === 'all' ? runList : runList.filter(r => r.status === statusFilter);
 
@@ -55,6 +74,7 @@ export default function RunsListPage() {
                 <th className={styles.th}>Duration</th>
                 <th className={styles.th}>Model</th>
                 <th className={styles.th}>Error</th>
+                <th className={styles.th}></th>
               </tr>
             </thead>
             <tbody>
@@ -66,6 +86,17 @@ export default function RunsListPage() {
                   <td className={styles.td}>{formatDuration(run.startedAt, run.finishedAt)}</td>
                   <td className={styles.td}>{run.model ?? '—'}</td>
                   <td className={styles.td}>{run.error ? (run.error.length > 60 ? run.error.slice(0, 60) + '…' : run.error) : '—'}</td>
+                  <td className={styles.td}>
+                    {run.status === 'running' && (
+                      <button
+                        className={styles.cancelBtn}
+                        onClick={(e) => handleCancel(e, run.id)}
+                        disabled={cancelling === run.id}
+                      >
+                        {cancelling === run.id ? '...' : 'Stop'}
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

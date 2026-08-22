@@ -9,12 +9,30 @@ const log = logger.child({ component: 'auto-backtest' });
 // Track in-flight auto-backtests to avoid duplicates
 const runningBacktests = new Set<string>();
 
+// Debounce timer for batch additions
+let debounceTimer: NodeJS.Timeout | null = null;
+let pendingDb: Database.Database | null = null;
+const DEBOUNCE_MS = 2000; // Wait 2 seconds for batch additions to complete
+
 /**
  * Queue an auto-backtest for the current watchlist if enabled.
  * Called when watchlist changes (add/remove/toggle).
- * Fully async - returns immediately, backtest runs in background.
+ * Debounced to handle batch additions (comma-separated symbols).
  */
 export function queueWatchlistBacktest(db: Database.Database): void {
+  // Debounce: wait for batch additions to complete
+  pendingDb = db;
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    if (pendingDb) {
+      runBacktestNow(pendingDb);
+      pendingDb = null;
+    }
+  }, DEBOUNCE_MS);
+}
+
+function runBacktestNow(db: Database.Database): void {
   const settings = getSettings();
   
   if (!settings.watchlist.autoBacktest) {
