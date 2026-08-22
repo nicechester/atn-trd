@@ -1,16 +1,18 @@
-/** News connector selection: Finnhub (key) or Yahoo (zero-key fallback). */
+/** News connector selection: Finnhub (key), Yahoo (zero-key fallback), or RSS (free unlimited). */
 
 import type { DataSource, DataSourceResult } from '../types.js';
 import type { NewsPayload, NewsQuery } from './types.js';
 import { FinnhubNewsDataSource } from './finnhubNews.js';
 import { YahooNewsDataSource } from './yahooNews.js';
+import { RssNewsDataSource } from './rssNews.js';
 import { logger } from '../../lib/logger.js';
 
 export * from './types.js';
 export { FinnhubNewsDataSource, FINNHUB_NEWS_SOURCE, FINNHUB_API_KEY_SECRET } from './finnhubNews.js';
 export { YahooNewsDataSource, YAHOO_NEWS_SOURCE } from './yahooNews.js';
+export { RssNewsDataSource, RSS_NEWS_SOURCE } from './rssNews.js';
 
-export type NewsProvider = 'finnhub' | 'yahoo';
+export type NewsProvider = 'finnhub' | 'yahoo' | 'rss';
 
 export type NewsDataSource = DataSource<NewsQuery, DataSourceResult<NewsPayload>>;
 
@@ -89,6 +91,53 @@ class CachedNewsDataSource implements NewsDataSource {
   }
 }
 
+/** Composite datasource that tries RSS (free) first, falls back to Finnhub if needed. */
+class RssPrimaryDataSource implements NewsDataSource {
+  private readonly rss = new RssNewsDataSource();
+  private readonly finnhub = new FinnhubNewsDataSource({ sentiment: false });
+
+  get name() { return 'rss-primary'; }
+  get kind(): 'news' { return 'news'; }
+  get provider() { return 'rss'; }
+
+  isConfigured() { return this.rss.isConfigured() || this.finnhub.isConfigured(); }
+
+  async healthCheck() {
+    const rssHealth = await this.rss.healthCheck();
+    const finnhubHealth = await this.finnhub.healthCheck();
+    const ok = rssHealth.ok || finnhubHealth.ok;
+    return {
+      name: 'rss-primary',
+      kind: 'news' as const,
+      provider: 'rss',
+      configured: this.isConfigured(),
+      ok,
+      detail: ok ? 'RSS + Finnhub fallback' : 'Both unavailable',
+      latencyMs: null,
+      checkedAt: Date.now(),
+      error: ok ? undefined : 'Both RSS and Finnhub down'
+    };
+  }
+
+  async fetch(query?: NewsQuery, ctx?: any): Promise<DataSourceResult<NewsPayload>> {
+    try {
+      // Try RSS first (free, unlimited)
+      const rssResult = await this.rss.fetch(query, ctx);
+      if (rssResult.data.articles.length > 0) {
+        log.debug('rss-primary using rss source', { symbol: query?.symbol, count: rssResult.data.articles.length });
+        return rssResult;
+      }
+    } catch (err) {
+      log.debug('rss-primary rss fetch failed, trying finnhub', { symbol: query?.symbol, error: (err as Error).message });
+    }
+
+    // Fall back to Finnhub if RSS failed or returned no articles
+    const finnhubResult = await this.finnhub.fetch(query, ctx);
+    log.debug('rss-primary using finnhub fallback', { symbol: query?.symbol, count: finnhubResult.data.articles.length });
+    return finnhubResult;
+  }
+}
+
 export interface NewsDataSourceOptions {
   /** Skip Finnhub /news-sentiment call (paid tier). LLM judges sentiment instead. */
   sentiment?: boolean;
@@ -97,6 +146,8 @@ export interface NewsDataSourceOptions {
 export function createNewsDataSource(provider: NewsProvider, options: NewsDataSourceOptions = {}): NewsDataSource {
   const inner = provider === 'yahoo'
     ? new YahooNewsDataSource()
+    : provider === 'rss'
+    ? new RssPrimaryDataSource()
     : new FinnhubNewsDataSource({ sentiment: options.sentiment ?? false });
   return new CachedNewsDataSource(inner);
 }

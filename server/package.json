@@ -12,11 +12,12 @@
   "dependencies": {
     "@atn-trd/shared": "file:../shared",
     "@langchain/core": "^1.2.9",
-    "@langchain/openai": "^1.5.10",
     "@langchain/langgraph": "^1.4.12",
+    "@langchain/openai": "^1.5.10",
     "better-sqlite3": "^13.0.3",
     "croner": "^8.0.1",
     "express": "^4.18.2",
+    "rss-parser": "^3.13.0",
     "yahoo-finance2": "^2.11.4",
     "zod": "^3.22.4"
   },
