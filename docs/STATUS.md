@@ -78,17 +78,17 @@ All core Phase 2 infrastructure now complete. The system:
 #### ✅ #66 — Backtesting Infrastructure
 - **Status:** Merged (commit 6c3186e, "Phase 3: Backtesting Infrastructure")
 - **What:** Replay historical data to validate strategy performance
-- **Scope:** BacktestRunner (date range, mock datasources, P&L metrics)
+- **Current scope:** Simple buy-and-hold baseline (not full agent — too expensive in tokens)
 - **Features:**
   - Historical price data replay via Alpaca backfill
-  - Buy-and-hold strategy simulation
+  - Buy-and-hold strategy simulation (baseline for comparison)
   - Performance vs SPY benchmark
   - Sharpe/Sortino ratios, max drawdown tracking
   - Auto-backtest debounce (configurable interval)
 - **Files:** `server/src/backtest/`, `server/src/routes/backtest.ts`, `server/src/repos/backtestRepo.ts`
 - **Database:** `006_backtest.sql` migration deployed
 - **Testing:** Integrated with settings, runs via `/api/backtest` endpoint
-- **Related:** #93 (Semantic Memory) split from this issue for agent learning
+- **Future:** Full agent backtesting blocked by token cost; #93 (Semantic Memory) enables this by reducing agent re-analysis
 
 ### High Priority (Remaining)
 
@@ -123,11 +123,13 @@ All core Phase 2 infrastructure now complete. The system:
 
 #### #93 — Semantic Memory for Agent Learning `[phase-3]`
 - **What:** Persistent memory of agent decisions + outcomes (split from #66)
-- **Dependency:** Requires backtesting (#66) to validate learned patterns
-- **Use case:** "What did we decide last time this symbol was like this?"
+- **Critical role:** Enables full-agent backtesting by reducing token costs
+- **Problem solved:** Running full agent on every historical day is prohibitively expensive; semantic memory lets agent reuse past decisions
+- **Use case:** "What did we decide last time this symbol was like this?" (cached, cheaper than re-analysis)
 - **Storage:** Vector DB + structured memory
+- **Dependency:** #66 backtesting provides baseline; #93 makes agent backtesting feasible
 - **Complexity:** Medium
-- **Impact:** Improves agent consistency over time through historical pattern matching
+- **Impact:** Unlocks agent-driven backtesting; improves live agent through learned patterns
 
 ---
 
