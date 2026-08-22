@@ -12,6 +12,7 @@ import type { DecisionsRepo } from '../repos/decisionsRepo.js';
 import type { SemanticMemoryService } from '../services/semanticMemoryService.js';
 import { toIsoDate } from '../datasources/news/types.js';
 import type { RunCache } from '../datasources/cache.js';
+import { getVolatilityMetrics } from '../services/volatilityService.js';
 
 export interface AgentToolsDeps {
   newsSource: NewsDataSource;
@@ -328,6 +329,33 @@ function makeGetSimilarSituations(deps: AgentToolsDeps) {
   });
 }
 
+function makeGetVolatility(deps: AgentToolsDeps) {
+  const schema = z.object({
+    symbol: z.string().describe('Stock ticker symbol'),
+  });
+
+  return new DynamicStructuredTool({
+    name: 'get_volatility',
+    description: 'Fetch volatility metrics including historical volatility (20d, 60d), beta, and implied volatility',
+    schema,
+    func: async (input: z.infer<typeof schema>) => {
+      try {
+        const symbol = input.symbol;
+        const cacheKey = `volatility:${symbol}`;
+
+        const result = await deps.cache.getOrFetch(cacheKey, 300_000, async () => {
+          const metrics = await getVolatilityMetrics(symbol);
+          return { data: metrics };
+        });
+
+        return JSON.stringify(result.data);
+      } catch (err) {
+        return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  });
+}
+
 export function createAgentTools(deps: AgentToolsDeps) {
   const tools: DynamicStructuredTool[] = [
     makeGetNews(deps),
@@ -338,6 +366,7 @@ export function createAgentTools(deps: AgentToolsDeps) {
     makeGetPriceHistory(deps),
     makeGetPortfolio(deps),
     makeGetPriorDecisions(deps),
+    makeGetVolatility(deps),
   ];
 
   // Add semantic memory tool if available
@@ -366,6 +395,9 @@ export async function prefetchForSymbol(symbol: string, deps: AgentToolsDeps): P
     ),
     deps.cache.getOrFetch(`options:${symbol}`, 300_000, () =>
       deps.optionsSource.fetch({ symbol })
+    ),
+    deps.cache.getOrFetch(`volatility:${symbol}`, 300_000, () =>
+      getVolatilityMetrics(symbol)
     ),
     deps.cache.getOrFetch('macro:default', 300_000, () =>
       deps.macroSource.fetch({})
