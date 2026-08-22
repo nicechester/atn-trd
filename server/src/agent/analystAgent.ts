@@ -10,6 +10,7 @@ import type { AgentMessagesRepo } from '../repos/agentMessagesRepo.js';
 import type { ArtifactsRepo } from '../repos/artifactsRepo.js';
 import { logger } from '../lib/logger.js';
 import { emitProgress } from '../services/runProgress.js';
+import type { InvestorProfile } from '@atn-trd/shared';
 
 const AssessmentSchema = z.object({
   score: z
@@ -42,6 +43,7 @@ export interface AnalystAgentConfig {
   model?: string;
   temperature?: number;
   recursionLimit?: number;
+  investorProfile?: InvestorProfile;
 }
 
 const log = logger.child({ component: 'analyst-agent' });
@@ -83,14 +85,27 @@ export async function runAnalystAgent(
     const tools = createAgentTools(deps.toolsDeps);
     const collector = new RunCollector(runId, symbol, deps.messagesRepo, deps.artifactsRepo);
 
-    // 4. Write initial messages
-    const humanContent = `Research ${symbol} and provide a thorough investment assessment.`;
+    // 4. Build human content with optional investor profile injection
+    let humanContent = `Research ${symbol} and provide a thorough investment assessment.`;
+    if (config?.investorProfile) {
+      const profile = config.investorProfile;
+      const profileStr = [
+        '',
+        'INVESTOR PROFILE',
+        '=================',
+        `Style weights: growth=${profile.styleWeights.growth}%, value=${profile.styleWeights.value}%, stability=${profile.styleWeights.stability}%, cashFlow=${profile.styleWeights.cashFlow}%, momentum=${profile.styleWeights.momentum}%`,
+        `Max volatility tolerance: ${profile.maxVolatility.toFixed(2)}%`,
+      ].join('\n');
+      humanContent += profileStr;
+    }
+
+    // 5. Write initial messages
     collector.writeInitialMessages([
       { role: 'system', content: ANALYST_SYSTEM_PROMPT },
       { role: 'human', content: humanContent },
     ]);
 
-    // 5. Create and stream the react agent
+    // 6. Create and stream the react agent
     const recursionLimit = config?.recursionLimit ?? 10;
     log.debug('starting analyst agent', {
       runId,
@@ -132,7 +147,7 @@ export async function runAnalystAgent(
     log.debug('stream complete', { symbol, eventCount });
     emitProgress(runId, 'analyst', `${symbol}: synthesizing assessment`, { symbol });
 
-    // 6. Structured synthesis with 1 retry
+    // 7. Structured synthesis with 1 retry
     const synthesisMessages = [
       new SystemMessage(ANALYST_SYSTEM_PROMPT),
       new HumanMessage(humanContent),

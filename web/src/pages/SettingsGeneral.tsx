@@ -7,7 +7,6 @@ import styles from './SettingsForm.module.css';
 type FormState = {
   mode: 'paper' | 'live';
   enabled: boolean;
-  startingCashDollars: number;
   baseCurrency: string;
   killSwitch: boolean;
 };
@@ -24,7 +23,6 @@ export default function SettingsGeneral(): JSX.Element {
         setForm({
           mode: t.mode,
           enabled: t.enabled,
-          startingCashDollars: Math.round(t.startingCashCents / 100),
           baseCurrency: t.baseCurrency,
           killSwitch: t.killSwitch,
         });
@@ -35,10 +33,6 @@ export default function SettingsGeneral(): JSX.Element {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form) return;
-    if (form.startingCashDollars < 1) {
-      addToast('Starting cash must be at least $1', 'error');
-      return;
-    }
     if (!form.baseCurrency.trim()) {
       addToast('Base currency is required', 'error');
       return;
@@ -49,7 +43,6 @@ export default function SettingsGeneral(): JSX.Element {
         trading: {
           mode: form.mode,
           enabled: form.enabled,
-          startingCashCents: Math.round(form.startingCashDollars * 100),
           baseCurrency: form.baseCurrency.trim().toUpperCase(),
           killSwitch: form.killSwitch,
         },
@@ -86,17 +79,6 @@ export default function SettingsGeneral(): JSX.Element {
             onChange={e => setForm({ ...form, enabled: e.target.checked })}
           />
           <label className={styles.label} htmlFor="enabled">Trading Enabled</label>
-        </div>
-        <div className={styles.field}>
-          <label className={styles.label}>Starting Cash (USD)</label>
-          <input
-            className={styles.input}
-            type="number"
-            min="1"
-            step="1"
-            value={form.startingCashDollars}
-            onChange={e => setForm({ ...form, startingCashDollars: Number(e.target.value) })}
-          />
         </div>
         <div className={styles.field}>
           <label className={styles.label}>Base Currency</label>

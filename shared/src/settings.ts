@@ -1,5 +1,29 @@
 import { z } from 'zod';
 
+export const StyleWeightsSchema = z.object({
+  growth: z.number().min(0).max(100).default(20),
+  value: z.number().min(0).max(100).default(20),
+  stability: z.number().min(0).max(100).default(20),
+  cashFlow: z.number().min(0).max(100).default(20),
+  momentum: z.number().min(0).max(100).default(20),
+}).refine((w) => {
+  const sum = w.growth + w.value + w.stability + w.cashFlow + w.momentum;
+  return Math.abs(sum - 100) <= 0.5;
+}, {
+  message: 'Style weights must sum to 100 ± 0.5',
+  path: ['growth'],
+});
+
+export type StyleWeights = z.infer<typeof StyleWeightsSchema>;
+
+export const InvestorProfileSchema = z.object({
+  styleWeights: StyleWeightsSchema,
+  maxVolatility: z.number().min(0).max(5).default(0.35),
+  sectorBias: z.record(z.string(), z.number()).default({}),
+});
+
+export type InvestorProfile = z.infer<typeof InvestorProfileSchema>;
+
 export const SettingsSchema = z.object({
   trading: z.object({
     mode: z.enum(['paper', 'live']).default('paper'),
@@ -68,6 +92,8 @@ export const SettingsSchema = z.object({
     earningsBlackoutDays: z.number().int().min(0).default(3),
   }).default({}),
 
+  investorProfile: InvestorProfileSchema.default(() => DEFAULT_INVESTOR_PROFILE),
+
   paperAccount: z.object({
     enabled: z.boolean().default(true),
     fillModel: z.enum(['last_close', 'next_open']).default('next_open'),
@@ -78,6 +104,18 @@ export const SettingsSchema = z.object({
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
+
+export const DEFAULT_INVESTOR_PROFILE: InvestorProfile = {
+  styleWeights: {
+    growth: 30,
+    value: 30,
+    stability: 20,
+    cashFlow: 10,
+    momentum: 10,
+  },
+  maxVolatility: 0.35,
+  sectorBias: {},
+};
 
 export const DEFAULT_SETTINGS: Settings = {
   trading: {
@@ -121,6 +159,7 @@ export const DEFAULT_SETTINGS: Settings = {
     symbolBlocklist: [],
     earningsBlackoutDays: 3,
   },
+  investorProfile: DEFAULT_INVESTOR_PROFILE,
   paperAccount: {
     enabled: true,
     fillModel: 'next_open',

@@ -24,6 +24,7 @@ export interface RiskConstraints {
   maxOrderNotionalCents: number;
   minConfidenceThreshold: number;
   symbolBlocklist: string[];
+  maxVolatility: number;
   broker: 'paper' | 'live';
 }
 
@@ -72,6 +73,7 @@ export interface RiskServiceInput {
   portfolio: Portfolio;
   runId: string;
   earningsBlackoutSymbols?: Set<string>;
+  volatilityBySymbol?: Map<string, number | null>;
 }
 
 /**
@@ -106,7 +108,7 @@ class RiskServiceImpl implements RiskService {
   ) {}
 
   async evaluate(input: RiskServiceInput): Promise<RiskServiceOutput> {
-    const { decisionSet, portfolio, runId, earningsBlackoutSymbols } = input;
+    const { decisionSet, portfolio, runId, earningsBlackoutSymbols, volatilityBySymbol } = input;
 
     // Early guard: zero portfolio
     if (portfolio.totalValueCents === 0) {
@@ -149,7 +151,8 @@ class RiskServiceImpl implements RiskService {
         decision,
         portfolio,
         earningsBlackoutSymbols,
-        newPositionsThisRun
+        newPositionsThisRun,
+        volatilityBySymbol
       );
 
       if (prepriceRejection) {
@@ -281,13 +284,14 @@ class RiskServiceImpl implements RiskService {
   }
 
   /**
-   * Check all pre-price guardrails (checks 1-8).
+   * Check all pre-price guardrails (checks 1-9).
    */
   private checkPrepriceGuardrails(
     decision: Decision,
     portfolio: Portfolio,
     earningsBlackoutSymbols: Set<string> | undefined,
-    newPositionsThisRun: number
+    newPositionsThisRun: number,
+    volatilityBySymbol: Map<string, number | null> | undefined
   ): Rejection | null {
     // Check 1: Blocklist
     if (this.constraints.symbolBlocklist.some((s) => s.toUpperCase() === decision.symbol.toUpperCase())) {
@@ -325,7 +329,22 @@ class RiskServiceImpl implements RiskService {
       };
     }
 
-    // Check 4: No position to sell
+    // Check 4: Volatility limit (buys/adds only; exits fail open on missing data)
+    if ((decision.action === 'buy' || decision.action === 'add') && volatilityBySymbol) {
+      const symbolVolatility = volatilityBySymbol.get(decision.symbol);
+      if (symbolVolatility !== null && symbolVolatility !== undefined && symbolVolatility > this.constraints.maxVolatility) {
+        return {
+          decisionId: decision.id,
+          symbol: decision.symbol,
+          action: decision.action,
+          confidence: decision.confidence,
+          targetWeight: decision.targetWeight,
+          reason: `volatility ${symbolVolatility.toFixed(4)} exceeds max ${this.constraints.maxVolatility.toFixed(4)}`,
+        };
+      }
+    }
+
+    // Check 5: No position to sell
     const currentPosition = portfolio.positions.find((p) => p.symbol === decision.symbol);
     if ((decision.action === 'sell' || decision.action === 'trim') && !currentPosition) {
       return {
@@ -338,7 +357,7 @@ class RiskServiceImpl implements RiskService {
       };
     }
 
-    // Check 5: Buy/add missing targetWeight
+    // Check 6: Buy/add missing targetWeight
     if ((decision.action === 'buy' || decision.action === 'add') && decision.targetWeight === undefined) {
       return {
         decisionId: decision.id,
@@ -350,7 +369,7 @@ class RiskServiceImpl implements RiskService {
       };
     }
 
-    // Check 6: Trim missing targetWeight
+    // Check 7: Trim missing targetWeight
     if (decision.action === 'trim' && decision.targetWeight === undefined) {
       return {
         decisionId: decision.id,
@@ -362,7 +381,7 @@ class RiskServiceImpl implements RiskService {
       };
     }
 
-    // Check 7: Max concurrent positions
+    // Check 8: Max concurrent positions
     const isNewPosition =
       (decision.action === 'buy' || (decision.action === 'add' && !currentPosition)) &&
       !portfolio.positions.find((p) => p.symbol === decision.symbol);
@@ -381,7 +400,7 @@ class RiskServiceImpl implements RiskService {
       };
     }
 
-    // Check 8: Max new positions per run
+    // Check 9: Max new positions per run
     if (isNewPosition && newPositionsThisRun >= this.constraints.maxNewPositionsPerRun) {
       return {
         decisionId: decision.id,

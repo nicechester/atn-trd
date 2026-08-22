@@ -9,5 +9,78 @@
 .td { padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--color-border); }
 .tdNum { text-align: right; }
 .muted { color: var(--color-text-muted); font-size: 0.875rem; }
+
+.transferSection {
+  background: var(--color-card-bg, #1e293b);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.transferLabel {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  margin-bottom: var(--spacing-sm);
+}
+
+.transferRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.dollarSign {
+  color: var(--color-text-muted);
+  font-size: 1rem;
+}
+
+.transferInput {
+  width: 150px;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 1rem;
+}
+
+.transferInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.depositBtn, .withdrawBtn {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.depositBtn {
+  background: var(--color-success, #4ade80);
+  color: #000;
+}
+
+.withdrawBtn {
+  background: var(--color-border);
+  color: var(--color-text);
+}
+
+.depositBtn:disabled, .withdrawBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.depositBtn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.withdrawBtn:hover:not(:disabled) {
+  background: var(--color-text-muted);
+}
+
 @media (max-width: 900px) { .statsRow { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 640px) { .statsRow { grid-template-columns: 1fr 1fr; } }
