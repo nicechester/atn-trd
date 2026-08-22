@@ -88,6 +88,7 @@ All core Phase 2 infrastructure now complete. The system:
 - **Files:** `server/src/backtest/`, `server/src/routes/backtest.ts`, `server/src/repos/backtestRepo.ts`
 - **Database:** `006_backtest.sql` migration deployed
 - **Testing:** Integrated with settings, runs via `/api/backtest` endpoint
+- **Related:** #93 (Semantic Memory) split from this issue for agent learning
 
 ### High Priority (Remaining)
 
@@ -121,11 +122,12 @@ All core Phase 2 infrastructure now complete. The system:
 - **Impact:** Reduces dependency on paid APIs
 
 #### #93 — Semantic Memory for Agent Learning `[phase-3]`
-- **What:** Persistent memory of agent decisions + outcomes
+- **What:** Persistent memory of agent decisions + outcomes (split from #66)
+- **Dependency:** Requires backtesting (#66) to validate learned patterns
 - **Use case:** "What did we decide last time this symbol was like this?"
 - **Storage:** Vector DB + structured memory
 - **Complexity:** Medium
-- **Impact:** Improves agent consistency over time
+- **Impact:** Improves agent consistency over time through historical pattern matching
 
 ---
 
