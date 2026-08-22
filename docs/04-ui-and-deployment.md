@@ -18,9 +18,9 @@ through the API. No trading logic required.
    `POST /api/symbols/validate` (a real `yahoo-finance2` `quote()` lookup
    returning name + last price). Best Phase 1 end-to-end vertical slice.
 4. **Settings → Data Sources** — per-source enable toggle, provider select
-   (news: Finnhub | Yahoo), API-key entry using a write-only `SecretField`
-   (shows `••••••` + "Set"/"Not set" + Clear, never echoes the value), and a
-   **Test connection** button hitting `healthCheck()`.
+   (news: RSS | Finnhub | Yahoo; RSS is free and unlimited, recommended as primary),
+   optional API-key entry using a write-only `SecretField` (shows `••••••` + "Set"/"Not set" + Clear,
+   never echoes the value), and a **Test connection** button hitting `healthCheck()`.
 5. **Settings → LLM (OpenAI)** — OpenAI API key
    (`SecretField`), model selection (e.g., `gpt-4`), temperature, timeout
    seconds, and a **Test** button that runs a one-token completion and reports
