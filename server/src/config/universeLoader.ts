@@ -14,6 +14,8 @@ interface UniverseConfig {
   russell2000: string[];
   tech: string[];
   healthcare: string[];
+  commodity: string[];
+  crypto: string[];
 }
 
 let cachedUniverse: UniverseConfig | null = null;
@@ -39,14 +41,22 @@ function loadUniverse(): UniverseConfig {
     const healthcare = JSON.parse(
       readFileSync(join(__dirname, 'universe', 'healthcare.json'), 'utf-8')
     ) as string[];
+    const commodity = JSON.parse(
+      readFileSync(join(__dirname, 'universe', 'commodity.json'), 'utf-8')
+    ) as string[];
+    const crypto = JSON.parse(
+      readFileSync(join(__dirname, 'universe', 'crypto.json'), 'utf-8')
+    ) as string[];
 
-    cachedUniverse = { sp500, nasdaq100, russell2000, tech, healthcare };
+    cachedUniverse = { sp500, nasdaq100, russell2000, tech, healthcare, commodity, crypto };
     log.debug('loaded universes', {
       sp500Count: sp500.length,
       nasdaq100Count: nasdaq100.length,
       russell2000Count: russell2000.length,
       techCount: tech.length,
       healthcareCount: healthcare.length,
+      commodityCount: commodity.length,
+      cryptoCount: crypto.length,
     });
     return cachedUniverse;
   } catch (err) {
@@ -55,7 +65,7 @@ function loadUniverse(): UniverseConfig {
   }
 }
 
-export function getUniverse(type: 'sp500' | 'nasdaq100' | 'russell2000' | 'tech' | 'healthcare' | 'custom', customSymbols?: string[]): string[] {
+export function getUniverse(type: 'sp500' | 'nasdaq100' | 'russell2000' | 'tech' | 'healthcare' | 'commodity' | 'crypto' | 'custom', customSymbols?: string[]): string[] {
   const universe = loadUniverse();
 
   if (type === 'custom') {

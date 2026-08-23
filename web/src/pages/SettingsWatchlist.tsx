@@ -10,7 +10,7 @@ type WatchlistSettings = {
   autoBacktestMonths: number;
   mode: 'manual' | 'dynamic';
   dynamic: {
-    universe: 'sp500' | 'nasdaq100' | 'russell2000' | 'tech' | 'healthcare' | 'custom';
+    universe: 'sp500' | 'nasdaq100' | 'russell2000' | 'tech' | 'healthcare' | 'commodity' | 'crypto' | 'custom';
     customSymbols: string[];
     maxCandidates: number;
     minPrice: number;
@@ -197,13 +197,15 @@ export default function SettingsWatchlist(): JSX.Element {
               <select
                 className={styles.input}
                 value={watchlistSettings.dynamic.universe}
-                onChange={e => handleDynamicConfigChange({ universe: e.target.value as 'sp500' | 'nasdaq100' | 'russell2000' | 'tech' | 'healthcare' | 'custom' })}
+                onChange={e => handleDynamicConfigChange({ universe: e.target.value as 'sp500' | 'nasdaq100' | 'russell2000' | 'tech' | 'healthcare' | 'commodity' | 'crypto' | 'custom' })}
               >
                 <option value="sp500">S&P 500</option>
                 <option value="nasdaq100">NASDAQ 100</option>
                 <option value="russell2000">Russell 2000</option>
                 <option value="tech">Tech Sector</option>
                 <option value="healthcare">Healthcare Sector</option>
+                <option value="commodity">Commodity ETFs</option>
+                <option value="crypto">Crypto ETFs</option>
                 <option value="custom">Custom List</option>
               </select>
             </div>
