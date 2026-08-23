@@ -19,7 +19,7 @@ export interface EmbeddingConfig {
   baseUrl?: string;
 }
 
-const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small';
+const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-large';
 
 export function createEmbeddingService(config: EmbeddingConfig = {}): EmbeddingService {
   const resolved = resolveConfig(config);
@@ -96,6 +96,38 @@ export function assessmentToEmbeddingText(assessment: {
   ];
   if (assessment.risks) parts.push(`Risks: ${assessment.risks}`);
   if (assessment.catalysts) parts.push(`Catalysts: ${assessment.catalysts}`);
+  return truncateForEmbedding(parts.join('\n'));
+}
+
+/**
+ * Build embeddable text from a realized trade outcome.
+ */
+export function tradeOutcomeToEmbeddingText(outcome: {
+  symbol: string;
+  side: 'buy' | 'sell';
+  qty: number;
+  avgCostCents: number;
+  exitPriceCents: number;
+  realizedPnlCents: number;
+  holdingPeriodMs?: number | null;
+  thesis?: string | null;
+}): string {
+  const pnlDollars = (outcome.realizedPnlCents / 100).toFixed(2);
+  const returnPercent = outcome.avgCostCents !== 0
+    ? (((outcome.exitPriceCents - outcome.avgCostCents) / outcome.avgCostCents) * 100).toFixed(2)
+    : '0.00';
+  const holdingDays = outcome.holdingPeriodMs != null
+    ? Math.max(0, Math.round(outcome.holdingPeriodMs / 86_400_000))
+    : null;
+
+  const parts = [
+    `Symbol: ${outcome.symbol}`,
+    `Outcome: ${outcome.side.toUpperCase()} ${outcome.qty} shares realized P&L $${pnlDollars} (${returnPercent}%)`,
+    `Entry: $${(outcome.avgCostCents / 100).toFixed(2)}, Exit: $${(outcome.exitPriceCents / 100).toFixed(2)}`,
+  ];
+  if (holdingDays !== null) parts.push(`Held: ${holdingDays} day(s)`);
+  if (outcome.thesis) parts.push(`Original thesis: ${outcome.thesis}`);
+
   return truncateForEmbedding(parts.join('\n'));
 }
 

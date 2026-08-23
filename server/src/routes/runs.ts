@@ -28,6 +28,12 @@ import type { OptionsDataSource } from '../datasources/options/index.js';
 import { YahooSectorPerformance } from '../datasources/sectors/index.js';
 import type { AnalystAgentDeps } from '../agent/analystAgent.js';
 import { getSettings } from '../config/settingsService.js';
+import { createEmbeddingService } from '../llm/embeddingService.js';
+import { createSemanticMemoryService, type SemanticMemoryService } from '../services/semanticMemoryService.js';
+import { resolveApiKey } from '../llm/openaiChatModel.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child({ component: 'runs-route' });
 
 /** GET /api/runs?limit=50&offset=0 */
 export function listRunsHandler(req: Request, res: Response, next: NextFunction): void {
@@ -143,13 +149,23 @@ export async function triggerRunHandler(
     const watchlistRepo   = new WatchlistRepo(db);
     const calibrationRepo = new CalibrationRepo(db);
 
+    // semantic memory (optional, guarded against unconfigured API key)
+    let semanticMemory: SemanticMemoryService | undefined;
+    if (settings.semanticMemory.enabled) {
+      if (resolveApiKey()) {
+        semanticMemory = createSemanticMemoryService(db, createEmbeddingService());
+      } else {
+        log.warn('semantic memory enabled but no LLM API key configured; skipping');
+      }
+    }
+
     // services
     const priceService     = new PriceService(pricesRepo);
     const portfolioService = new PortfolioServiceImpl(db, priceService, positionsRepo, portfolioRepo);
     const broker           = new PaperBroker(db, priceService, ordersRepo, fillsRepo, positionsRepo, portfolioRepo, {
       fillModel:   settings.paperAccount.fillModel,
       slippageBps: settings.paperAccount.slippageBps,
-    });
+    }, semanticMemory ? { decisionsRepo, assessmentsRepo, semanticMemory } : undefined);
 
     // agent tools deps (with per-run cache)
     const runCache = new RunCache();
@@ -165,6 +181,7 @@ export async function triggerRunHandler(
         portfolioService,
         decisionsRepo,
         cache: runCache,
+        semanticMemory,
       },
       messagesRepo,
       artifactsRepo,
@@ -194,6 +211,7 @@ export async function triggerRunHandler(
       getSettings,
       watchlistRepo,
       calibrationRepo,
+      semanticMemory,
     });
 
     await tradingCycle.execute('manual');

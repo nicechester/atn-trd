@@ -12,6 +12,7 @@ type LlmFormState = {
   timeoutSeconds: number;
   analystModel: string;
   portfolioManagerModel: string;
+  semanticMemoryEnabled: boolean;
 };
 
 type LlmTestResult = {
@@ -39,6 +40,7 @@ export default function SettingsLlm(): JSX.Element {
           timeoutSeconds: llm.timeoutMs / 1000,
           analystModel: llm.agents?.analyst?.model ?? '',
           portfolioManagerModel: llm.agents?.portfolioManager?.model ?? '',
+          semanticMemoryEnabled: settingsRes.data.semanticMemory?.enabled ?? false,
         });
         setApiKeyIsSet(secretsRes.data.some((s: { name: string; isSet: boolean }) => s.name === 'LLM_API_KEY' && s.isSet));
       })
@@ -76,6 +78,9 @@ export default function SettingsLlm(): JSX.Element {
             analyst: { model: form.analystModel.trim() },
             portfolioManager: { model: form.portfolioManagerModel.trim() },
           },
+        },
+        semanticMemory: {
+          enabled: form.semanticMemoryEnabled,
         },
       });
       addToast('LLM settings saved', 'success');
@@ -175,6 +180,16 @@ export default function SettingsLlm(): JSX.Element {
             />
             <p className={styles.hint}>Leave blank to use the default model above.</p>
           </div>
+          <div className={`${styles.field} ${styles.checkboxField}`}>
+            <input
+              type="checkbox"
+              id="semanticMemoryEnabled"
+              checked={form.semanticMemoryEnabled}
+              onChange={e => setForm({ ...form, semanticMemoryEnabled: e.target.checked })}
+            />
+            <label className={styles.label} htmlFor="semanticMemoryEnabled">Semantic Memory (learn from past assessments and trade outcomes)</label>
+          </div>
+          <p className={styles.hint}>Requires an API key above. Embeds assessments and realized trade outcomes so the agent can recall similar past situations.</p>
           <div className={styles.actions} style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
             <button
               type="button"

@@ -40,6 +40,9 @@ import type { OptionsDataSource } from '../datasources/options/index.js';
 import { YahooSectorPerformance } from '../datasources/sectors/index.js';
 import type { AnalystAgentDeps } from '../agent/analystAgent.js';
 import { createTradingCycleService } from '../services/tradingCycleService.js';
+import { createEmbeddingService } from '../llm/embeddingService.js';
+import { createSemanticMemoryService, type SemanticMemoryService } from '../services/semanticMemoryService.js';
+import { resolveApiKey } from '../llm/openaiChatModel.js';
 
 const log = logger.child({ component: 'scheduler' });
 
@@ -82,13 +85,23 @@ function registerJobs(): void {
         const artifactsRepo   = new ArtifactsRepo(db);
         const watchlistRepo   = new WatchlistRepo(db);
 
+        // semantic memory (optional, guarded against unconfigured API key)
+        let semanticMemory: SemanticMemoryService | undefined;
+        if (settings.semanticMemory.enabled) {
+          if (resolveApiKey()) {
+            semanticMemory = createSemanticMemoryService(db, createEmbeddingService());
+          } else {
+            log.warn('semantic memory enabled but no LLM API key configured; skipping');
+          }
+        }
+
         // services
         const priceService     = new PriceService(pricesRepo);
         const portfolioService = new PortfolioServiceImpl(db, priceService, positionsRepo, portfolioRepo);
         const broker           = new PaperBroker(db, priceService, ordersRepo, fillsRepo, positionsRepo, portfolioRepo, {
           fillModel:   settings.paperAccount.fillModel,
           slippageBps: settings.paperAccount.slippageBps,
-        });
+        }, semanticMemory ? { decisionsRepo, assessmentsRepo, semanticMemory } : undefined);
 
         // agent tools deps (with per-run cache)
         const runCache = new RunCache();
@@ -104,6 +117,7 @@ function registerJobs(): void {
             portfolioService,
             decisionsRepo,
             cache: runCache,
+            semanticMemory,
           },
           messagesRepo,
           artifactsRepo,
@@ -132,6 +146,7 @@ function registerJobs(): void {
           priceFeed: priceService,
           getSettings,
           watchlistRepo,
+          semanticMemory,
         });
 
         await tradingCycle.execute('scheduled');

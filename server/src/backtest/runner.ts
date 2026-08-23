@@ -1,5 +1,11 @@
 /**
  * BacktestRunner: Replays historical data through the trading pipeline.
+ *
+ * TODO(#93 follow-up): backtest runs do not feed semantic memory. Neither
+ * assessments nor realized trade outcomes generated during a backtest are
+ * embedded via SemanticMemoryService. Wiring this up was deferred out of
+ * this issue's scope — see #93 spec notes on backtesting vs. semantic
+ * memory token cost trade-offs.
  */
 
 import type Database from 'better-sqlite3';

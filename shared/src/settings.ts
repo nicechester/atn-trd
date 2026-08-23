@@ -110,6 +110,10 @@ export const SettingsSchema = z.object({
     slippageBps: z.number().int().min(0).default(5),
   }).default({}),
 
+  semanticMemory: z.object({
+    enabled: z.boolean().default(false),
+  }).default({}),
+
   updatedAt: z.number().int().optional(),
 });
 
@@ -178,6 +182,9 @@ export const DEFAULT_SETTINGS: Settings = {
     enabled: true,
     fillModel: 'next_open',
     slippageBps: 5,
+  },
+  semanticMemory: {
+    enabled: false,
   },
 };
 

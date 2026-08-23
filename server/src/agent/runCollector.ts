@@ -210,6 +210,11 @@ export class RunCollector {
       if (!meta) {
         return;
       }
+      // TODO(#93 follow-up): artifacts are never embedded for semantic memory today.
+      // SemanticMemoryService.storeArtifactEmbedding() exists and is unit-tested, but
+      // nothing calls it — artifact embedding was deferred out of this issue's scope.
+      // Summaries are also always null here, and storeArtifactEmbedding() no-ops
+      // without one, so wiring this up will also need summary generation.
       this.artifactsRepo.create({
         runId: this.runId,
         symbol: this.symbol,
