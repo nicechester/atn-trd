@@ -5,6 +5,9 @@ import { OrdersRepo, type OrderRow } from '../repos/ordersRepo.js';
 import { FillsRepo } from '../repos/fillsRepo.js';
 import { PositionsRepo, type PositionRow } from '../repos/positionsRepo.js';
 import { PortfolioRepo, type PortfolioRow } from '../repos/portfolioRepo.js';
+import { DecisionsRepo } from '../repos/decisionsRepo.js';
+import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
+import type { SemanticMemoryService } from '../services/semanticMemoryService.js';
 import { notionalCents } from '../lib/money.js';
 import { isTradingDay, nextSessionOpen, nextSessionClose, nextTradingDateStr, toETDateStr, isMarketHours } from '../scheduler/marketCalendar.js';
 import { logger } from '../lib/logger.js';
@@ -15,6 +18,16 @@ export interface PaperBrokerConfig {
   fillModel: 'last_close' | 'next_open';
   slippageBps: number;  // default 5
   commissionCents: number;  // default 0
+}
+
+/**
+ * Optional dependencies for embedding realized trade outcomes into semantic
+ * memory. When omitted, the broker skips the trade-outcome pipeline entirely.
+ */
+export interface PaperBrokerOutcomeDeps {
+  decisionsRepo: DecisionsRepo;
+  assessmentsRepo: AssessmentsRepo;
+  semanticMemory: SemanticMemoryService;
 }
 
 const DEFAULT_CONFIG: PaperBrokerConfig = {
@@ -42,6 +55,7 @@ export class PaperBroker implements Broker {
   private readonly portfolioRepo: PortfolioRepo;
   private readonly db: Database.Database;
   private readonly config: PaperBrokerConfig;
+  private readonly outcomeDeps?: PaperBrokerOutcomeDeps;
   private reservedCashCents = 0;
 
   constructor(
@@ -51,7 +65,8 @@ export class PaperBroker implements Broker {
     fillsRepo: FillsRepo,
     positionsRepo: PositionsRepo,
     portfolioRepo: PortfolioRepo,
-    config: Partial<PaperBrokerConfig> = {}
+    config: Partial<PaperBrokerConfig> = {},
+    outcomeDeps?: PaperBrokerOutcomeDeps
   ) {
     this.db = db;
     this.priceFeed = priceFeed;
@@ -60,6 +75,7 @@ export class PaperBroker implements Broker {
     this.positionsRepo = positionsRepo;
     this.portfolioRepo = portfolioRepo;
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.outcomeDeps = outcomeDeps;
   }
 
   async getAccount(): Promise<Account> {
@@ -436,6 +452,12 @@ export class PaperBroker implements Broker {
       throw new Error('Portfolio not initialized');
     }
 
+    let tradeOutcome: {
+      avgCostCents: number;
+      realizedPnlCents: number;
+      holdingPeriodMs: number;
+    } | null = null;
+
     this.db.transaction(() => {
       // Create fill
       const fillId = this.fillsRepo.create({
@@ -511,6 +533,14 @@ export class PaperBroker implements Broker {
             openedAt: position.openedAt,
             updatedAt: now,
           };
+
+          // Every sell reduces or closes a long position (no shorting in v1),
+          // so this is the trigger point for realized trade-outcome learning.
+          tradeOutcome = {
+            avgCostCents: position.avgCostCents,
+            realizedPnlCents: pnl,
+            holdingPeriodMs: now - position.openedAt,
+          };
         }
       }
 
@@ -522,5 +552,63 @@ export class PaperBroker implements Broker {
         avgCostCents: newPosition.avgCostCents,
       });
     })();
+
+    // Fire-and-forget: embed the realized trade outcome for semantic memory.
+    if (tradeOutcome && this.outcomeDeps) {
+      this.recordTradeOutcome(orderId, req.symbol, req.qty, fillPriceCents, tradeOutcome).catch((err) => {
+        log.warn('failed to record trade outcome', {
+          orderId,
+          symbol: req.symbol,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
+  }
+
+  private async recordTradeOutcome(
+    orderId: string,
+    symbol: string,
+    qty: number,
+    exitPriceCents: number,
+    outcome: { avgCostCents: number; realizedPnlCents: number; holdingPeriodMs: number }
+  ): Promise<void> {
+    if (!this.outcomeDeps) return;
+    const { decisionsRepo, assessmentsRepo, semanticMemory } = this.outcomeDeps;
+
+    const order = this.ordersRepo.get(orderId);
+    if (!order?.runId) return; // no trading-cycle context to link/embed against
+
+    let assessmentId: string | null = null;
+    let thesis: string | null = null;
+
+    if (order.decisionId) {
+      const decision = decisionsRepo.get(order.decisionId);
+      if (decision?.assessmentId) {
+        assessmentId = decision.assessmentId;
+      }
+    }
+
+    const assessment = assessmentId
+      ? assessmentsRepo.get(assessmentId)
+      : assessmentsRepo.getByRunAndSymbol(order.runId, symbol);
+
+    if (assessment) {
+      assessmentId = assessment.id;
+      thesis = assessment.thesis;
+    }
+
+    await semanticMemory.storeTradeOutcomeEmbedding({
+      orderId,
+      runId: order.runId,
+      symbol,
+      side: 'sell',
+      qty,
+      avgCostCents: outcome.avgCostCents,
+      exitPriceCents,
+      realizedPnlCents: outcome.realizedPnlCents,
+      holdingPeriodMs: outcome.holdingPeriodMs,
+      assessmentId,
+      thesis,
+    });
   }
 }

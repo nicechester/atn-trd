@@ -3,8 +3,8 @@
  */
 
 import type Database from 'better-sqlite3';
-import { EmbeddingsRepo, type SimilarResult } from '../repos/embeddingsRepo.js';
-import { createEmbeddingService, assessmentToEmbeddingText, type EmbeddingService } from '../llm/embeddingService.js';
+import { EmbeddingsRepo, type SimilarResult, type EmbeddingSourceType } from '../repos/embeddingsRepo.js';
+import { createEmbeddingService, assessmentToEmbeddingText, tradeOutcomeToEmbeddingText, type EmbeddingService } from '../llm/embeddingService.js';
 import { logger } from '../lib/logger.js';
 
 const log = logger.child({ component: 'semantic-memory' });
@@ -12,7 +12,7 @@ const log = logger.child({ component: 'semantic-memory' });
 export interface SimilarSituation {
   runId: string;
   symbol: string | null;
-  sourceType: 'assessment' | 'artifact';
+  sourceType: EmbeddingSourceType;
   content: string;
   similarity: number;
 }
@@ -52,6 +52,23 @@ export interface SemanticMemoryService {
     provider: string;
     summary?: string | null;
     payload: Record<string, unknown>;
+  }): Promise<void>;
+
+  /**
+   * Store a realized trade outcome embedding (position close/reduce) for future retrieval.
+   */
+  storeTradeOutcomeEmbedding(params: {
+    orderId: string;
+    runId: string;
+    symbol: string;
+    side: 'buy' | 'sell';
+    qty: number;
+    avgCostCents: number;
+    exitPriceCents: number;
+    realizedPnlCents: number;
+    holdingPeriodMs?: number | null;
+    assessmentId?: string | null;
+    thesis?: string | null;
   }): Promise<void>;
 }
 
@@ -157,6 +174,43 @@ export function createSemanticMemoryService(
       } catch (err) {
         log.warn('failed to store artifact embedding', {
           artifactId: params.artifactId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+
+    async storeTradeOutcomeEmbedding(params) {
+      try {
+        const text = tradeOutcomeToEmbeddingText({
+          symbol: params.symbol,
+          side: params.side,
+          qty: params.qty,
+          avgCostCents: params.avgCostCents,
+          exitPriceCents: params.exitPriceCents,
+          realizedPnlCents: params.realizedPnlCents,
+          holdingPeriodMs: params.holdingPeriodMs,
+          thesis: params.thesis,
+        });
+
+        const embedding = await embedder.embed(text);
+
+        repo.create({
+          sourceType: 'trade_outcome',
+          sourceId: params.orderId,
+          runId: params.runId,
+          symbol: params.symbol,
+          textContent: text,
+          embedding,
+        });
+
+        log.debug('stored trade outcome embedding', {
+          orderId: params.orderId,
+          symbol: params.symbol,
+          assessmentId: params.assessmentId ?? null,
+        });
+      } catch (err) {
+        log.warn('failed to store trade outcome embedding', {
+          orderId: params.orderId,
           error: err instanceof Error ? err.message : String(err),
         });
       }

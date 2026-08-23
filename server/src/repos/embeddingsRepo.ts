@@ -1,9 +1,11 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 
+export type EmbeddingSourceType = 'assessment' | 'artifact' | 'trade_outcome';
+
 export interface EmbeddingRow {
   id: string;
-  sourceType: 'assessment' | 'artifact';
+  sourceType: EmbeddingSourceType;
   sourceId: string;
   runId: string;
   symbol: string | null;
@@ -13,7 +15,7 @@ export interface EmbeddingRow {
 }
 
 export interface CreateEmbeddingInput {
-  sourceType: 'assessment' | 'artifact';
+  sourceType: EmbeddingSourceType;
   sourceId: string;
   runId: string;
   symbol?: string;
@@ -23,7 +25,7 @@ export interface CreateEmbeddingInput {
 
 export interface SimilarResult {
   id: string;
-  sourceType: 'assessment' | 'artifact';
+  sourceType: EmbeddingSourceType;
   sourceId: string;
   runId: string;
   symbol: string | null;
@@ -93,7 +95,7 @@ export class EmbeddingsRepo {
       const similarity = cosineSimilarity(queryEmbedding, embedding);
       return {
         id: row.id,
-        sourceType: row.source_type as 'assessment' | 'artifact',
+        sourceType: row.source_type as EmbeddingSourceType,
         sourceId: row.source_id,
         runId: row.run_id,
         symbol: row.symbol,
@@ -108,7 +110,7 @@ export class EmbeddingsRepo {
       .slice(0, limit);
   }
 
-  getBySourceId(sourceType: 'assessment' | 'artifact', sourceId: string): EmbeddingRow | null {
+  getBySourceId(sourceType: EmbeddingSourceType, sourceId: string): EmbeddingRow | null {
     const row = this.db.prepare(`
       SELECT id, source_type, source_id, run_id, symbol, text_content, embedding_json, created_at
       FROM embeddings WHERE source_type = ? AND source_id = ?
@@ -127,7 +129,7 @@ export class EmbeddingsRepo {
 
     return {
       id: row.id,
-      sourceType: row.source_type as 'assessment' | 'artifact',
+      sourceType: row.source_type as EmbeddingSourceType,
       sourceId: row.source_id,
       runId: row.run_id,
       symbol: row.symbol,
