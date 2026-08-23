@@ -6,7 +6,7 @@ import { FillsRepo } from '../repos/fillsRepo.js';
 import { PositionsRepo, type PositionRow } from '../repos/positionsRepo.js';
 import { PortfolioRepo, type PortfolioRow } from '../repos/portfolioRepo.js';
 import { notionalCents } from '../lib/money.js';
-import { isTradingDay, nextSessionOpen, nextSessionClose, nextTradingDateStr, toETDateStr } from '../scheduler/marketCalendar.js';
+import { isTradingDay, nextSessionOpen, nextSessionClose, nextTradingDateStr, toETDateStr, isMarketHours } from '../scheduler/marketCalendar.js';
 import { logger } from '../lib/logger.js';
 
 const log = logger.child({ component: 'paper-broker' });
@@ -212,6 +212,23 @@ export class PaperBroker implements Broker {
 
     // Calculate fill price with slippage
     const estimateFillPriceCents = this.calculateFillPrice(req.side, latestBar.closeCents);
+
+    // Check if market is open; if closed, queue for next market open
+    const marketOpen = isMarketHours(new Date(now));
+
+    if (!marketOpen) {
+      const check = this.tryFillOrder(orderId, req, latestBar, estimateFillPriceCents, portfolio);
+      if (check.rejected) {
+        this.ordersRepo.updateStatus(orderId, 'rejected', undefined, check.rejectReason);
+        return this.rowToState(this.ordersRepo.get(orderId)!);
+      }
+      if (req.side === 'buy') {
+        this.reservedCashCents += notionalCents(req.qty, estimateFillPriceCents) + this.config.commissionCents;
+      }
+      this.ordersRepo.updateStatus(orderId, 'accepted');
+      log.debug('order queued for next market open (after-hours submission)', { orderId, symbol: req.symbol });
+      return this.rowToState(this.ordersRepo.get(orderId)!);
+    }
 
     // Handle next_open fill model
     if (this.config.fillModel === 'next_open') {

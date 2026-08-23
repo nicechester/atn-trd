@@ -17,6 +17,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const migrationsDir = path.join(__dirname, '../db/migrations');
 
+// Mock Date.now() to return a fixed time during market hours (Wed Aug 20, 2026 @ 10:00 AM ET)
+// This ensures tests run consistently regardless of actual system time
+const MARKET_HOURS_TIMESTAMP = new Date('2026-08-20T14:00:00Z').getTime(); // 10:00 AM ET
+const originalDateNow = Date.now;
+Date.now = () => MARKET_HOURS_TIMESTAMP;
+
 describe('PaperBroker', () => {
   let db: Database.Database;
   let broker: PaperBroker;
