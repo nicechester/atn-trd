@@ -50,7 +50,7 @@ export const SettingsSchema = z.object({
     autoBacktestMonths: z.number().int().min(1).max(36).default(12),
     mode: z.enum(['manual', 'dynamic']).default('manual'),
     dynamic: z.object({
-      universe: z.enum(['sp500', 'nasdaq100', 'custom']).default('sp500'),
+      universe: z.enum(['sp500', 'nasdaq100', 'russell2000', 'tech', 'healthcare', 'custom']).default('sp500'),
       customSymbols: z.array(z.string()).default([]),
       maxCandidates: z.number().int().min(1).max(500).default(50),
       minPrice: z.number().min(0).default(1),
