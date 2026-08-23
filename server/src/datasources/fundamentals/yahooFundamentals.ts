@@ -30,6 +30,7 @@ export const QUOTE_SUMMARY_MODULES = [
   'financialData',
   'earnings',
   'calendarEvents',
+  'assetProfile',
 ] as const;
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -99,6 +100,9 @@ export interface FundamentalsPayload {
   freeCashflow: number | null;
   targetMeanPrice: number | null;
   recommendationKey: string | null;
+  sector: string | null;
+  industry: string | null;
+  averageVolume: number | null;
   earnings: FundamentalsEarnings;
 }
 
@@ -123,6 +127,11 @@ export interface QuoteSummaryRaw {
     marketCap?: MaybeNumber;
     beta?: MaybeNumber;
     dividendYield?: MaybeNumber;
+    averageVolume?: MaybeNumber;
+  };
+  assetProfile?: {
+    sector?: string;
+    industry?: string;
   };
   defaultKeyStatistics?: {
     enterpriseValue?: MaybeNumber;
@@ -318,6 +327,7 @@ export class YahooFundamentalsDataSource extends BaseDataSource<
     const detail = raw.summaryDetail ?? {};
     const stats = raw.defaultKeyStatistics ?? {};
     const financial = raw.financialData ?? {};
+    const profile = raw.assetProfile ?? {};
 
     return {
       symbol,
@@ -350,6 +360,9 @@ export class YahooFundamentalsDataSource extends BaseDataSource<
       freeCashflow: num(financial.freeCashflow),
       targetMeanPrice: num(financial.targetMeanPrice),
       recommendationKey: financial.recommendationKey ?? null,
+      sector: profile.sector ?? null,
+      industry: profile.industry ?? null,
+      averageVolume: num(detail.averageVolume),
       earnings: this.toEarnings(raw),
     };
   }

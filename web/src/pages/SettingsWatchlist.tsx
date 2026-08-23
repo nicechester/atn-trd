@@ -5,7 +5,20 @@ import { useToast } from '../context/ToastContext';
 import styles from './SettingsForm.module.css';
 
 type WatchlistRow = { symbol: string; enabled: boolean; addedAt: number | null; note: string | null };
-type WatchlistSettings = { autoBacktest: boolean; autoBacktestMonths: number };
+type WatchlistSettings = {
+  autoBacktest: boolean;
+  autoBacktestMonths: number;
+  mode: 'manual' | 'dynamic';
+  dynamic: {
+    universe: 'sp500' | 'nasdaq100' | 'custom';
+    customSymbols: string[];
+    maxCandidates: number;
+    minPrice: number;
+    maxPrice: number;
+    minVolume: number;
+    minMarketCap: number;
+  };
+};
 
 export default function SettingsWatchlist(): JSX.Element {
   const { addToast } = useToast();
@@ -14,7 +27,20 @@ export default function SettingsWatchlist(): JSX.Element {
   const [input, setInput] = useState('');
   const [adding, setAdding] = useState(false);
   const [toggling, setToggling] = useState<Set<string>>(new Set());
-  const [watchlistSettings, setWatchlistSettings] = useState<WatchlistSettings>({ autoBacktest: true, autoBacktestMonths: 12 });
+  const [watchlistSettings, setWatchlistSettings] = useState<WatchlistSettings>({
+    autoBacktest: true,
+    autoBacktestMonths: 12,
+    mode: 'manual',
+    dynamic: {
+      universe: 'sp500',
+      customSymbols: [],
+      maxCandidates: 50,
+      minPrice: 1,
+      maxPrice: 10000,
+      minVolume: 1000000,
+      minMarketCap: 0,
+    },
+  });
 
   useEffect(() => {
     Promise.all([
@@ -23,10 +49,13 @@ export default function SettingsWatchlist(): JSX.Element {
     ]).then(([watchlistRes, settingsRes]) => {
       setSymbols(watchlistRes.data);
       if (settingsRes.data?.watchlist) {
-        setWatchlistSettings({
+        setWatchlistSettings(prev => ({
+          ...prev,
           autoBacktest: settingsRes.data.watchlist.autoBacktest ?? true,
           autoBacktestMonths: settingsRes.data.watchlist.autoBacktestMonths ?? 12,
-        });
+          mode: settingsRes.data.watchlist.mode ?? 'manual',
+          dynamic: settingsRes.data.watchlist.dynamic ?? prev.dynamic,
+        }));
       }
     }).catch(err => addToast(err instanceof Error ? err.message : 'Failed to load', 'error'))
       .finally(() => setLoading(false));
@@ -91,6 +120,29 @@ export default function SettingsWatchlist(): JSX.Element {
     }
   }
 
+  async function handleModeChange(newMode: 'manual' | 'dynamic') {
+    try {
+      await api.settings.patch({ watchlist: { mode: newMode } });
+      setWatchlistSettings(prev => ({ ...prev, mode: newMode }));
+      addToast(`Watchlist mode changed to ${newMode}`, 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to update setting', 'error');
+    }
+  }
+
+  async function handleDynamicConfigChange(updates: Partial<WatchlistSettings['dynamic']>) {
+    try {
+      await api.settings.patch({ watchlist: { dynamic: { ...watchlistSettings.dynamic, ...updates } } });
+      setWatchlistSettings(prev => ({
+        ...prev,
+        dynamic: { ...prev.dynamic, ...updates },
+      }));
+      addToast('Pre-filter settings updated', 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to update setting', 'error');
+    }
+  }
+
   return (
     <div>
       <Card title="Watchlist Settings">
@@ -106,6 +158,134 @@ export default function SettingsWatchlist(): JSX.Element {
           Backtests the last {watchlistSettings.autoBacktestMonths} months to help the agent learn from historical patterns.
         </p>
       </Card>
+
+      <div style={{ marginTop: 'var(--spacing-md)' }}>
+        <Card title="Watchlist Mode">
+          <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="watchlist-mode"
+                value="manual"
+                checked={watchlistSettings.mode === 'manual'}
+                onChange={() => handleModeChange('manual')}
+              />
+              <span>Manual (use watchlist symbols)</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="watchlist-mode"
+                value="dynamic"
+                checked={watchlistSettings.mode === 'dynamic'}
+                onChange={() => handleModeChange('dynamic')}
+              />
+              <span>Dynamic (use screener)</span>
+            </label>
+          </div>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginTop: 'var(--spacing-sm)', marginBottom: 0 }}>
+            Choose how to populate the candidate symbols: manually or via the AI screener.
+          </p>
+        </Card>
+      </div>
+
+      {watchlistSettings.mode === 'dynamic' && (
+        <div style={{ marginTop: 'var(--spacing-md)' }}>
+          <Card title="Screener Universe & Pre-Filter">
+            <div className={styles.field}>
+              <label className={styles.label}>Universe</label>
+              <select
+                className={styles.input}
+                value={watchlistSettings.dynamic.universe}
+                onChange={e => handleDynamicConfigChange({ universe: e.target.value as 'sp500' | 'nasdaq100' | 'custom' })}
+              >
+                <option value="sp500">S&P 500</option>
+                <option value="nasdaq100">NASDAQ 100</option>
+                <option value="custom">Custom List</option>
+              </select>
+            </div>
+
+            {watchlistSettings.dynamic.universe === 'custom' && (
+              <div className={styles.field}>
+                <label className={styles.label}>Custom Symbols (comma-separated)</label>
+                <textarea
+                  className={styles.input}
+                  value={watchlistSettings.dynamic.customSymbols.join(', ')}
+                  onChange={e => handleDynamicConfigChange({
+                    customSymbols: e.target.value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean)
+                  })}
+                  rows={4}
+                  placeholder="AAPL, MSFT, NVDA, ..."
+                />
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-md)' }}>
+              <div className={styles.field}>
+                <label className={styles.label}>Max Candidates</label>
+                <input
+                  className={styles.input}
+                  type="number"
+                  value={watchlistSettings.dynamic.maxCandidates}
+                  onChange={e => handleDynamicConfigChange({ maxCandidates: parseInt(e.target.value) || 50 })}
+                  min="1"
+                  max="500"
+                />
+              </div>
+
+              <div className={styles.field}>
+                <label className={styles.label}>Min Volume (shares)</label>
+                <input
+                  className={styles.input}
+                  type="number"
+                  value={watchlistSettings.dynamic.minVolume}
+                  onChange={e => handleDynamicConfigChange({ minVolume: parseFloat(e.target.value) || 0 })}
+                  min="0"
+                />
+              </div>
+
+              <div className={styles.field}>
+                <label className={styles.label}>Price Range (Min)</label>
+                <input
+                  className={styles.input}
+                  type="number"
+                  value={watchlistSettings.dynamic.minPrice}
+                  onChange={e => handleDynamicConfigChange({ minPrice: parseFloat(e.target.value) || 0 })}
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+
+              <div className={styles.field}>
+                <label className={styles.label}>Price Range (Max)</label>
+                <input
+                  className={styles.input}
+                  type="number"
+                  value={watchlistSettings.dynamic.maxPrice}
+                  onChange={e => handleDynamicConfigChange({ maxPrice: parseFloat(e.target.value) || 10000 })}
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+
+              <div className={styles.field}>
+                <label className={styles.label}>Min Market Cap (optional)</label>
+                <input
+                  className={styles.input}
+                  type="number"
+                  value={watchlistSettings.dynamic.minMarketCap}
+                  onChange={e => handleDynamicConfigChange({ minMarketCap: parseFloat(e.target.value) || 0 })}
+                  min="0"
+                />
+              </div>
+            </div>
+
+            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginTop: 'var(--spacing-md)', marginBottom: 0 }}>
+              The screener will filter the universe using these quantitative criteria, then use AI analysis to identify the most promising candidates.
+            </p>
+          </Card>
+        </div>
+      )}
 
       <div style={{ marginTop: 'var(--spacing-md)' }}>
       <Card title="Watchlist">

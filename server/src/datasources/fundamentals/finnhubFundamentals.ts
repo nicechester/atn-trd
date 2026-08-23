@@ -171,6 +171,9 @@ export class FinnhubFundamentalsDataSource extends BaseDataSource<
       freeCashflow: m['freeCashFlowTTM'] ? m['freeCashFlowTTM'] * 1e6 : null,
       targetMeanPrice: m['targetMeanPrice'] ?? null,
       recommendationKey: null,
+      sector: null, // Finnhub metric endpoint doesn't include sector
+      industry: null, // Finnhub metric endpoint doesn't include industry
+      averageVolume: null, // Finnhub metric endpoint doesn't include volume metrics
       earnings: emptyEarnings,
     };
   }

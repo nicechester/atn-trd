@@ -43,6 +43,9 @@ import { createTradingCycleService } from '../services/tradingCycleService.js';
 import { createEmbeddingService } from '../llm/embeddingService.js';
 import { createSemanticMemoryService, type SemanticMemoryService } from '../services/semanticMemoryService.js';
 import { resolveApiKey } from '../llm/openaiChatModel.js';
+import { ScreenerSelectionsRepo } from '../repos/screenerSelectionsRepo.js';
+import type { ScreenerAgentDeps } from '../agent/screenerAgent.js';
+import { runScreener } from '../services/screenerOrchestrationService.js';
 
 const log = logger.child({ component: 'scheduler' });
 
@@ -123,6 +126,19 @@ function registerJobs(): void {
           artifactsRepo,
         };
 
+        // screener deps
+        const screenerSelectionsRepo = new ScreenerSelectionsRepo(db);
+        const screenerAgentDeps: ScreenerAgentDeps = {
+          toolsDeps: {
+            sectorSource,
+            fundamentalsSource: dataSourceRegistry.get('fundamentals') as unknown as FundamentalsDataSource,
+            optionsSource: dataSourceRegistry.get('options') as unknown as OptionsDataSource,
+            cache: runCache,
+          },
+          messagesRepo,
+          artifactsRepo,
+        };
+
         // Seed portfolio on first run if not yet initialized
         if (!portfolioRepo.read()) {
           portfolioRepo.write({
@@ -147,6 +163,12 @@ function registerJobs(): void {
           getSettings,
           watchlistRepo,
           semanticMemory,
+          screenerDeps: {
+            screenerSelectionsRepo,
+            screenerAgentDeps,
+            toolsDeps: analystDeps.toolsDeps,
+          },
+          runScreener,
         });
 
         await tradingCycle.execute('scheduled');

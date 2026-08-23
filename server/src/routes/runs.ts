@@ -13,6 +13,7 @@ import { PricesRepo } from '../repos/pricesRepo.js';
 import { WatchlistRepo } from '../repos/watchlistRepo.js';
 import { CalibrationRepo } from '../repos/calibrationRepo.js';
 import { RejectionsRepo } from '../repos/rejectionsRepo.js';
+import { ScreenerSelectionsRepo } from '../repos/screenerSelectionsRepo.js';
 import { NotFoundError } from '../lib/errors.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
@@ -65,6 +66,7 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
     const messagesRepo = new AgentMessagesRepo(db);
     const artifactsRepo = new ArtifactsRepo(db);
     const rejectionsRepo = new RejectionsRepo(db);
+    const screenerSelectionsRepo = new ScreenerSelectionsRepo(db);
 
     const run = runsRepo.get(id);
     if (!run) {
@@ -77,6 +79,7 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
     const messages = messagesRepo.listByRun(id);
     const artifacts = artifactsRepo.listByRun(id);
     const rejections = rejectionsRepo.listByRun(id);
+    const screenerSelections = screenerSelectionsRepo.listByRun(id);
 
     // For each order, fetch its fills
     const ordersWithFills = orders.map(order => ({
@@ -94,6 +97,7 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
         rejections,
         messages,
         artifacts,
+        screenerSelections,
       },
     });
   } catch (err) {
