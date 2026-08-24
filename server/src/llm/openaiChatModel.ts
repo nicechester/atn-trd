@@ -219,7 +219,7 @@ export function resolveConfig(config: OpenAIChatModelConfig = {}): ResolvedChatM
   };
 }
 
-export type AgentKey = 'analyst' | 'portfolioManager';
+export type AgentKey = 'analyst' | 'portfolioManager' | 'screener';
 
 /**
  * Resolve LLM config for a specific agent, respecting per-agent model overrides.

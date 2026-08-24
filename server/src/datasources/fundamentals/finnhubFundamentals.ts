@@ -31,6 +31,17 @@ interface FinnhubMetricRaw {
   symbol?: string;
 }
 
+interface FinnhubQuoteRaw {
+  c?: number; // current price
+  d?: number; // change
+  dp?: number; // percent change
+  h?: number; // high
+  l?: number; // low
+  o?: number; // open
+  pc?: number; // previous close
+  t?: number; // timestamp
+}
+
 export class FinnhubFundamentalsDataSource extends BaseDataSource<
   FundamentalsQuery,
   DataSourceResult<FundamentalsPayload>
@@ -74,10 +85,13 @@ export class FinnhubFundamentalsDataSource extends BaseDataSource<
     const key = this.requireKey();
     const symbol = query.symbol.trim().toUpperCase();
 
-    const raw = await this.loadMetrics(key, symbol, ctx);
+    const [metrics, quote] = await Promise.all([
+      this.loadMetrics(key, symbol, ctx),
+      this.loadQuote(key, symbol, ctx),
+    ]);
 
     return {
-      data: this.toPayload(symbol, raw),
+      data: this.toPayload(symbol, metrics, quote),
       provider: this.provider,
       fetchedAt: this.now(),
       citations: [
@@ -86,7 +100,7 @@ export class FinnhubFundamentalsDataSource extends BaseDataSource<
           url: `https://finnhub.io/api/v1/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all`,
         },
       ],
-      raw,
+      raw: { metrics, quote },
     };
   }
 
@@ -126,8 +140,28 @@ export class FinnhubFundamentalsDataSource extends BaseDataSource<
     }
   }
 
-  private toPayload(symbol: string, raw: FinnhubMetricRaw): FundamentalsPayload {
+  private async loadQuote(
+    key: string,
+    symbol: string,
+    ctx?: FetchContext
+  ): Promise<FinnhubQuoteRaw | null> {
+    try {
+      return await this.http.json<FinnhubQuoteRaw>(
+        `quote?symbol=${encodeURIComponent(symbol)}`,
+        {
+          headers: { 'X-Finnhub-Token': key },
+          ...(ctx?.signal ? { signal: ctx.signal } : {}),
+        }
+      );
+    } catch {
+      // Quote is optional - don't fail if it's unavailable
+      return null;
+    }
+  }
+
+  private toPayload(symbol: string, raw: FinnhubMetricRaw, quote: FinnhubQuoteRaw | null): FundamentalsPayload {
     const m = raw.metric ?? {};
+    const price = quote?.c ?? null;
 
     const emptyEarnings: FundamentalsEarnings = {
       nextEarningsDate: null,
@@ -144,7 +178,7 @@ export class FinnhubFundamentalsDataSource extends BaseDataSource<
       symbol,
       name: null, // Finnhub metric endpoint doesn't include name
       currency: null,
-      price: null, // Use price from prices datasource
+      price,
       marketCap: m['marketCapitalization'] ? m['marketCapitalization'] * 1e6 : null,
       enterpriseValue: m['enterpriseValue'] ? m['enterpriseValue'] * 1e6 : null,
       trailingPE: m['peBasicExclExtraTTM'] ?? m['peTTM'] ?? null,
@@ -171,6 +205,9 @@ export class FinnhubFundamentalsDataSource extends BaseDataSource<
       freeCashflow: m['freeCashFlowTTM'] ? m['freeCashFlowTTM'] * 1e6 : null,
       targetMeanPrice: m['targetMeanPrice'] ?? null,
       recommendationKey: null,
+      sector: null, // Finnhub metric endpoint doesn't include sector
+      industry: null, // Finnhub metric endpoint doesn't include industry
+      averageVolume: m['10DayAverageTradingVolume'] ? m['10DayAverageTradingVolume'] * 1e6 : null,
       earnings: emptyEarnings,
     };
   }

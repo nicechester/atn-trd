@@ -13,6 +13,7 @@ import { PricesRepo } from '../repos/pricesRepo.js';
 import { WatchlistRepo } from '../repos/watchlistRepo.js';
 import { CalibrationRepo } from '../repos/calibrationRepo.js';
 import { RejectionsRepo } from '../repos/rejectionsRepo.js';
+import { ScreenerSelectionsRepo } from '../repos/screenerSelectionsRepo.js';
 import { NotFoundError } from '../lib/errors.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
@@ -20,6 +21,7 @@ import { CoverageServiceImpl } from '../services/coverageService.js';
 import { PaperBroker } from '../brokers/paperBroker.js';
 import { RunCache } from '../datasources/cache.js';
 import { createTradingCycleService } from '../services/tradingCycleService.js';
+import { runScreener } from '../services/screenerOrchestrationService.js';
 import { dataSourceRegistry } from '../datasources/registry.js';
 import type { NewsDataSource } from '../datasources/news/index.js';
 import type { FundamentalsDataSource } from '../datasources/fundamentals/index.js';
@@ -65,6 +67,7 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
     const messagesRepo = new AgentMessagesRepo(db);
     const artifactsRepo = new ArtifactsRepo(db);
     const rejectionsRepo = new RejectionsRepo(db);
+    const screenerSelectionsRepo = new ScreenerSelectionsRepo(db);
 
     const run = runsRepo.get(id);
     if (!run) {
@@ -77,6 +80,7 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
     const messages = messagesRepo.listByRun(id);
     const artifacts = artifactsRepo.listByRun(id);
     const rejections = rejectionsRepo.listByRun(id);
+    const screenerSelections = screenerSelectionsRepo.listByRun(id);
 
     // For each order, fetch its fills
     const ordersWithFills = orders.map(order => ({
@@ -94,6 +98,7 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
         rejections,
         messages,
         artifacts,
+        screenerSelections,
       },
     });
   } catch (err) {
@@ -148,6 +153,7 @@ export async function triggerRunHandler(
     const artifactsRepo   = new ArtifactsRepo(db);
     const watchlistRepo   = new WatchlistRepo(db);
     const calibrationRepo = new CalibrationRepo(db);
+    const screenerSelectionsRepo = new ScreenerSelectionsRepo(db);
 
     // semantic memory (optional, guarded against unconfigured API key)
     let semanticMemory: SemanticMemoryService | undefined;
@@ -212,6 +218,15 @@ export async function triggerRunHandler(
       watchlistRepo,
       calibrationRepo,
       semanticMemory,
+      screenerDeps: {
+        screenerSelectionsRepo,
+        screenerAgentDeps: {
+          messagesRepo,
+          artifactsRepo,
+        },
+        toolsDeps: analystDeps.toolsDeps,
+      },
+      runScreener,
     });
 
     await tradingCycle.execute('manual');

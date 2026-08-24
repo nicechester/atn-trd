@@ -7,7 +7,7 @@ import { EventEmitter } from 'events';
 
 export interface RunProgressEvent {
   runId: string;
-  phase: 'starting' | 'analyst' | 'portfolio-manager' | 'risk' | 'orders' | 'complete';
+  phase: 'starting' | 'screener' | 'analyst' | 'portfolio-manager' | 'risk' | 'orders' | 'complete';
   symbol?: string;
   tool?: string;
   message: string;

@@ -48,6 +48,16 @@ export const SettingsSchema = z.object({
     })).default([]),
     autoBacktest: z.boolean().default(true),
     autoBacktestMonths: z.number().int().min(1).max(36).default(12),
+    mode: z.enum(['manual', 'dynamic']).default('manual'),
+    dynamic: z.object({
+      universes: z.array(z.enum(['sp500', 'nasdaq100', 'russell2000', 'tech', 'healthcare', 'commodity', 'crypto', 'custom'])).default(['sp500']),
+      customSymbols: z.array(z.string()).default([]),
+      maxCandidates: z.number().int().min(1).max(500).default(50),
+      minPrice: z.number().min(0).default(1),
+      maxPrice: z.number().min(0).default(10000),
+      minVolume: z.number().min(0).default(1000000),
+      minMarketCap: z.number().min(0).default(0),
+    }).default({}),
   }).default({}),
 
   dataSources: z.object({
@@ -78,6 +88,7 @@ export const SettingsSchema = z.object({
     agents: z.object({
       analyst: AgentModelOverrideSchema,
       portfolioManager: AgentModelOverrideSchema,
+      screener: AgentModelOverrideSchema,
     }).default({}),
   }).default({}),
 
@@ -114,6 +125,10 @@ export const SettingsSchema = z.object({
     enabled: z.boolean().default(false),
   }).default({}),
 
+  screener: z.object({
+    enabled: z.boolean().default(false),
+  }).default({}),
+
   updatedAt: z.number().int().optional(),
 });
 
@@ -143,6 +158,16 @@ export const DEFAULT_SETTINGS: Settings = {
     symbols: [],
     autoBacktest: true,
     autoBacktestMonths: 12,
+    mode: 'manual',
+    dynamic: {
+      universes: ['sp500'],
+      customSymbols: [],
+      maxCandidates: 50,
+      minPrice: 1,
+      maxPrice: 10000,
+      minVolume: 1000000,
+      minMarketCap: 0,
+    },
   },
   dataSources: {
     news: { provider: 'finnhub', enabled: true },
@@ -159,6 +184,7 @@ export const DEFAULT_SETTINGS: Settings = {
     agents: {
       analyst: { model: '' },
       portfolioManager: { model: '' },
+      screener: { model: '' },
     },
   },
   schedule: {
@@ -184,6 +210,9 @@ export const DEFAULT_SETTINGS: Settings = {
     slippageBps: 5,
   },
   semanticMemory: {
+    enabled: false,
+  },
+  screener: {
     enabled: false,
   },
 };

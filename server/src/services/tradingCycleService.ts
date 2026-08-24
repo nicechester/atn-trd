@@ -24,35 +24,13 @@ import { emitProgress } from './runProgress.js';
 import type { OrderRequest } from '../brokers/types.js';
 import type { Decision } from '@atn-trd/shared';
 import { resolveConfigForAgent } from '../llm/openaiChatModel.js';
+import { runWithConcurrency } from '../lib/concurrency.js';
+import type { AgentToolsDeps } from '../agent/tools.js';
 
 const log = logger.child({ component: 'trading-cycle' });
 
 const RUN_TIMEOUT_MS = 60 * 60 * 1000;
 const ANALYST_CONCURRENCY = 7;
-
-/**
- * Run items with bounded concurrency.
- * Distributes work evenly across a limited number of workers.
- */
-async function runWithConcurrency<T>(
-  items: string[],
-  limit: number,
-  fn: (item: string) => Promise<T>
-): Promise<T[]> {
-  const results: T[] = new Array(items.length);
-  let nextIndex = 0;
-
-  async function worker(): Promise<void> {
-    while (nextIndex < items.length) {
-      const i = nextIndex++;
-      results[i] = await fn(items[i]);
-    }
-  }
-
-  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
-  await Promise.all(workers);
-  return results;
-}
 
 export interface TradingCycleDeps {
   db: Database.Database;
@@ -68,6 +46,12 @@ export interface TradingCycleDeps {
   watchlistRepo: WatchlistRepo;
   calibrationRepo?: CalibrationRepo;
   semanticMemory?: SemanticMemoryService;
+  screenerDeps?: {
+    screenerSelectionsRepo: any;
+    screenerAgentDeps: any;
+    toolsDeps: AgentToolsDeps;
+  };
+  runScreener?: (runId: string, settings: Settings, deps: any) => Promise<any>;
 }
 
 export interface TradingCycleService {
@@ -176,13 +160,39 @@ class TradingCycleServiceImpl implements TradingCycleService {
       // -- Step D: Snapshot portfolio --------------------------------
       const portfolio = await this.deps.portfolioService.getPortfolio();
 
-      // -- Step E: Get symbols ---------------------------------------
-      const symbols = this.deps.watchlistRepo.list()
-        .filter(s => s.enabled)
-        .map(s => s.symbol);
+      // -- Step E: Get symbols or run screener ----------------------
+      let symbols: string[] = [];
+
+      // If screener is enabled and in dynamic mode, run it to generate symbols
+      if (this.deps.runScreener && this.deps.screenerDeps) {
+        try {
+          emitProgress(runId, 'screener', 'Running screener...');
+          const screenerResult = await this.deps.runScreener(runId, settings, this.deps.screenerDeps);
+          if (screenerResult?.selections && screenerResult.selections.length > 0) {
+            symbols = screenerResult.selections.map((s: any) => s.symbol);
+            log.info('screener selected symbols', { runId, count: symbols.length });
+          }
+        } catch (err) {
+          log.warn('screener failed, falling back to manual watchlist', {
+            runId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      // Fall back to manual watchlist if screener didn't produce symbols
+      if (symbols.length === 0) {
+        symbols = this.deps.watchlistRepo.list()
+          .filter(s => s.enabled)
+          .map(s => s.symbol);
+      }
+
+      // Always include existing portfolio positions to ensure re-analysis
+      const positionSymbols = portfolio.positions.map(p => p.symbol);
+      symbols = Array.from(new Set([...symbols, ...positionSymbols])); // deduplicate
 
       if (symbols.length === 0) {
-        this.deps.runsRepo.setSkipped(runId, 'watchlist is empty');
+        this.deps.runsRepo.setSkipped(runId, 'no symbols to analyze');
         return;
       }
 
