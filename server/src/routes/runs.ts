@@ -188,6 +188,10 @@ export async function triggerRunHandler(
         decisionsRepo,
         cache: runCache,
         semanticMemory,
+        llmLimits: {
+          maxNewsArticles: settings.llm.maxNewsArticles,
+          maxNewsDays: settings.llm.maxNewsDays,
+        },
       },
       messagesRepo,
       artifactsRepo,

@@ -25,13 +25,20 @@ export interface AgentToolsDeps {
   decisionsRepo: DecisionsRepo;
   cache: RunCache;
   semanticMemory?: SemanticMemoryService;
+  llmLimits?: {
+    maxNewsArticles: number;
+    maxNewsDays: number;
+  };
 }
 
 function makeGetNews(deps: AgentToolsDeps) {
+  const maxArticles = deps.llmLimits?.maxNewsArticles ?? 50;
+  const maxDays = deps.llmLimits?.maxNewsDays ?? 90;
+
   const schema = z.object({
     symbol: z.string().describe('Stock ticker symbol'),
-    days: z.number().int().optional().describe('Days back to search (1–90, default 7)'),
-    limit: z.number().int().optional().describe('Max articles to return (1–50, default 20)'),
+    days: z.number().int().optional().describe(`Days back to search (1–${maxDays}, default 7)`),
+    limit: z.number().int().optional().describe(`Max articles to return (1–${maxArticles}, default 20)`),
   });
 
   return new DynamicStructuredTool({
@@ -42,12 +49,11 @@ function makeGetNews(deps: AgentToolsDeps) {
       try {
         const symbol = input.symbol;
         const days = input.days ?? 7;
-        const limit = input.limit ?? 20;
+        const limit = input.limit ?? Math.min(20, maxArticles);
 
-        // Clamp days to 1–90
-        const clampedDays = Math.max(1, Math.min(90, days));
-        // Clamp limit to 1–50
-        const clampedLimit = Math.max(1, Math.min(50, limit));
+        // Clamp to configured limits
+        const clampedDays = Math.max(1, Math.min(maxDays, days));
+        const clampedLimit = Math.max(1, Math.min(maxArticles, limit));
 
         // Cache by symbol only (ignore days) - news doesn't change that fast
         const cacheKey = `news:${symbol}`;
@@ -382,13 +388,16 @@ export function createAgentTools(deps: AgentToolsDeps) {
  * Failures are silently ignored - agent tools will retry if needed.
  */
 export async function prefetchForSymbol(symbol: string, deps: AgentToolsDeps): Promise<void> {
+  const maxDays = deps.llmLimits?.maxNewsDays ?? 90;
+  const maxArticles = deps.llmLimits?.maxNewsArticles ?? 50;
+
   const now = Date.now();
-  const from = toIsoDate(now - 7 * 86_400_000);
+  const from = toIsoDate(now - Math.min(7, maxDays) * 86_400_000);
   const to = toIsoDate(now);
 
   await Promise.allSettled([
     deps.cache.getOrFetch(`news:${symbol}`, 300_000, () =>
-      deps.newsSource.fetch({ symbol, from, to, limit: 20 })
+      deps.newsSource.fetch({ symbol, from, to, limit: Math.min(20, maxArticles) })
     ),
     deps.cache.getOrFetch(`fundamentals:${symbol}`, 60_000, () =>
       deps.fundamentalsSource.fetch({ symbol })

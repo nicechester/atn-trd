@@ -85,6 +85,9 @@ export const SettingsSchema = z.object({
     temperature: z.number().min(0).max(2).default(0.7),
     timeoutMs: z.number().int().positive().default(30000),
     baseUrl: z.string().default(''),
+    concurrency: z.number().int().min(1).max(20).default(7),
+    maxNewsArticles: z.number().int().min(1).max(100).default(50),
+    maxNewsDays: z.number().int().min(1).max(90).default(90),
     agents: z.object({
       analyst: AgentModelOverrideSchema,
       portfolioManager: AgentModelOverrideSchema,
@@ -181,6 +184,9 @@ export const DEFAULT_SETTINGS: Settings = {
     temperature: 0.7,
     timeoutMs: 30000,
     baseUrl: '',
+    concurrency: 7,
+    maxNewsArticles: 50,
+    maxNewsDays: 90,
     agents: {
       analyst: { model: '' },
       portfolioManager: { model: '' },

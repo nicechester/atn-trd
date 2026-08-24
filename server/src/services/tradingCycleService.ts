@@ -30,7 +30,6 @@ import type { AgentToolsDeps } from '../agent/tools.js';
 const log = logger.child({ component: 'trading-cycle' });
 
 const RUN_TIMEOUT_MS = 60 * 60 * 1000;
-const ANALYST_CONCURRENCY = 7;
 
 export interface TradingCycleDeps {
   db: Database.Database;
@@ -215,7 +214,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
       emitProgress(runId, 'analyst', `Starting analysis for ${symbols.length} symbols`);
       analystStartTime = Date.now();
 
-      const rawResults = await runWithConcurrency(symbols, ANALYST_CONCURRENCY, async (symbol) => {
+      const rawResults = await runWithConcurrency(symbols, settings.llm.concurrency, async (symbol) => {
         try {
           return await runAnalystAgent(runId, symbol, this.deps.analystDeps, analystConfig);
         } catch (err) {
