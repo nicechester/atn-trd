@@ -59,7 +59,7 @@ graph LR
     Earnings -->|dates/estimates| Data
     Options -->|IV/put-call| Data
     
-    Screener -->|ScreenerSelection[]| Output["symbol + rationale + conviction"]
+    Screener -->|selections| Output["symbol + rationale + conviction"]
     Output -->|persisted| DB[("screener_selections")]
     
     style Screener fill:#8b5cf6,color:#fff
