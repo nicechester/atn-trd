@@ -54,7 +54,7 @@ export async function runScreener(
     // 3. Pre-filter: deterministic quant filter
     emitProgress(runId, 'screener', 'Pre-filtering universe...', {});
     const preFilterConfig: PreFilterConfig = {
-      universe: dynamicConfig.universe,
+      universes: dynamicConfig.universes,
       customSymbols: dynamicConfig.customSymbols,
       maxCandidates: dynamicConfig.maxCandidates,
       minPrice: dynamicConfig.minPrice,

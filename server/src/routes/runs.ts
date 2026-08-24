@@ -21,6 +21,7 @@ import { CoverageServiceImpl } from '../services/coverageService.js';
 import { PaperBroker } from '../brokers/paperBroker.js';
 import { RunCache } from '../datasources/cache.js';
 import { createTradingCycleService } from '../services/tradingCycleService.js';
+import { runScreener } from '../services/screenerOrchestrationService.js';
 import { dataSourceRegistry } from '../datasources/registry.js';
 import type { NewsDataSource } from '../datasources/news/index.js';
 import type { FundamentalsDataSource } from '../datasources/fundamentals/index.js';
@@ -152,6 +153,7 @@ export async function triggerRunHandler(
     const artifactsRepo   = new ArtifactsRepo(db);
     const watchlistRepo   = new WatchlistRepo(db);
     const calibrationRepo = new CalibrationRepo(db);
+    const screenerSelectionsRepo = new ScreenerSelectionsRepo(db);
 
     // semantic memory (optional, guarded against unconfigured API key)
     let semanticMemory: SemanticMemoryService | undefined;
@@ -216,6 +218,15 @@ export async function triggerRunHandler(
       watchlistRepo,
       calibrationRepo,
       semanticMemory,
+      screenerDeps: {
+        screenerSelectionsRepo,
+        screenerAgentDeps: {
+          messagesRepo,
+          artifactsRepo,
+        },
+        toolsDeps: analystDeps.toolsDeps,
+      },
+      runScreener,
     });
 
     await tradingCycle.execute('manual');

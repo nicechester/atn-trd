@@ -7,7 +7,7 @@ import type { FundamentalsPayload } from '../datasources/fundamentals/yahooFunda
 const log = logger.child({ component: 'pre-filter' });
 
 export interface PreFilterConfig {
-  universe: 'sp500' | 'nasdaq100' | 'custom';
+  universes: ('sp500' | 'nasdaq100' | 'russell2000' | 'tech' | 'healthcare' | 'commodity' | 'crypto' | 'custom')[];
   customSymbols?: string[];
   maxCandidates: number;
   minPrice: number;
@@ -37,8 +37,8 @@ export async function runPreFilter(
   deps: AgentToolsDeps
 ): Promise<PreFilterResult> {
   // 1. Get universe symbols
-  const symbols = getUniverse(config.universe, config.customSymbols);
-  log.debug('loaded universe', { universe: config.universe, count: symbols.length });
+  const symbols = getUniverse(config.universes, config.customSymbols);
+  log.debug('loaded universe', { universes: config.universes, count: symbols.length });
 
   if (symbols.length === 0) {
     log.warn('empty universe');

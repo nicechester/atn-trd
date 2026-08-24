@@ -5,12 +5,14 @@ import { useToast } from '../context/ToastContext';
 import styles from './SettingsForm.module.css';
 
 type WatchlistRow = { symbol: string; enabled: boolean; addedAt: number | null; note: string | null };
+type UniverseOption = 'sp500' | 'nasdaq100' | 'russell2000' | 'tech' | 'healthcare' | 'commodity' | 'crypto' | 'custom';
+
 type WatchlistSettings = {
   autoBacktest: boolean;
   autoBacktestMonths: number;
   mode: 'manual' | 'dynamic';
   dynamic: {
-    universe: 'sp500' | 'nasdaq100' | 'russell2000' | 'tech' | 'healthcare' | 'commodity' | 'crypto' | 'custom';
+    universes: UniverseOption[];
     customSymbols: string[];
     maxCandidates: number;
     minPrice: number;
@@ -32,7 +34,7 @@ export default function SettingsWatchlist(): JSX.Element {
     autoBacktestMonths: 12,
     mode: 'manual',
     dynamic: {
-      universe: 'sp500',
+      universes: ['sp500'],
       customSymbols: [],
       maxCandidates: 50,
       minPrice: 1,
@@ -193,24 +195,39 @@ export default function SettingsWatchlist(): JSX.Element {
         <div style={{ marginTop: 'var(--spacing-md)' }}>
           <Card title="Screener Universe & Pre-Filter">
             <div className={styles.field}>
-              <label className={styles.label}>Universe</label>
-              <select
-                className={styles.input}
-                value={watchlistSettings.dynamic.universe}
-                onChange={e => handleDynamicConfigChange({ universe: e.target.value as 'sp500' | 'nasdaq100' | 'russell2000' | 'tech' | 'healthcare' | 'commodity' | 'crypto' | 'custom' })}
-              >
-                <option value="sp500">S&P 500</option>
-                <option value="nasdaq100">NASDAQ 100</option>
-                <option value="russell2000">Russell 2000</option>
-                <option value="tech">Tech Sector</option>
-                <option value="healthcare">Healthcare Sector</option>
-                <option value="commodity">Commodity ETFs</option>
-                <option value="crypto">Crypto ETFs</option>
-                <option value="custom">Custom List</option>
-              </select>
+              <label className={styles.label}>Universes (Select Multiple)</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--spacing-sm)' }}>
+                {(['sp500', 'nasdaq100', 'russell2000', 'tech', 'healthcare', 'commodity', 'crypto', 'custom'] as const).map(universeKey => {
+                  const labels: Record<UniverseOption, string> = {
+                    sp500: 'S&P 500',
+                    nasdaq100: 'NASDAQ 100',
+                    russell2000: 'Russell 2000',
+                    tech: 'Tech Sector',
+                    healthcare: 'Healthcare Sector',
+                    commodity: 'Commodity ETFs',
+                    crypto: 'Crypto ETFs',
+                    custom: 'Custom List',
+                  };
+                  return (
+                    <label key={universeKey} style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={watchlistSettings.dynamic.universes.includes(universeKey)}
+                        onChange={e => {
+                          const updated = e.target.checked
+                            ? [...watchlistSettings.dynamic.universes, universeKey]
+                            : watchlistSettings.dynamic.universes.filter(u => u !== universeKey);
+                          handleDynamicConfigChange({ universes: updated });
+                        }}
+                      />
+                      <span>{labels[universeKey]}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
 
-            {watchlistSettings.dynamic.universe === 'custom' && (
+            {watchlistSettings.dynamic.universes.includes('custom') && (
               <div className={styles.field}>
                 <label className={styles.label}>Custom Symbols (comma-separated)</label>
                 <textarea

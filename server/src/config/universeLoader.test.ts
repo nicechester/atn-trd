@@ -4,7 +4,7 @@ import { getUniverse } from './universeLoader.js';
 
 describe('universeLoader', () => {
   it('loads sp500 universe', () => {
-    const symbols = getUniverse('sp500');
+    const symbols = getUniverse(['sp500']);
     assert.ok(Array.isArray(symbols));
     assert.ok(symbols.length > 0);
     assert.ok(symbols.includes('AAPL'));
@@ -12,7 +12,7 @@ describe('universeLoader', () => {
   });
 
   it('loads nasdaq100 universe', () => {
-    const symbols = getUniverse('nasdaq100');
+    const symbols = getUniverse(['nasdaq100']);
     assert.ok(Array.isArray(symbols));
     assert.ok(symbols.length > 0);
     assert.ok(symbols.includes('AAPL'));
@@ -21,12 +21,20 @@ describe('universeLoader', () => {
 
   it('returns custom symbols', () => {
     const customSymbols = ['FOO', 'BAR', 'BAZ'];
-    const symbols = getUniverse('custom', customSymbols);
-    assert.deepStrictEqual(symbols, customSymbols);
+    const symbols = getUniverse(['custom'], customSymbols);
+    assert.deepStrictEqual(Array.from(new Set(symbols)).sort(), customSymbols.sort());
   });
 
   it('returns empty array for custom without symbols', () => {
-    const symbols = getUniverse('custom');
+    const symbols = getUniverse(['custom']);
     assert.deepStrictEqual(symbols, []);
+  });
+
+  it('merges multiple universes', () => {
+    const symbols = getUniverse(['sp500', 'nasdaq100']);
+    assert.ok(Array.isArray(symbols));
+    assert.ok(symbols.length > 0);
+    assert.ok(symbols.includes('AAPL'));
+    assert.ok(symbols.includes('MSFT'));
   });
 });

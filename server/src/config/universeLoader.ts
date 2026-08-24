@@ -65,12 +65,20 @@ function loadUniverse(): UniverseConfig {
   }
 }
 
-export function getUniverse(type: 'sp500' | 'nasdaq100' | 'russell2000' | 'tech' | 'healthcare' | 'commodity' | 'crypto' | 'custom', customSymbols?: string[]): string[] {
+export function getUniverse(
+  types: ('sp500' | 'nasdaq100' | 'russell2000' | 'tech' | 'healthcare' | 'commodity' | 'crypto' | 'custom')[],
+  customSymbols?: string[]
+): string[] {
   const universe = loadUniverse();
+  const merged = new Set<string>();
 
-  if (type === 'custom') {
-    return customSymbols || [];
+  for (const type of types) {
+    if (type === 'custom') {
+      (customSymbols || []).forEach(s => merged.add(s));
+    } else {
+      (universe[type] || []).forEach(s => merged.add(s));
+    }
   }
 
-  return universe[type] || [];
+  return Array.from(merged);
 }

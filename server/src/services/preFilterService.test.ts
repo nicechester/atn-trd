@@ -59,7 +59,7 @@ describe('preFilterService', () => {
     };
 
     const config: PreFilterConfig = {
-      universe: 'custom',
+      universes: ['custom'],
       customSymbols: ['CHEAP', 'PRICEY', 'GOOD'],
       maxCandidates: 10,
       minPrice: 1,
@@ -106,7 +106,7 @@ describe('preFilterService', () => {
     };
 
     const config: PreFilterConfig = {
-      universe: 'custom',
+      universes: ['custom'],
       customSymbols: ['LOWVOL', 'HIGHVOL'],
       maxCandidates: 10,
       minPrice: 1,
@@ -140,7 +140,7 @@ describe('preFilterService', () => {
     };
 
     const config: PreFilterConfig = {
-      universe: 'custom',
+      universes: ['custom'],
       customSymbols: ['GOOD', 'BAD'],
       maxCandidates: 10,
       minPrice: 1,
@@ -189,7 +189,7 @@ describe('preFilterService', () => {
     };
 
     const config: PreFilterConfig = {
-      universe: 'custom',
+      universes: ['custom'],
       customSymbols: ['A', 'B', 'C'],
       maxCandidates: 2, // Should only keep top 2 by market cap
       minPrice: 1,
