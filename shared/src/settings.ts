@@ -88,6 +88,7 @@ export const SettingsSchema = z.object({
     concurrency: z.number().int().min(1).max(20).default(7),
     maxNewsArticles: z.number().int().min(1).max(100).default(50),
     maxNewsDays: z.number().int().min(1).max(90).default(90),
+    maxContextTokens: z.number().int().min(4000).max(128000).default(28000),
     agents: z.object({
       analyst: AgentModelOverrideSchema,
       portfolioManager: AgentModelOverrideSchema,
@@ -187,6 +188,7 @@ export const DEFAULT_SETTINGS: Settings = {
     concurrency: 7,
     maxNewsArticles: 50,
     maxNewsDays: 90,
+    maxContextTokens: 28000,
     agents: {
       analyst: { model: '' },
       portfolioManager: { model: '' },

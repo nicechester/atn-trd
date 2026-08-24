@@ -198,6 +198,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
       // -- Step F: Prefetch data for all symbols concurrently --------
       const analystConfig = {
         investorProfile: settings.investorProfile,
+        maxContextTokens: settings.llm.maxContextTokens,
       };
       const pmConfig = {};
 

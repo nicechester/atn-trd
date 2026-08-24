@@ -72,7 +72,18 @@ function makeGetNews(deps: AgentToolsDeps) {
           });
         });
 
-        return JSON.stringify(result.data);
+        // Truncate articles for LLM context - keep headline + truncated summary
+        const truncated = {
+          ...result.data,
+          articles: result.data.articles.map(a => ({
+            headline: a.headline,
+            summary: a.summary?.slice(0, 300) || '',
+            source: a.source,
+            publishedAt: a.publishedAt,
+          })),
+        };
+
+        return JSON.stringify(truncated);
       } catch (err) {
         return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
       }

@@ -13,6 +13,7 @@ type LlmFormState = {
   concurrency: number;
   maxNewsArticles: number;
   maxNewsDays: number;
+  maxContextTokens: number;
   analystModel: string;
   portfolioManagerModel: string;
   semanticMemoryEnabled: boolean;
@@ -44,6 +45,7 @@ export default function SettingsLlm(): JSX.Element {
           concurrency: llm.concurrency ?? 7,
           maxNewsArticles: llm.maxNewsArticles ?? 50,
           maxNewsDays: llm.maxNewsDays ?? 90,
+          maxContextTokens: llm.maxContextTokens ?? 28000,
           analystModel: llm.agents?.analyst?.model ?? '',
           portfolioManagerModel: llm.agents?.portfolioManager?.model ?? '',
           semanticMemoryEnabled: settingsRes.data.semanticMemory?.enabled ?? false,
@@ -83,6 +85,7 @@ export default function SettingsLlm(): JSX.Element {
           concurrency: form.concurrency,
           maxNewsArticles: form.maxNewsArticles,
           maxNewsDays: form.maxNewsDays,
+          maxContextTokens: form.maxContextTokens,
           agents: {
             analyst: { model: form.analystModel.trim() },
             portfolioManager: { model: form.portfolioManagerModel.trim() },
@@ -205,6 +208,19 @@ export default function SettingsLlm(): JSX.Element {
               onChange={e => setForm({ ...form, maxNewsDays: Number(e.target.value) })}
             />
             <p className={styles.hint}>How far back to fetch news (1–90 days). Shorter windows reduce prompt size.</p>
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label}>Max Context Tokens</label>
+            <input
+              className={styles.input}
+              type="number"
+              min="4000"
+              max="128000"
+              step="1000"
+              value={form.maxContextTokens}
+              onChange={e => setForm({ ...form, maxContextTokens: Number(e.target.value) })}
+            />
+            <p className={styles.hint}>Token limit for LLM context (4K–128K). Use ~28K for local LLMs with limited VRAM.</p>
           </div>
           <div className={styles.field}>
             <label className={styles.label}>Analyst Model Override</label>
