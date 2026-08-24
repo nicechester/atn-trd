@@ -2,23 +2,81 @@
 
 [← back to index](README.md)
 
-## Three stages: LLM proposes, code disposes
+## Four stages: LLM proposes, code disposes
 
 ```mermaid
 graph TD
-    A["Watchlist<br/>Symbols"] -->|per symbol| B["Stage A<br/>Analyst Agent"]
-    B -->|SymbolAssessment| C["Stage B<br/>Portfolio Manager"]
+    U["Universe<br/>sp500/nasdaq100/etc"] --> PF["Pre-Filter<br/>(deterministic)"]
+    PF -->|~50 candidates| S["Stage 0<br/>Screener Agent"]
+    S -->|selected symbols| A["Stage A<br/>Analyst Agent"]
+    W["Manual Watchlist"] -.->|fallback| A
+    P["Portfolio Positions"] -->|always included| A
+    A -->|SymbolAssessment| C["Stage B<br/>Portfolio Manager"]
     C -->|Target Weights| D["Stage C<br/>Risk Engine"]
     D -->|Orders| E["PaperBroker"]
     
-    B -.->|research_artifacts| F[("Database")]
-    B -.->|agent_messages| F
+    S -.->|screener_selections| F[("Database")]
+    A -.->|research_artifacts| F
+    A -.->|agent_messages| F
     D -.->|audit trail| F
     
-    style B fill:#2563eb,color:#fff,stroke:#1e40af
+    style PF fill:#8b5cf6,color:#fff,stroke:#6d28d9
+    style S fill:#8b5cf6,color:#fff,stroke:#6d28d9
+    style A fill:#2563eb,color:#fff,stroke:#1e40af
     style C fill:#2563eb,color:#fff,stroke:#1e40af
     style D fill:#2563eb,color:#fff,stroke:#1e40af
 ```
+
+## Stage 0 — Screener (optional, when `watchlist.mode = 'dynamic'`)
+
+When enabled, the screener autonomously selects which symbols to analyze from a configurable universe. This replaces the manual watchlist with AI-driven stock selection.
+
+### Pre-Filter (deterministic, no LLM)
+
+Before the LLM sees any candidates, a quantitative pre-filter reduces the universe to quality candidates:
+
+1. **Load universe** — Configurable: `sp500`, `nasdaq100`, `russell2000`, `tech`, `healthcare`, `commodity`, `crypto`, or `custom` symbols
+2. **Fetch fundamentals** — Price, volume, market cap from Finnhub (with Yahoo fallback)
+3. **Apply filters** — `minPrice`, `maxPrice`, `minVolume`, `minMarketCap`
+4. **Sort by market cap** — Favors larger, more liquid names
+5. **Cap at `maxCandidates`** — Default 50
+
+This takes ~13 minutes for 400 symbols (Finnhub free tier: 60 req/min, 2 calls/symbol for metrics + quote).
+
+### Screener Agent (LangGraph ReAct)
+
+The screener agent evaluates pre-filtered candidates using sector momentum, earnings catalysts, and options sentiment:
+
+```mermaid
+graph LR
+    Screener["Screener<br/>Agent"]
+    
+    Screener -->|calls| Sector["get_sector_performance"]
+    Screener -->|calls| Earnings["get_earnings_calendar"]
+    Screener -->|calls| Options["get_unusual_options_activity"]
+    
+    Sector -->|momentum| Data[("Cached")]
+    Earnings -->|dates/estimates| Data
+    Options -->|IV/put-call| Data
+    
+    Screener -->|ScreenerSelection[]| Output["symbol + rationale + conviction"]
+    Output -->|persisted| DB[("screener_selections")]
+    
+    style Screener fill:#8b5cf6,color:#fff
+    style Sector fill:#6b7280,color:#fff
+    style Earnings fill:#6b7280,color:#fff
+    style Options fill:#6b7280,color:#fff
+```
+
+Output: `ScreenerSelection[]` with symbol, rationale, and conviction score (0-1). These are persisted to `screener_selections` table for auditability.
+
+### Symbol Resolution
+
+The final symbol list for analysis is: `screener_selections ∪ manual_watchlist ∪ portfolio_positions` (deduplicated). If the screener returns no selections, falls back to manual watchlist + positions.
+
+---
+
+## Stage A — Analyst (per symbol, LangGraph `createReactAgent` with tools)
 
 **Stage A — Analyst (per symbol, LangGraph `createReactAgent` with tools).**
 Same shape as lexchat's `buildLexiconAgent` — `createReactAgent({ llm, tools,
@@ -124,7 +182,10 @@ evidence is persisted rather than left to the model's discretion.
 **Daily Schedule (ET):**
 - **09:30–16:00** — Market trading hours
 - **16:30** — Agent job runs (default cron `30 16 * * 1-5`)
-  - Stage A: Analyst agent (per symbol)
+  - Stage 0: Screener (if `watchlist.mode = 'dynamic'`)
+    - Pre-filter: ~13 min for 400 symbols
+    - Screener agent: ~2 min
+  - Stage A: Analyst agent (per symbol, 7 concurrent)
   - Stage B: Portfolio Manager
   - Stage C: Risk Engine
   - Orders → PaperBroker
