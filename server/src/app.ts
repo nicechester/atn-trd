@@ -17,7 +17,7 @@ import {
 import { nextRunsHandler } from './routes/scheduler.js';
 import { listRunsHandler, getRunHandler, triggerRunHandler, getRunCoverageHandler, cancelRunHandler } from './routes/runs.js';
 import { getPortfolioHandler, getPortfolioHistoryHandler, transferFundsHandler } from './routes/portfolio.js';
-import { listTradesHandler, getTradeHandler } from './routes/trades.js';
+import { listTradesHandler, getTradeHandler, listPendingOrdersHandler, cancelPendingOrderHandler, cancelPendingOrdersBulkHandler } from './routes/trades.js';
 import { getCalibrationHandler } from './routes/calibration.js';
 import { getPerformanceHandler } from './routes/performance.js';
 import { runProgressStreamHandler } from './routes/runProgress.js';
@@ -70,6 +70,9 @@ export function createApp(options: AppOptions = {}): Express {
   app.get('/api/portfolio/history', getPortfolioHistoryHandler);
   app.post('/api/portfolio/transfer', transferFundsHandler);
   app.get('/api/trades', listTradesHandler);
+  app.get('/api/trades/pending', listPendingOrdersHandler);
+  app.post('/api/trades/pending/cancel-bulk', cancelPendingOrdersBulkHandler);
+  app.post('/api/trades/pending/:id/cancel', cancelPendingOrderHandler);
   app.get('/api/trades/:id', getTradeHandler);
   app.get('/api/calibration', getCalibrationHandler);
   app.get('/api/performance', getPerformanceHandler);

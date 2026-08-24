@@ -5,4 +5,11 @@
 .td { padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--color-border); }
 .badgeGreen { background: #4ade80; color: #052e16; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
 .badgeRed { background: #f87171; color: #450a0a; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+.badgeYellow { background: #facc15; color: #422006; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+.sectionHeader { display: flex; align-items: center; gap: var(--spacing-md); margin: var(--spacing-lg) 0 var(--spacing-sm); }
+.sectionTitle { font-size: 1rem; margin: 0; color: var(--color-text-muted); }
+.cancelBtn { background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: var(--radius-sm, 4px); cursor: pointer; font-size: 0.875rem; }
+.cancelBtn:hover { background: #dc2626; }
+.cancelBtnSmall { background: transparent; color: #ef4444; border: 1px solid #ef4444; padding: 2px 8px; border-radius: var(--radius-sm, 4px); cursor: pointer; font-size: 0.75rem; }
+.cancelBtnSmall:hover { background: #ef4444; color: white; }
 .muted { color: var(--color-text-muted); font-size: 0.875rem; }

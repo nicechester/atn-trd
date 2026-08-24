@@ -10,8 +10,8 @@ import { OrdersRepo } from '../../repos/ordersRepo.js';
 import { FillsRepo } from '../../repos/fillsRepo.js';
 import { PositionsRepo, type PositionRow } from '../../repos/positionsRepo.js';
 import { PortfolioRepo } from '../../repos/portfolioRepo.js';
-import { resolveApiKey } from '../../datasources/apiKeys.js';
-import { nextTradingDateStr, toETDateStr, isMarketHours } from '../marketCalendar.js';
+import { PricesRepo } from '../../repos/pricesRepo.js';
+import { nextTradingDateStr, toETDateStr } from '../marketCalendar.js';
 import { notionalCents } from '../../lib/money.js';
 import { logger } from '../../lib/logger.js';
 
@@ -25,12 +25,10 @@ export async function runMissedFillJob(
   const fillsRepo = new FillsRepo(db);
   const positionsRepo = new PositionsRepo(db);
   const portfolioRepo = new PortfolioRepo(db);
-  const finnhubKey = resolveApiKey('FINNHUB_API_KEY');
+  const pricesRepo = new PricesRepo(db);
 
   const accepted = ordersRepo.list({ status: ['accepted'] });
-  const now = new Date();
-  const todayStr = toETDateStr(now);
-  const marketOpen = isMarketHours(now);
+  const todayStr = toETDateStr(new Date());
 
   let filled = 0, rejected = 0, skipped = 0;
 
@@ -39,36 +37,16 @@ export async function runMissedFillJob(
     const submittedDateStr = toETDateStr(new Date(order.submittedAt));
     const settlementDateStr = nextTradingDateStr(submittedDateStr);
 
-    // Skip if settlement date is not today
-    if (settlementDateStr !== todayStr) {
+    // Skip if settlement date is today or future (not yet fillable)
+    if (settlementDateStr >= todayStr) {
       skipped++;
       continue;
     }
 
-    // Skip if market hasn't opened yet
-    if (!marketOpen) {
-      skipped++;
-      continue;
-    }
-
-    // Fetch today's open price from Finnhub
-    let openPriceCents: number | null = null;
-    if (finnhubKey) {
-      try {
-        const resp = await fetch(
-          `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(order.symbol)}&token=${finnhubKey}`
-        );
-        const data = await resp.json() as { o?: number };
-        if (data.o && data.o > 0) {
-          openPriceCents = Math.round(data.o * 100);
-        }
-      } catch (err) {
-        log.warn('failed to fetch open price from Finnhub', { symbol: order.symbol, error: err instanceof Error ? err.message : String(err) });
-      }
-    }
-
-    if (!openPriceCents) {
-      log.warn('no open price available', { orderId: order.id, symbol: order.symbol });
+    // Get historical bar for settlement date
+    const bar = pricesRepo.get(order.symbol, settlementDateStr);
+    if (!bar) {
+      log.warn('no price bar for settlement date', { orderId: order.id, symbol: order.symbol, settlementDateStr });
       skipped++;
       continue;
     }
@@ -76,8 +54,8 @@ export async function runMissedFillJob(
     // Calculate fill price with slippage
     const slippageFraction = config.slippageBps / 10000;
     const fillPriceCents = order.side === 'buy'
-      ? Math.round(openPriceCents * (1 + slippageFraction))
-      : Math.round(openPriceCents * (1 - slippageFraction));
+      ? Math.round(bar.openCents * (1 + slippageFraction))
+      : Math.round(bar.openCents * (1 - slippageFraction));
 
     // Check limit price constraint
     if (order.type === 'limit' && order.limitPriceCents !== null) {

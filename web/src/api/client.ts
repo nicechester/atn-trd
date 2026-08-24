@@ -440,9 +440,31 @@ export const portfolio = {
   },
 };
 
+export interface OrderRow {
+  id: string;
+  clientOrderId: string;
+  symbol: string;
+  side: 'buy' | 'sell';
+  qty: number;
+  type: 'market' | 'limit';
+  limitPriceCents: number | null;
+  status: 'pending' | 'accepted' | 'partially_filled' | 'filled' | 'canceled' | 'rejected' | 'expired';
+  submittedAt: number;
+  mode: 'paper' | 'live';
+}
+
 export const trades = {
   list(limit = 100, offset = 0): Promise<{ ok: boolean; data: FillWithOrder[] }> {
     return request(`/trades?limit=${limit}&offset=${offset}`);
+  },
+  pending(): Promise<{ ok: boolean; data: OrderRow[] }> {
+    return request('/trades/pending');
+  },
+  cancel(id: string): Promise<{ ok: boolean }> {
+    return request(`/trades/pending/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
+  },
+  cancelBulk(ids: string[]): Promise<{ ok: boolean; canceled: number }> {
+    return request('/trades/pending/cancel-bulk', { method: 'POST', body: JSON.stringify({ ids }) });
   },
   get(id: string): Promise<{ ok: boolean; data: FillRow }> {
     return request(`/trades/${encodeURIComponent(id)}`);
