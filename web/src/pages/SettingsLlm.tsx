@@ -10,10 +10,7 @@ type LlmFormState = {
   baseUrl: string;
   temperature: number;
   timeoutSeconds: number;
-  concurrency: number;
-  maxNewsArticles: number;
-  maxNewsDays: number;
-  maxContextTokens: number;
+  localLlmMode: boolean;
   analystModel: string;
   portfolioManagerModel: string;
   semanticMemoryEnabled: boolean;
@@ -42,10 +39,7 @@ export default function SettingsLlm(): JSX.Element {
           baseUrl: llm.baseUrl ?? '',
           temperature: llm.temperature,
           timeoutSeconds: llm.timeoutMs / 1000,
-          concurrency: llm.concurrency ?? 7,
-          maxNewsArticles: llm.maxNewsArticles ?? 50,
-          maxNewsDays: llm.maxNewsDays ?? 90,
-          maxContextTokens: llm.maxContextTokens ?? 28000,
+          localLlmMode: llm.localLlmMode ?? false,
           analystModel: llm.agents?.analyst?.model ?? '',
           portfolioManagerModel: llm.agents?.portfolioManager?.model ?? '',
           semanticMemoryEnabled: settingsRes.data.semanticMemory?.enabled ?? false,
@@ -82,10 +76,7 @@ export default function SettingsLlm(): JSX.Element {
           baseUrl: form.baseUrl.trim(),
           temperature: form.temperature,
           timeoutMs: form.timeoutSeconds * 1000,
-          concurrency: form.concurrency,
-          maxNewsArticles: form.maxNewsArticles,
-          maxNewsDays: form.maxNewsDays,
-          maxContextTokens: form.maxContextTokens,
+          localLlmMode: form.localLlmMode,
           agents: {
             analyst: { model: form.analystModel.trim() },
             portfolioManager: { model: form.portfolioManagerModel.trim() },
@@ -170,58 +161,19 @@ export default function SettingsLlm(): JSX.Element {
             />
             <p className={styles.hint}>Stored as milliseconds; min 1 second</p>
           </div>
-          <div className={styles.field}>
-            <label className={styles.label}>Concurrency</label>
+          <div className={`${styles.field} ${styles.checkboxField}`}>
             <input
-              className={styles.input}
-              type="number"
-              min="1"
-              max="20"
-              step="1"
-              value={form.concurrency}
-              onChange={e => setForm({ ...form, concurrency: Number(e.target.value) })}
+              type="checkbox"
+              id="localLlmMode"
+              checked={form.localLlmMode}
+              onChange={e => setForm({ ...form, localLlmMode: e.target.checked })}
             />
-            <p className={styles.hint}>Parallel analyst calls (1–20). Use 1 for local LLMs that can't handle concurrent requests.</p>
+            <label className={styles.label} htmlFor="localLlmMode">Local LLM Mode</label>
           </div>
-          <div className={styles.field}>
-            <label className={styles.label}>Max News Articles</label>
-            <input
-              className={styles.input}
-              type="number"
-              min="1"
-              max="100"
-              step="1"
-              value={form.maxNewsArticles}
-              onChange={e => setForm({ ...form, maxNewsArticles: Number(e.target.value) })}
-            />
-            <p className={styles.hint}>Limit news articles per symbol (1–100). Lower values reduce prompt size for context-limited LLMs.</p>
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label}>Max News Days</label>
-            <input
-              className={styles.input}
-              type="number"
-              min="1"
-              max="90"
-              step="1"
-              value={form.maxNewsDays}
-              onChange={e => setForm({ ...form, maxNewsDays: Number(e.target.value) })}
-            />
-            <p className={styles.hint}>How far back to fetch news (1–90 days). Shorter windows reduce prompt size.</p>
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label}>Max Context Tokens</label>
-            <input
-              className={styles.input}
-              type="number"
-              min="4000"
-              max="128000"
-              step="1000"
-              value={form.maxContextTokens}
-              onChange={e => setForm({ ...form, maxContextTokens: Number(e.target.value) })}
-            />
-            <p className={styles.hint}>Token limit for LLM context (4K–128K). Use ~28K for local LLMs with limited VRAM.</p>
-          </div>
+          <p className={styles.hint}>
+            Optimizes for limited VRAM: sequential processing, fewer news articles (10), shorter lookback (7 days), 
+            truncated summaries, and 28K token context limit. Disable for cloud APIs like GPT-4.
+          </p>
           <div className={styles.field}>
             <label className={styles.label}>Analyst Model Override</label>
             <input

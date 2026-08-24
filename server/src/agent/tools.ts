@@ -28,6 +28,7 @@ export interface AgentToolsDeps {
   llmLimits?: {
     maxNewsArticles: number;
     maxNewsDays: number;
+    truncateNewsSummary: number;
   };
 }
 
@@ -73,11 +74,12 @@ function makeGetNews(deps: AgentToolsDeps) {
         });
 
         // Truncate articles for LLM context - keep headline + truncated summary
+        const truncateLen = deps.llmLimits?.truncateNewsSummary ?? 0;
         const truncated = {
           ...result.data,
           articles: result.data.articles.map(a => ({
             headline: a.headline,
-            summary: a.summary?.slice(0, 300) || '',
+            summary: truncateLen > 0 && a.summary ? a.summary.slice(0, truncateLen) : a.summary,
             source: a.source,
             publishedAt: a.publishedAt,
           })),

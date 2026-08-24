@@ -11,6 +11,7 @@ import type { Broker } from '../brokers/types.js';
 import type { AnalystAgentDeps } from '../agent/analystAgent.js';
 import type { RiskPriceFeed } from './riskService.js';
 import type { Settings } from '@atn-trd/shared';
+import { getLlmLimits } from '@atn-trd/shared';
 import type Database from 'better-sqlite3';
 import type { SymbolAssessment } from '../agent/analystAgent.js';
 import { runAnalystAgent } from '../agent/analystAgent.js';
@@ -196,9 +197,10 @@ class TradingCycleServiceImpl implements TradingCycleService {
       }
 
       // -- Step F: Prefetch data for all symbols concurrently --------
+      const llmLimits = getLlmLimits(settings.llm.localLlmMode);
       const analystConfig = {
         investorProfile: settings.investorProfile,
-        maxContextTokens: settings.llm.maxContextTokens,
+        maxContextTokens: llmLimits.maxContextTokens,
       };
       const pmConfig = {};
 
@@ -215,7 +217,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
       emitProgress(runId, 'analyst', `Starting analysis for ${symbols.length} symbols`);
       analystStartTime = Date.now();
 
-      const rawResults = await runWithConcurrency(symbols, settings.llm.concurrency, async (symbol) => {
+      const rawResults = await runWithConcurrency(symbols, llmLimits.concurrency, async (symbol) => {
         try {
           return await runAnalystAgent(runId, symbol, this.deps.analystDeps, analystConfig);
         } catch (err) {

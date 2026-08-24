@@ -14,6 +14,7 @@
 import { Cron } from 'croner';
 import { getSettings } from '../config/settingsService.js';
 import { settingsEvents } from '../config/settingsService.js';
+import { getLlmLimits } from '@atn-trd/shared';
 import { logger } from '../lib/logger.js';
 import { runSnapshotJob } from './jobs/snapshot.js';
 import { runMissedFillJob } from './jobs/missedFill.js';
@@ -125,10 +126,7 @@ function registerJobs(): void {
             decisionsRepo,
             cache: runCache,
             semanticMemory,
-            llmLimits: {
-              maxNewsArticles: settings.llm.maxNewsArticles,
-              maxNewsDays: settings.llm.maxNewsDays,
-            },
+            llmLimits: getLlmLimits(settings.llm.localLlmMode),
           },
           messagesRepo,
           artifactsRepo,
