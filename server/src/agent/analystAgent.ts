@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { ChatOpenAI } from '@langchain/openai';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { resolveConfigForAgent, resolveApiKey, LlmNotConfiguredError } from '../llm/openaiChatModel.js';
 import { ANALYST_SYSTEM_PROMPT } from '../llm/prompts/analyst.js';
 import { createAgentTools, type AgentToolsDeps } from './tools.js';
@@ -69,26 +71,43 @@ export async function runAnalystAgent(
     const apiKey = resolveApiKey();
     if (!apiKey) throw new LlmNotConfiguredError();
 
-    // 2. Instantiate two ChatOpenAI models
-    const reactLlm = new ChatOpenAI({
-      apiKey,
-      model: resolved.model,
-      temperature: resolved.temperature,
-      timeout: resolved.timeoutMs,
-      maxRetries: 0,
-      ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
-    });
-
-    // Patch bindTools if missing (no longer needed with newer @langchain/openai)
-
-    const synthesisLlm = new ChatOpenAI({
-      apiKey,
-      model: resolved.model,
-      temperature: 0,
-      timeout: resolved.timeoutMs,
-      maxRetries: 0,
-      ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
-    });
+    // 2. Create LLM - use native Google API for Gemini models
+    const isGemini = /gemini/i.test(resolved.model);
+    
+    let reactLlm: BaseChatModel;
+    let synthesisLlm: BaseChatModel;
+    
+    if (isGemini) {
+      reactLlm = new ChatGoogleGenerativeAI({
+        model: resolved.model,
+        apiKey,
+        temperature: resolved.temperature,
+        maxRetries: 0,
+      });
+      synthesisLlm = new ChatGoogleGenerativeAI({
+        model: resolved.model,
+        apiKey,
+        temperature: 0,
+        maxRetries: 0,
+      });
+    } else {
+      reactLlm = new ChatOpenAI({
+        apiKey,
+        model: resolved.model,
+        temperature: resolved.temperature,
+        timeout: resolved.timeoutMs,
+        maxRetries: 0,
+        ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
+      });
+      synthesisLlm = new ChatOpenAI({
+        apiKey,
+        model: resolved.model,
+        temperature: 0,
+        timeout: resolved.timeoutMs,
+        maxRetries: 0,
+        ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
+      });
+    }
 
     // 3. Create tools and collector
     const tools = createAgentTools(deps.toolsDeps);
@@ -169,13 +188,21 @@ export async function runAnalystAgent(
       log.debug('trimmed reasoning text', { symbol, originalTokens: reasoningTokens, targetChars });
     }
 
+    const synthesisPrompt = `Based on your research above, provide your final assessment as a JSON object with this exact structure:
+{
+  "score": <number from -1 to 1, where -1=very bearish, 0=neutral, 1=very bullish>,
+  "confidence": <number from 0 to 1>,
+  "thesis": "<2-4 sentence investment thesis>",
+  "risks": "<key risks or null>",
+  "catalysts": "<near-term catalysts or null>"
+}
+Respond ONLY with the JSON object, no markdown or explanation.`;
+
     const synthesisMessages = [
       new SystemMessage(ANALYST_SYSTEM_PROMPT),
       new HumanMessage(humanContent),
       new AIMessage(reasoningText),
-      new HumanMessage(
-        'Based on your research above, provide your final assessment in the required structured format.'
-      ),
+      new HumanMessage(synthesisPrompt),
     ];
 
     // Final token check before synthesis
@@ -195,40 +222,55 @@ export async function runAnalystAgent(
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        // Try withStructuredOutput if available; fall back to manual JSON parsing
         let raw: any;
-        try {
-          raw = await (synthesisLlm as any).withStructuredOutput(AssessmentSchema).invoke(
-            synthesisMessages
-          );
-        } catch (err) {
-          // Fallback: manual JSON extraction and parsing
-          const response = await synthesisLlm.invoke(synthesisMessages);
-          const content =
-            typeof response.content === 'string'
-              ? response.content
-              : Array.isArray(response.content)
-                ? response.content.map((c: any) => (typeof c === 'string' ? c : c.text ?? '')).join('')
-                : '';
-
-          // Extract JSON from response (look for {...} pattern)
-          const jsonMatch = content.match(/\{[\s\S]*\}/);
-          if (!jsonMatch) {
-            throw new Error('No JSON found in response');
+        
+        // Skip withStructuredOutput for Gemini - it doesn't support nullable fields
+        if (!isGemini) {
+          try {
+            log.debug('attempting withStructuredOutput', { symbol });
+            raw = await (synthesisLlm as any).withStructuredOutput(AssessmentSchema).invoke(
+              synthesisMessages
+            );
+            if (raw && typeof raw === 'object' && 'score' in raw) {
+              const parsed = AssessmentSchema.parse(raw);
+              log.debug('assessment complete', { symbol, score: parsed.score, confidence: parsed.confidence });
+              return { symbol, ...parsed };
+            }
+          } catch (structuredErr) {
+            log.debug('withStructuredOutput failed, trying manual extraction', {
+              symbol,
+              error: structuredErr instanceof Error ? structuredErr.message : String(structuredErr),
+            });
           }
+        }
+        
+        // Manual JSON extraction (always used for Gemini)
+        const response = await synthesisLlm.invoke(synthesisMessages);
+        const content =
+          typeof response.content === 'string'
+            ? response.content
+            : Array.isArray(response.content)
+              ? response.content.map((c: any) => (typeof c === 'string' ? c : c.text ?? '')).join('')
+              : '';
+
+        log.debug('synthesis response', { symbol, contentLength: content.length });
+
+        // Extract JSON from response
+        let jsonMatch = content.match(/```json\s*([\s\S]*?)```/);
+        if (jsonMatch) {
+          raw = JSON.parse(jsonMatch[1].trim());
+        } else {
+          jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) throw new Error('No JSON found in response');
           raw = JSON.parse(jsonMatch[0]);
         }
 
         const parsed = AssessmentSchema.parse(raw);
-        log.debug('assessment complete', {
-          symbol,
-          score: parsed.score,
-          confidence: parsed.confidence,
-        });
+        log.debug('assessment complete', { symbol, score: parsed.score, confidence: parsed.confidence });
         return { symbol, ...parsed };
       } catch (err) {
         if (attempt === 0) {
-          log.warn('structured output attempt failed, retrying', {
+          log.warn('synthesis attempt failed, retrying', {
             symbol,
             error: err instanceof Error ? err.message : String(err),
           });

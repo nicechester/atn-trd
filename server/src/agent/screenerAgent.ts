@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { ChatOpenAI } from '@langchain/openai';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { resolveConfigForAgent, resolveApiKey, LlmNotConfiguredError } from '../llm/openaiChatModel.js';
 import { SCREENER_SYSTEM_PROMPT } from '../llm/prompts/screener.js';
 import { createScreenerTools, type ScreenerToolsDeps } from './screenerTools.js';
@@ -61,24 +63,43 @@ export async function runScreenerAgent(
     const apiKey = resolveApiKey();
     if (!apiKey) throw new LlmNotConfiguredError();
 
-    // 2. Instantiate two ChatOpenAI models
-    const reactLlm = new ChatOpenAI({
-      apiKey,
-      model: resolved.model,
-      temperature: resolved.temperature,
-      timeout: resolved.timeoutMs,
-      maxRetries: 0,
-      ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
-    });
-
-    const synthesisLlm = new ChatOpenAI({
-      apiKey,
-      model: resolved.model,
-      temperature: 0,
-      timeout: resolved.timeoutMs,
-      maxRetries: 0,
-      ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
-    });
+    // 2. Create LLM - use native Google API for Gemini models
+    const isGemini = /gemini/i.test(resolved.model);
+    
+    let reactLlm: BaseChatModel;
+    let synthesisLlm: BaseChatModel;
+    
+    if (isGemini) {
+      reactLlm = new ChatGoogleGenerativeAI({
+        model: resolved.model,
+        apiKey,
+        temperature: resolved.temperature,
+        maxRetries: 0,
+      });
+      synthesisLlm = new ChatGoogleGenerativeAI({
+        model: resolved.model,
+        apiKey,
+        temperature: 0,
+        maxRetries: 0,
+      });
+    } else {
+      reactLlm = new ChatOpenAI({
+        apiKey,
+        model: resolved.model,
+        temperature: resolved.temperature,
+        timeout: resolved.timeoutMs,
+        maxRetries: 0,
+        ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
+      });
+      synthesisLlm = new ChatOpenAI({
+        apiKey,
+        model: resolved.model,
+        temperature: 0,
+        timeout: resolved.timeoutMs,
+        maxRetries: 0,
+        ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
+      });
+    }
 
     // 3. Create tools and collector
     const tools = createScreenerTools(deps.toolsDeps);
@@ -140,50 +161,67 @@ For each candidate, evaluate sector momentum, earnings catalysts, and options ma
 
     // 7. Structured synthesis with 1 retry
     const SelectionArraySchema = z.array(SelectionSchema);
+    const synthesisPrompt = `Based on your screening above, provide your final selections as a JSON array. Each element should have:
+- "symbol": stock ticker
+- "rationale": 1-3 sentence investment rationale
+- "conviction": number 0-1
+
+Return at least 3-5 selections if available. Respond ONLY with the JSON array, no markdown or explanation.`;
+
     const synthesisMessages = [
       new SystemMessage(SCREENER_SYSTEM_PROMPT),
       new HumanMessage(humanContent),
       new AIMessage(finalReasoningText || '(No reasoning captured)'),
-      new HumanMessage(
-        'Based on your screening above, provide your final selections as a JSON array with symbol, rationale, and conviction for each selected candidate. Return at least 3-5 selections if available.'
-      ),
+      new HumanMessage(synthesisPrompt),
     ];
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        // Try withStructuredOutput if available; fall back to manual JSON parsing
         let raw: any;
-        try {
-          raw = await (synthesisLlm as any).withStructuredOutput(SelectionArraySchema).invoke(
-            synthesisMessages
-          );
-        } catch (err) {
-          // Fallback: manual JSON extraction and parsing
-          const response = await synthesisLlm.invoke(synthesisMessages);
-          const content =
-            typeof response.content === 'string'
-              ? response.content
-              : Array.isArray(response.content)
-                ? response.content.map((c: any) => (typeof c === 'string' ? c : c.text ?? '')).join('')
-                : '';
-
-          // Extract JSON array from response
-          const jsonMatch = content.match(/\[\s*\{[\s\S]*\}\s*\]/);
-          if (!jsonMatch) {
-            throw new Error('No JSON array found in response');
+        
+        // Skip withStructuredOutput for Gemini - use manual JSON extraction
+        if (!isGemini) {
+          try {
+            raw = await (synthesisLlm as any).withStructuredOutput(SelectionArraySchema).invoke(
+              synthesisMessages
+            );
+            if (Array.isArray(raw)) {
+              const parsed = SelectionArraySchema.parse(raw);
+              log.debug('screening complete', { candidateCount: candidates.length, selectedCount: parsed.length });
+              return parsed;
+            }
+          } catch (structuredErr) {
+            log.debug('withStructuredOutput failed, trying manual extraction', {
+              error: structuredErr instanceof Error ? structuredErr.message : String(structuredErr),
+            });
           }
+        }
+
+        // Manual JSON extraction
+        const response = await synthesisLlm.invoke(synthesisMessages);
+        const content =
+          typeof response.content === 'string'
+            ? response.content
+            : Array.isArray(response.content)
+              ? response.content.map((c: any) => (typeof c === 'string' ? c : c.text ?? '')).join('')
+              : '';
+
+        // Extract JSON array from response
+        let jsonMatch = content.match(/```json\s*([\s\S]*?)```/);
+        if (jsonMatch) {
+          raw = JSON.parse(jsonMatch[1].trim());
+        } else {
+          jsonMatch = content.match(/\[\s*\{[\s\S]*\}\s*\]/);
+          if (!jsonMatch) throw new Error('No JSON array found in response');
           raw = JSON.parse(jsonMatch[0]);
         }
 
         const parsed = SelectionArraySchema.parse(raw);
-        log.debug('screening complete', {
-          candidateCount: candidates.length,
-          selectedCount: parsed.length,
-        });
+        log.debug('screening complete', { candidateCount: candidates.length, selectedCount: parsed.length });
         return parsed;
       } catch (err) {
         if (attempt === 0) {
-          log.warn('structured output attempt failed, retrying', {
+          log.warn('synthesis attempt failed, retrying', {
             error: err instanceof Error ? err.message : String(err),
           });
           continue;

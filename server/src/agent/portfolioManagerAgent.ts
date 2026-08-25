@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { ChatOpenAI } from '@langchain/openai';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { resolveConfigForAgent, resolveApiKey, LlmNotConfiguredError } from '../llm/openaiChatModel.js';
 import { PORTFOLIO_MANAGER_SYSTEM_PROMPT } from '../llm/prompts/portfolioManager.js';
 import type { SymbolAssessment } from './analystAgent.js';
@@ -149,15 +151,28 @@ export async function runPortfolioManagerAgent(
     const apiKey = resolveApiKey();
     if (!apiKey) throw new LlmNotConfiguredError();
 
-    // 3. Instantiate ChatOpenAI
-    const llm = new ChatOpenAI({
-      apiKey,
-      model: resolved.model,
-      temperature: 0,
-      timeout: resolved.timeoutMs,
-      maxRetries: 0,
-      ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
-    });
+    // 3. Create LLM - use native Google API for Gemini models
+    const isGemini = /gemini/i.test(resolved.model);
+    
+    let llm: BaseChatModel;
+    
+    if (isGemini) {
+      llm = new ChatGoogleGenerativeAI({
+        model: resolved.model,
+        apiKey,
+        temperature: 0,
+        maxRetries: 0,
+      });
+    } else {
+      llm = new ChatOpenAI({
+        apiKey,
+        model: resolved.model,
+        temperature: 0,
+        timeout: resolved.timeoutMs,
+        maxRetries: 0,
+        ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
+      });
+    }
 
     // 4. Build messages
     const humanMessage = buildHumanMessage(assessments, portfolioContext, constraints);
@@ -174,41 +189,70 @@ export async function runPortfolioManagerAgent(
     });
 
     // 6. Two-attempt structured output loop
+    // Add explicit JSON prompt for Gemini
+    const jsonPrompt = isGemini ? new HumanMessage(`Respond with a JSON object in this exact format:
+{
+  "decisions": [
+    {
+      "symbol": "TICKER",
+      "action": "buy|sell|hold|trim|add",
+      "targetWeight": <number 0-1 or null>,
+      "confidence": <number 0-1>,
+      "rationale": "explanation",
+      "priority": <integer starting at 1>
+    }
+  ]
+}
+Respond ONLY with the JSON object, no markdown or explanation.`) : null;
+
+    const finalMessages = jsonPrompt ? [...messages, jsonPrompt] : messages;
     let parsed: z.infer<typeof LlmDecisionSetSchema> | null = null;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        // Try withStructuredOutput if available; fall back to manual JSON parsing
         let raw: any;
-        try {
-          raw = await (llm as any).withStructuredOutput(LlmDecisionSetSchema).invoke(messages);
-        } catch (err) {
-          // Fallback: manual JSON extraction and parsing
-          const response = await llm.invoke(messages);
-          const content =
-            typeof response.content === 'string'
-              ? response.content
-              : Array.isArray(response.content)
-                ? response.content.map((c: any) => (typeof c === 'string' ? c : c.text ?? '')).join('')
-                : '';
-
-          // Extract JSON from response (look for {...} pattern)
-          const jsonMatch = content.match(/\{[\s\S]*\}/);
-          if (!jsonMatch) {
-            throw new Error('No JSON found in response');
+        
+        // Skip withStructuredOutput for Gemini - use manual JSON extraction
+        if (!isGemini) {
+          try {
+            raw = await (llm as any).withStructuredOutput(LlmDecisionSetSchema).invoke(messages);
+            if (raw && typeof raw === 'object' && 'decisions' in raw) {
+              parsed = LlmDecisionSetSchema.parse(raw);
+              log.debug('portfolio manager output complete', { runId, decisionCount: parsed.decisions.length });
+              break;
+            }
+          } catch (structuredErr) {
+            log.debug('withStructuredOutput failed, trying manual extraction', {
+              error: structuredErr instanceof Error ? structuredErr.message : String(structuredErr),
+            });
           }
+        }
+
+        // Manual JSON extraction
+        const response = await llm.invoke(finalMessages);
+        const content =
+          typeof response.content === 'string'
+            ? response.content
+            : Array.isArray(response.content)
+              ? response.content.map((c: any) => (typeof c === 'string' ? c : c.text ?? '')).join('')
+              : '';
+
+        // Extract JSON from response
+        let jsonMatch = content.match(/```json\s*([\s\S]*?)```/);
+        if (jsonMatch) {
+          raw = JSON.parse(jsonMatch[1].trim());
+        } else {
+          jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) throw new Error('No JSON found in response');
           raw = JSON.parse(jsonMatch[0]);
         }
 
         parsed = LlmDecisionSetSchema.parse(raw);
-        log.debug('portfolio manager output complete', {
-          runId,
-          decisionCount: parsed.decisions.length,
-        });
+        log.debug('portfolio manager output complete', { runId, decisionCount: parsed.decisions.length });
         break;
       } catch (err) {
         if (attempt === 0) {
-          log.warn('structured output attempt failed, retrying', {
+          log.warn('synthesis attempt failed, retrying', {
             runId,
             error: err instanceof Error ? err.message : String(err),
           });
