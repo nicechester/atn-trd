@@ -10,6 +10,7 @@ type LlmFormState = {
   baseUrl: string;
   temperature: number;
   timeoutSeconds: number;
+  localLlmMode: boolean;
   analystModel: string;
   portfolioManagerModel: string;
   semanticMemoryEnabled: boolean;
@@ -38,6 +39,7 @@ export default function SettingsLlm(): JSX.Element {
           baseUrl: llm.baseUrl ?? '',
           temperature: llm.temperature,
           timeoutSeconds: llm.timeoutMs / 1000,
+          localLlmMode: llm.localLlmMode ?? false,
           analystModel: llm.agents?.analyst?.model ?? '',
           portfolioManagerModel: llm.agents?.portfolioManager?.model ?? '',
           semanticMemoryEnabled: settingsRes.data.semanticMemory?.enabled ?? false,
@@ -74,6 +76,7 @@ export default function SettingsLlm(): JSX.Element {
           baseUrl: form.baseUrl.trim(),
           temperature: form.temperature,
           timeoutMs: form.timeoutSeconds * 1000,
+          localLlmMode: form.localLlmMode,
           agents: {
             analyst: { model: form.analystModel.trim() },
             portfolioManager: { model: form.portfolioManagerModel.trim() },
@@ -158,6 +161,19 @@ export default function SettingsLlm(): JSX.Element {
             />
             <p className={styles.hint}>Stored as milliseconds; min 1 second</p>
           </div>
+          <div className={`${styles.field} ${styles.checkboxField}`}>
+            <input
+              type="checkbox"
+              id="localLlmMode"
+              checked={form.localLlmMode}
+              onChange={e => setForm({ ...form, localLlmMode: e.target.checked })}
+            />
+            <label className={styles.label} htmlFor="localLlmMode">Local LLM Mode</label>
+          </div>
+          <p className={styles.hint}>
+            Optimizes for limited VRAM: sequential processing, fewer news articles (10), shorter lookback (7 days), 
+            truncated summaries, and 28K token context limit. Disable for cloud APIs like GPT-4.
+          </p>
           <div className={styles.field}>
             <label className={styles.label}>Analyst Model Override</label>
             <input

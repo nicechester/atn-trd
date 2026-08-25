@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { getLlmLimits } from '@atn-trd/shared';
 import { getDatabase } from '../db/index.js';
 import { RunsRepo } from '../repos/runsRepo.js';
 import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
@@ -188,6 +189,7 @@ export async function triggerRunHandler(
         decisionsRepo,
         cache: runCache,
         semanticMemory,
+        llmLimits: getLlmLimits(settings.llm.localLlmMode),
       },
       messagesRepo,
       artifactsRepo,

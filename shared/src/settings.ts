@@ -85,6 +85,7 @@ export const SettingsSchema = z.object({
     temperature: z.number().min(0).max(2).default(0.7),
     timeoutMs: z.number().int().positive().default(30000),
     baseUrl: z.string().default(''),
+    localLlmMode: z.boolean().default(false),
     agents: z.object({
       analyst: AgentModelOverrideSchema,
       portfolioManager: AgentModelOverrideSchema,
@@ -181,6 +182,7 @@ export const DEFAULT_SETTINGS: Settings = {
     temperature: 0.7,
     timeoutMs: 30000,
     baseUrl: '',
+    localLlmMode: false,
     agents: {
       analyst: { model: '' },
       portfolioManager: { model: '' },
@@ -221,4 +223,32 @@ function validateCronMinInterval(_cron: string, _minIntervalHours: number): bool
   // Placeholder: Would use croner library to validate in real implementation
   // For now, accept all cron expressions
   return true;
+}
+
+/** Derived LLM limits based on localLlmMode toggle */
+export interface LlmLimits {
+  concurrency: number;
+  maxNewsArticles: number;
+  maxNewsDays: number;
+  maxContextTokens: number;
+  truncateNewsSummary: number; // chars
+}
+
+export function getLlmLimits(localLlmMode: boolean): LlmLimits {
+  if (localLlmMode) {
+    return {
+      concurrency: 1,
+      maxNewsArticles: 10,
+      maxNewsDays: 7,
+      maxContextTokens: 28000,
+      truncateNewsSummary: 300,
+    };
+  }
+  return {
+    concurrency: 7,
+    maxNewsArticles: 50,
+    maxNewsDays: 90,
+    maxContextTokens: 128000,
+    truncateNewsSummary: 0, // no truncation
+  };
 }

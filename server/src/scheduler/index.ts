@@ -14,8 +14,10 @@
 import { Cron } from 'croner';
 import { getSettings } from '../config/settingsService.js';
 import { settingsEvents } from '../config/settingsService.js';
+import { getLlmLimits } from '@atn-trd/shared';
 import { logger } from '../lib/logger.js';
 import { runSnapshotJob } from './jobs/snapshot.js';
+import { runMissedFillJob } from './jobs/missedFill.js';
 import { getDatabase } from '../db/index.js';
 import { RunsRepo } from '../repos/runsRepo.js';
 import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
@@ -54,6 +56,9 @@ let activeJob: Cron | null = null;
 
 // Snapshot job handle; runs daily at 16:45 ET on trading days.
 let snapshotCronJob: Cron | null = null;
+
+// Missed-fill recovery job; runs hourly to fill orders that missed market open.
+let missedFillJob: Cron | null = null;
 
 // ── job handlers ──────────────────────────────────────────────────────────────
 
@@ -121,6 +126,7 @@ function registerJobs(): void {
             decisionsRepo,
             cache: runCache,
             semanticMemory,
+            llmLimits: getLlmLimits(settings.llm.localLlmMode),
           },
           messagesRepo,
           artifactsRepo,
@@ -213,6 +219,19 @@ export function startScheduler(): void {
     snapshotCronJob = null;
   }
 
+  // Register missed-fill recovery job (hourly) to fill orders that missed market open
+  try {
+    const db = getDatabase();
+    missedFillJob = new Cron('0 * * * *', { protect: true }, async () => {
+      const settings = getSettings();
+      await runMissedFillJob(db, { slippageBps: settings.paperAccount.slippageBps });
+    });
+    log.info('missed-fill job registered', { cron: '0 * * * *' });
+  } catch (err) {
+    log.error('failed to register missed-fill job', { error: err instanceof Error ? err.message : String(err) });
+    missedFillJob = null;
+  }
+
   settingsEvents.on('change', () => {
     log.info('settings changed, re-registering scheduler jobs');
     registerJobs();
@@ -229,6 +248,11 @@ export function stopScheduler(): void {
   if (snapshotCronJob) {
     snapshotCronJob.stop();
     snapshotCronJob = null;
+  }
+
+  if (missedFillJob) {
+    missedFillJob.stop();
+    missedFillJob = null;
   }
 
   log.info('scheduler stopped');

@@ -12,6 +12,14 @@ import { logger } from '../lib/logger.js';
 import { emitProgress } from '../services/runProgress.js';
 import type { InvestorProfile } from '@atn-trd/shared';
 
+/** Rough token estimate: ~4 chars per token for English text */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/** Default max tokens for local LLM context safety */
+const DEFAULT_MAX_CONTEXT_TOKENS = 28000;
+
 const AssessmentSchema = z.object({
   score: z
     .number()
@@ -44,6 +52,7 @@ export interface AnalystAgentConfig {
   temperature?: number;
   recursionLimit?: number;
   investorProfile?: InvestorProfile;
+  maxContextTokens?: number;
 }
 
 const log = logger.child({ component: 'analyst-agent' });
@@ -147,15 +156,42 @@ export async function runAnalystAgent(
     log.debug('stream complete', { symbol, eventCount });
     emitProgress(runId, 'analyst', `${symbol}: synthesizing assessment`, { symbol });
 
-    // 7. Structured synthesis with 1 retry
+    // 7. Structured synthesis with token guard and message trimming
+    const maxTokens = config?.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS;
+    
+    // Trim reasoning if too long
+    let reasoningText = finalReasoningText || '(No reasoning captured)';
+    const reasoningTokens = estimateTokens(reasoningText);
+    if (reasoningTokens > maxTokens * 0.6) {
+      // Keep last ~60% of max tokens worth of reasoning
+      const targetChars = Math.floor(maxTokens * 0.6 * 4);
+      reasoningText = '...' + reasoningText.slice(-targetChars);
+      log.debug('trimmed reasoning text', { symbol, originalTokens: reasoningTokens, targetChars });
+    }
+
     const synthesisMessages = [
       new SystemMessage(ANALYST_SYSTEM_PROMPT),
       new HumanMessage(humanContent),
-      new AIMessage(finalReasoningText || '(No reasoning captured)'),
+      new AIMessage(reasoningText),
       new HumanMessage(
         'Based on your research above, provide your final assessment in the required structured format.'
       ),
     ];
+
+    // Final token check before synthesis
+    const totalContent = synthesisMessages.map(m => 
+      typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+    ).join('');
+    const estimatedTotal = estimateTokens(totalContent);
+    
+    if (estimatedTotal > maxTokens) {
+      log.warn('synthesis prompt exceeds token limit', { 
+        symbol, 
+        estimatedTokens: estimatedTotal, 
+        maxTokens,
+      });
+      // Still attempt but log warning - LLM may truncate or fail gracefully
+    }
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
