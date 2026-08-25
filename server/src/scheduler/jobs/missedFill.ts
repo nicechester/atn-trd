@@ -37,8 +37,8 @@ export async function runMissedFillJob(
     const submittedDateStr = toETDateStr(new Date(order.submittedAt));
     const settlementDateStr = nextTradingDateStr(submittedDateStr);
 
-    // Skip if settlement date is today or future (not yet fillable)
-    if (settlementDateStr >= todayStr) {
+    // Skip if settlement date is in the future (not yet fillable)
+    if (settlementDateStr > todayStr) {
       skipped++;
       continue;
     }
