@@ -14,7 +14,7 @@ import { PricesRepo } from '../../repos/pricesRepo.js';
 import { nextTradingDateStr, toETDateStr, isMarketHours } from '../marketCalendar.js';
 import { notionalCents } from '../../lib/money.js';
 import { logger } from '../../lib/logger.js';
-import { resolveApiKey } from '../../llm/openaiChatModel.js';
+import { resolveApiKey } from '../../datasources/apiKeys.js';
 
 const log = logger.child({ component: 'missed-fill' });
 
