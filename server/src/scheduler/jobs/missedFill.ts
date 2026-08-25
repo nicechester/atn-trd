@@ -2,7 +2,7 @@
  * Hourly job: fill accepted orders that missed their market open.
  *
  * Scans for accepted orders whose settlement date has passed and fills them
- * at the historical open price.
+ * at the historical open price. For today's settlements, fetches live quote.
  */
 
 import type Database from 'better-sqlite3';
@@ -11,11 +11,38 @@ import { FillsRepo } from '../../repos/fillsRepo.js';
 import { PositionsRepo, type PositionRow } from '../../repos/positionsRepo.js';
 import { PortfolioRepo } from '../../repos/portfolioRepo.js';
 import { PricesRepo } from '../../repos/pricesRepo.js';
-import { nextTradingDateStr, toETDateStr } from '../marketCalendar.js';
+import { nextTradingDateStr, toETDateStr, isMarketHours } from '../marketCalendar.js';
 import { notionalCents } from '../../lib/money.js';
 import { logger } from '../../lib/logger.js';
+import { resolveApiKey } from '../../llm/openaiChatModel.js';
 
 const log = logger.child({ component: 'missed-fill' });
+
+/** Fetch today's open price from Finnhub quote endpoint */
+async function fetchTodayOpenCents(symbol: string): Promise<number | null> {
+  const apiKey = resolveApiKey('FINNHUB_API_KEY');
+  if (!apiKey) {
+    log.warn('FINNHUB_API_KEY not set, cannot fetch live quote');
+    return null;
+  }
+
+  try {
+    const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`);
+    if (!res.ok) {
+      log.warn('Finnhub quote request failed', { symbol, status: res.status });
+      return null;
+    }
+    const data = await res.json() as { o?: number };
+    if (typeof data.o !== 'number' || data.o <= 0) {
+      log.warn('Invalid open price from Finnhub', { symbol, data });
+      return null;
+    }
+    return Math.round(data.o * 100);
+  } catch (err) {
+    log.warn('Finnhub quote fetch error', { symbol, error: err instanceof Error ? err.message : String(err) });
+    return null;
+  }
+}
 
 export async function runMissedFillJob(
   db: Database.Database,
@@ -43,10 +70,25 @@ export async function runMissedFillJob(
       continue;
     }
 
-    // Get historical bar for settlement date
-    const bar = pricesRepo.get(order.symbol, settlementDateStr);
-    if (!bar) {
-      log.warn('no price bar for settlement date', { orderId: order.id, symbol: order.symbol, settlementDateStr });
+    // Get open price: historical bar for past dates, live quote for today
+    let openCents: number | null = null;
+    
+    if (settlementDateStr === todayStr) {
+      // Today's settlement - need live quote since bar doesn't exist yet
+      if (!isMarketHours(new Date())) {
+        log.debug('market not open yet, skipping today settlement', { symbol: order.symbol });
+        skipped++;
+        continue;
+      }
+      openCents = await fetchTodayOpenCents(order.symbol);
+    } else {
+      // Past settlement - use historical bar
+      const bar = pricesRepo.get(order.symbol, settlementDateStr);
+      openCents = bar?.openCents ?? null;
+    }
+
+    if (!openCents) {
+      log.warn('no price available for settlement', { orderId: order.id, symbol: order.symbol, settlementDateStr });
       skipped++;
       continue;
     }
@@ -54,8 +96,8 @@ export async function runMissedFillJob(
     // Calculate fill price with slippage
     const slippageFraction = config.slippageBps / 10000;
     const fillPriceCents = order.side === 'buy'
-      ? Math.round(bar.openCents * (1 + slippageFraction))
-      : Math.round(bar.openCents * (1 - slippageFraction));
+      ? Math.round(openCents * (1 + slippageFraction))
+      : Math.round(openCents * (1 - slippageFraction));
 
     // Check limit price constraint
     if (order.type === 'limit' && order.limitPriceCents !== null) {
