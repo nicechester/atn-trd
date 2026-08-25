@@ -54,7 +54,7 @@ const log = logger.child({ component: 'scheduler' });
 // Active job handle; replaced on every settings change.
 let activeJob: Cron | null = null;
 
-// Snapshot job handle; runs daily at 16:45 ET on trading days.
+// Snapshot job handle; runs daily at 16:30 ET on trading days (after market close, before trading cycle).
 let snapshotCronJob: Cron | null = null;
 
 // Missed-fill recovery job; runs hourly to fill orders that missed market open.
@@ -200,18 +200,18 @@ function registerJobs(): void {
 export function startScheduler(): void {
   registerJobs();
 
-  // Register fixed snapshot job (16:45 ET daily on trading days)
+  // Register fixed snapshot job (16:30 ET daily on trading days, after market close, before trading cycle)
   try {
     const db = getDatabase();
     snapshotCronJob = new Cron(
-      '45 16 * * 1-5',
+      '30 16 * * 1-5',
       { timezone: 'America/New_York', protect: true },
       async () => {
         await runSnapshotJob(db);
       }
     );
     const nextRun = snapshotCronJob.nextRun();
-    log.info('snapshot job registered', { cron: '45 16 * * 1-5', timezone: 'America/New_York', nextRun: nextRun?.toISOString() ?? null });
+    log.info('snapshot job registered', { cron: '30 16 * * 1-5', timezone: 'America/New_York', nextRun: nextRun?.toISOString() ?? null });
   } catch (err) {
     log.error('failed to register snapshot job', {
       error: err instanceof Error ? err.message : String(err),
