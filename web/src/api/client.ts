@@ -432,6 +432,12 @@ export const portfolio = {
   history(limit = 30): Promise<{ ok: boolean; data: PortfolioSnapshotRow[] }> {
     return request(`/portfolio/history?limit=${limit}`);
   },
+  init(seedCents: number): Promise<{ ok: boolean; data: { cashCents: number } }> {
+    return request('/portfolio/init', {
+      method: 'POST',
+      body: JSON.stringify({ seedCents }),
+    });
+  },
   transfer(amountCents: number, type: 'deposit' | 'withdraw'): Promise<{ ok: boolean; data: { cashCents: number } }> {
     return request('/portfolio/transfer', {
       method: 'POST',
