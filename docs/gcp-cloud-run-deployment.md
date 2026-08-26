@@ -32,18 +32,12 @@ This guide covers deploying atn-trd to Google Cloud Run with a scales-to-zero ar
 ## Step 1: Create GCP Project
 
 ```bash
-# Set your project ID (must be globally unique)
-export PROJECT_ID="atn-trd-prod"
+# Set your project ID
+export PROJECT_ID="autonomous-trader-506715"
 export REGION="us-central1"
-
-# Create project
-gcloud projects create $PROJECT_ID --name="ATN Trading"
 
 # Set as default
 gcloud config set project $PROJECT_ID
-
-# Link billing account (get ID from console or `gcloud billing accounts list`)
-gcloud billing projects link $PROJECT_ID --billing-account=YOUR_BILLING_ACCOUNT_ID
 ```
 
 ## Step 2: Enable Required APIs
