@@ -1,7 +1,10 @@
 import { NavLink } from 'react-router-dom';
+import { useAuth } from './context/AuthContext';
 import styles from './Nav.module.css';
 
 export default function Nav(): JSX.Element {
+  const { user, logout, canWrite } = useAuth();
+
   return (
     <nav className={styles.nav}>
       <span className={styles.logo}>atn-trd</span>
@@ -29,6 +32,18 @@ export default function Nav(): JSX.Element {
       <NavLink to="/settings" className={({ isActive }) => isActive ? styles.activeLink : styles.link}>
         Settings
       </NavLink>
+      
+      <div className={styles.spacer} />
+      
+      <div className={styles.userSection}>
+        <div className={styles.userInfo}>
+          <span className={styles.username}>{user?.username}</span>
+          <span className={styles.role}>{canWrite ? 'Admin' : 'Read-only'}</span>
+        </div>
+        <button className={styles.logoutBtn} onClick={logout}>
+          Logout
+        </button>
+      </div>
     </nav>
   );
 }

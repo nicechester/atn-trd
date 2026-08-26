@@ -5,6 +5,7 @@ import type { AgentRunRow, Portfolio } from '../api/client';
 import { Card } from '../components/Card';
 import LlmUsagePane from '../components/LlmUsagePane';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import { centsToUSD, formatTimestamp } from '../lib/format';
 import styles from './Dashboard.module.css';
 
@@ -18,6 +19,7 @@ type DashState = {
 
 export default function DashboardPage(): JSX.Element {
   const { addToast } = useToast();
+  const { canWrite } = useAuth();
   const navigate = useNavigate();
   const [state, setState] = useState<DashState | null>(null);
   const [running, setRunning] = useState(false);
@@ -181,29 +183,35 @@ export default function DashboardPage(): JSX.Element {
         </Card>
 
         <Card title="Actions">
-          <button
-            className={running ? styles.disabledBtn : styles.activeBtn}
-            disabled={running}
-            onClick={runNow}
-          >
-            {running ? 'Running…' : 'Run Now'}
-          </button>
-          {progress.length > 0 && (
-            <div className={styles.progressContainer}>
+          {canWrite ? (
+            <>
               <button
-                className={styles.collapseBtn}
-                onClick={() => setExpanded(!expanded)}
+                className={running ? styles.disabledBtn : styles.activeBtn}
+                disabled={running}
+                onClick={runNow}
               >
-                {expanded ? '▼' : '▶'} Progress ({progress.length})
+                {running ? 'Running…' : 'Run Now'}
               </button>
-              {expanded && (
-                <div ref={progressRef} className={styles.progressLog}>
-                  {progress.map((msg, i) => (
-                    <div key={i} className={styles.progressLine}>{msg}</div>
-                  ))}
+              {progress.length > 0 && (
+                <div className={styles.progressContainer}>
+                  <button
+                    className={styles.collapseBtn}
+                    onClick={() => setExpanded(!expanded)}
+                  >
+                    {expanded ? '▼' : '▶'} Progress ({progress.length})
+                  </button>
+                  {expanded && (
+                    <div ref={progressRef} className={styles.progressLog}>
+                      {progress.map((msg, i) => (
+                        <div key={i} className={styles.progressLine}>{msg}</div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+            </>
+          ) : (
+            <p className={styles.muted}>Read-only access</p>
           )}
         </Card>
       </div>

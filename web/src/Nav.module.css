@@ -38,3 +38,44 @@
   background: rgba(79, 142, 247, 0.1);
   color: var(--color-primary);
 }
+
+.spacer {
+  flex: 1;
+}
+
+.userSection {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+.userInfo {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--spacing-sm);
+}
+
+.username {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.role {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.logoutBtn {
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.logoutBtn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
