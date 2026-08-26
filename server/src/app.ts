@@ -1,7 +1,10 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import { AppError, ValidationError } from './lib/errors.js';
 import { logger } from './lib/logger.js';
+import { requireAuth, requireWrite } from './middleware/auth.js';
+import { loginHandler, logoutHandler, meHandler } from './routes/auth.js';
 import { healthHandler } from './routes/health.js';
 import { getSettingsHandler, patchSettingsHandler } from './routes/settings.js';
 import { getSecretsHandler, putSecretHandler, deleteSecretHandler } from './routes/secrets.js';
@@ -39,8 +42,9 @@ interface AppOptions {
 export function createApp(options: AppOptions = {}): Express {
   const app = express();
 
-  // JSON body limit config
+  // Middleware
   app.use(express.json({ limit: '10mb' }));
+  app.use(cookieParser());
 
   // Request logging
   app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -51,56 +55,63 @@ export function createApp(options: AppOptions = {}): Express {
     next();
   });
 
-  // API routes
+  // ── Public routes (no auth) ─────────────────────────────────────────────────
   app.get('/api/health', healthHandler);
-  app.get('/api/settings', getSettingsHandler);
-  app.patch('/api/settings', patchSettingsHandler);
-  app.get('/api/secrets', getSecretsHandler);
-  app.put('/api/secrets/:name', putSecretHandler);
-  app.delete('/api/secrets/:name', deleteSecretHandler);
-  app.post('/api/symbols/validate', validateSymbolHandler);
-  app.get('/api/watchlist', listWatchlistHandler);
-  app.post('/api/watchlist', addWatchlistHandler);
-  app.patch('/api/watchlist/:symbol', patchWatchlistHandler);
-  app.delete('/api/watchlist/:symbol', removeWatchlistHandler);
-  app.post('/api/llm/test', testLlmHandler);
-  app.get('/api/datasources', listDataSourcesHandler);
-  app.post('/api/datasources/:id/test', testDataSourceHandler);
-  app.get('/api/scheduler/next-runs', nextRunsHandler);
+  app.post('/api/auth/login', loginHandler);
+  app.post('/api/auth/logout', logoutHandler);
+
+  // Cloud Scheduler triggers (OIDC auth, not user auth)
   app.post('/api/trigger/trading-cycle', verifySchedulerAuth, triggerTradingCycleHandler);
   app.post('/api/trigger/snapshot', verifySchedulerAuth, triggerSnapshotHandler);
   app.post('/api/trigger/market-open-fill', verifySchedulerAuth, triggerMarketOpenFillHandler);
-  app.get('/api/runs', listRunsHandler);
-  app.get('/api/runs/:id', getRunHandler);
-  app.get('/api/runs/:id/coverage', getRunCoverageHandler);
-  app.post('/api/runs', triggerRunHandler);
-  app.post('/api/runs/:id/cancel', cancelRunHandler);
-  app.get('/api/portfolio', getPortfolioHandler);
-  app.get('/api/portfolio/history', getPortfolioHistoryHandler);
-  app.post('/api/portfolio/transfer', transferFundsHandler);
-  app.get('/api/trades', listTradesHandler);
-  app.get('/api/trades/pending', listPendingOrdersHandler);
-  app.post('/api/trades/pending/cancel-bulk', cancelPendingOrdersBulkHandler);
-  app.post('/api/trades/pending/:id/cancel', cancelPendingOrderHandler);
-  app.get('/api/trades/:id', getTradeHandler);
-  app.get('/api/calibration', getCalibrationHandler);
-  app.get('/api/performance', getPerformanceHandler);
-  app.get('/api/runs/progress/stream', runProgressStreamHandler);
-  app.get('/api/prices/symbols', listTrackedSymbolsHandler);
-  app.post('/api/prices/backfill', triggerBackfillHandler);
 
-  // Backtest routes
-  app.use('/api/backtest', createBacktestRoutes(getDatabase()));
+  // ── Authenticated routes ────────────────────────────────────────────────────
+  app.get('/api/auth/me', requireAuth, meHandler);
+
+  // Read-only routes (any authenticated user)
+  app.get('/api/settings', requireAuth, getSettingsHandler);
+  app.get('/api/secrets', requireAuth, getSecretsHandler);
+  app.get('/api/watchlist', requireAuth, listWatchlistHandler);
+  app.get('/api/datasources', requireAuth, listDataSourcesHandler);
+  app.get('/api/scheduler/next-runs', requireAuth, nextRunsHandler);
+  app.get('/api/runs', requireAuth, listRunsHandler);
+  app.get('/api/runs/progress/stream', requireAuth, runProgressStreamHandler);
+  app.get('/api/runs/:id', requireAuth, getRunHandler);
+  app.get('/api/runs/:id/coverage', requireAuth, getRunCoverageHandler);
+  app.get('/api/portfolio', requireAuth, getPortfolioHandler);
+  app.get('/api/portfolio/history', requireAuth, getPortfolioHistoryHandler);
+  app.get('/api/trades', requireAuth, listTradesHandler);
+  app.get('/api/trades/pending', requireAuth, listPendingOrdersHandler);
+  app.get('/api/trades/:id', requireAuth, getTradeHandler);
+  app.get('/api/calibration', requireAuth, getCalibrationHandler);
+  app.get('/api/performance', requireAuth, getPerformanceHandler);
+  app.get('/api/prices/symbols', requireAuth, listTrackedSymbolsHandler);
+
+  // Write routes (chester only)
+  app.patch('/api/settings', requireAuth, requireWrite, patchSettingsHandler);
+  app.put('/api/secrets/:name', requireAuth, requireWrite, putSecretHandler);
+  app.delete('/api/secrets/:name', requireAuth, requireWrite, deleteSecretHandler);
+  app.post('/api/symbols/validate', requireAuth, requireWrite, validateSymbolHandler);
+  app.post('/api/watchlist', requireAuth, requireWrite, addWatchlistHandler);
+  app.patch('/api/watchlist/:symbol', requireAuth, requireWrite, patchWatchlistHandler);
+  app.delete('/api/watchlist/:symbol', requireAuth, requireWrite, removeWatchlistHandler);
+  app.post('/api/llm/test', requireAuth, requireWrite, testLlmHandler);
+  app.post('/api/datasources/:id/test', requireAuth, requireWrite, testDataSourceHandler);
+  app.post('/api/runs', requireAuth, requireWrite, triggerRunHandler);
+  app.post('/api/runs/:id/cancel', requireAuth, requireWrite, cancelRunHandler);
+  app.post('/api/portfolio/transfer', requireAuth, requireWrite, transferFundsHandler);
+  app.post('/api/trades/pending/cancel-bulk', requireAuth, requireWrite, cancelPendingOrdersBulkHandler);
+  app.post('/api/trades/pending/:id/cancel', requireAuth, requireWrite, cancelPendingOrderHandler);
+  app.post('/api/prices/backfill', requireAuth, requireWrite, triggerBackfillHandler);
+
+  // Backtest routes (require auth, write operations need write permission)
+  app.use('/api/backtest', requireAuth, createBacktestRoutes(getDatabase()));
 
   // Static file serving
   if (options.viteDevMiddleware) {
-    // Dev mode: use Vite middleware
     app.use(options.viteDevMiddleware);
   } else if (options.staticRoot) {
-    // Production mode: serve built static files
     app.use(express.static(options.staticRoot));
-
-    // Catch-all for SPA: return index.html for non-API GET requests
     app.get('*', (req: Request, res: Response) => {
       if (!req.path.startsWith('/api')) {
         res.sendFile(path.join(options.staticRoot!, 'index.html'));
@@ -110,7 +121,7 @@ export function createApp(options: AppOptions = {}): Express {
     });
   }
 
-  // Error middleware: map typed errors to HTTP status codes
+  // Error middleware
   app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     logger.error('request error', {
       path: req.path,
@@ -122,12 +133,9 @@ export function createApp(options: AppOptions = {}): Express {
       res.status(err.statusCode).json({
         error: err.message,
         code: err.code,
-        ...(err instanceof ValidationError && err.issues
-          ? { issues: err.issues }
-          : {}),
+        ...(err instanceof ValidationError && err.issues ? { issues: err.issues } : {}),
       });
     } else {
-      // Fallback for unexpected errors
       res.status(500).json({
         error: 'Internal Server Error',
         code: 'INTERNAL_ERROR',

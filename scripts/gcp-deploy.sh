@@ -28,7 +28,7 @@ gcloud run deploy atn-trd \
   --memory=1Gi \
   --cpu=1 \
   --timeout=900 \
-  --set-secrets="ATN_ENC_KEY=ATN_ENC_KEY:latest,LLM_API_KEY=LLM_API_KEY:latest,FINNHUB_API_KEY=FINNHUB_API_KEY:latest,FRED_API_KEY=FRED_API_KEY:latest,ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_API_SECRET=ALPACA_API_SECRET:latest" \
+  --set-secrets="ATN_ENC_KEY=ATN_ENC_KEY:latest,LLM_API_KEY=LLM_API_KEY:latest,FINNHUB_API_KEY=FINNHUB_API_KEY:latest,FRED_API_KEY=FRED_API_KEY:latest,ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_API_SECRET=ALPACA_API_SECRET:latest,AUTH_PASSWORD_CHESTER=AUTH_PASSWORD_CHESTER:latest,AUTH_PASSWORD_GUEST=AUTH_PASSWORD_GUEST:latest" \
   --set-env-vars="NODE_ENV=production,ATN_DATA_DIR=/data,LLM_API_URL=https://generativelanguage.googleapis.com/v1beta/openai/,LLM_MODEL=gemini-3.1-flash-lite" \
   --execution-environment=gen2 \
   --add-volume=name=data-volume,type=cloud-storage,bucket=$BUCKET_NAME \

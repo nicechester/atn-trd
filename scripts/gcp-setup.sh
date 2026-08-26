@@ -43,6 +43,10 @@ create_secret "ALPACA_API_KEY" "PKMQUW6RCTO6IISHEHD4FMI5AO"
 create_secret "ALPACA_API_SECRET" "EPxiNpc7Ho95BP8ABpmStikqWK1BqVQVrqggG2h8vrZw"
 create_secret "LLM_API_KEY" "AIzaSyCIdItF6NsLEaTqbgn44FbGxZ70axCbmLw"
 
+# Auth passwords
+create_secret "AUTH_PASSWORD_CHESTER" "${AUTH_PASSWORD_CHESTER:-changeme}"
+create_secret "AUTH_PASSWORD_GUEST" "${AUTH_PASSWORD_GUEST:-guest}"
+
 echo "=== Creating service accounts ==="
 # Cloud Run service account
 gcloud iam service-accounts create atn-trd-runner \
@@ -58,7 +62,7 @@ echo "=== Granting permissions ==="
 RUNNER_SA="atn-trd-runner@${PROJECT_ID}.iam.gserviceaccount.com"
 
 # Grant secret access
-for secret in ATN_ENC_KEY FRED_API_KEY FINNHUB_API_KEY ALPACA_API_KEY ALPACA_API_SECRET LLM_API_KEY; do
+for secret in ATN_ENC_KEY FRED_API_KEY FINNHUB_API_KEY ALPACA_API_KEY ALPACA_API_SECRET LLM_API_KEY AUTH_PASSWORD_CHESTER AUTH_PASSWORD_GUEST; do
   gcloud secrets add-iam-policy-binding $secret \
     --member="serviceAccount:$RUNNER_SA" \
     --role="roles/secretmanager.secretAccessor" \
