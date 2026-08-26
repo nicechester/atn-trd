@@ -1,9 +1,7 @@
 import { z } from 'zod';
-import { ChatOpenAI } from '@langchain/openai';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
-import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { resolveConfigForAgent, resolveApiKey, LlmNotConfiguredError } from '../llm/openaiChatModel.js';
+import { resolveConfigForAgent } from '../llm/openaiChatModel.js';
+import { getSynthesisLlm, isGeminiModel } from '../llm/rateLimitedLlm.js';
 import { PORTFOLIO_MANAGER_SYSTEM_PROMPT } from '../llm/prompts/portfolioManager.js';
 import type { SymbolAssessment } from './analystAgent.js';
 import type { DecisionSet, InvestorProfile } from '@atn-trd/shared';
@@ -143,52 +141,18 @@ export async function runPortfolioManagerAgent(
       return null;
     }
 
-    // 2. Resolve config and API key
-    const resolved = resolveConfigForAgent('portfolioManager', {
-      model: config?.model,
-      temperature: config?.temperature ?? 0,
-    });
-    const apiKey = resolveApiKey();
-    if (!apiKey) throw new LlmNotConfiguredError();
+    // 2. Get rate-limited LLM singleton
+    const synthesisLlm = getSynthesisLlm();
+    const resolved = resolveConfigForAgent('portfolioManager', { model: config?.model, temperature: config?.temperature ?? 0 });
+    const isGemini = isGeminiModel();
 
-    // 3. Create LLM - use native Google API for Gemini models
-    const isGemini = /gemini/i.test(resolved.model);
-    
-    let llm: BaseChatModel;
-    
-    if (isGemini) {
-      llm = new ChatGoogleGenerativeAI({
-        model: resolved.model,
-        apiKey,
-        temperature: 0,
-        maxRetries: 0,
-      });
-    } else {
-      llm = new ChatOpenAI({
-        apiKey,
-        model: resolved.model,
-        temperature: 0,
-        timeout: resolved.timeoutMs,
-        maxRetries: 0,
-        ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
-      });
-    }
-
-    // 4. Build messages
+    // 3. Build messages
     const humanMessage = buildHumanMessage(assessments, portfolioContext, constraints);
     const messages = [
       new SystemMessage(PORTFOLIO_MANAGER_SYSTEM_PROMPT),
       new HumanMessage(humanMessage),
     ];
 
-    // 5. Log debug
-    log.debug('starting portfolio manager agent', {
-      runId,
-      symbolCount: assessments.length,
-      model: resolved.model,
-    });
-
-    // 6. Two-attempt structured output loop
     // Add explicit JSON prompt for Gemini
     const jsonPrompt = isGemini ? new HumanMessage(`Respond with a JSON object in this exact format:
 {
@@ -206,6 +170,15 @@ export async function runPortfolioManagerAgent(
 Respond ONLY with the JSON object, no markdown or explanation.`) : null;
 
     const finalMessages = jsonPrompt ? [...messages, jsonPrompt] : messages;
+
+    // 4. Log debug
+    log.debug('starting portfolio manager agent', {
+      runId,
+      symbolCount: assessments.length,
+      model: resolved.model,
+    });
+
+    // 5. Two-attempt structured output loop
     let parsed: z.infer<typeof LlmDecisionSetSchema> | null = null;
 
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -215,7 +188,7 @@ Respond ONLY with the JSON object, no markdown or explanation.`) : null;
         // Skip withStructuredOutput for Gemini - use manual JSON extraction
         if (!isGemini) {
           try {
-            raw = await (llm as any).withStructuredOutput(LlmDecisionSetSchema).invoke(messages);
+            raw = await (synthesisLlm.baseLlm as any).withStructuredOutput(LlmDecisionSetSchema).invoke(messages);
             if (raw && typeof raw === 'object' && 'decisions' in raw) {
               parsed = LlmDecisionSetSchema.parse(raw);
               log.debug('portfolio manager output complete', { runId, decisionCount: parsed.decisions.length });
@@ -228,8 +201,8 @@ Respond ONLY with the JSON object, no markdown or explanation.`) : null;
           }
         }
 
-        // Manual JSON extraction
-        const response = await llm.invoke(finalMessages);
+        // Manual JSON extraction with rate limit handling
+        const response = await synthesisLlm.invoke(finalMessages);
         const content =
           typeof response.content === 'string'
             ? response.content
@@ -267,13 +240,13 @@ Respond ONLY with the JSON object, no markdown or explanation.`) : null;
       return null;
     }
 
-    // 7. Sort by priority ascending
+    // 6. Sort by priority ascending
     const sortedDecisions = parsed.decisions.sort((a, b) => a.priority - b.priority);
 
-    // 8. Build input symbol set for validation
+    // 7. Build input symbol set for validation
     const inputSymbols = new Set(assessments.map((a) => a.symbol.toUpperCase()));
 
-    // 9. Map and filter, validate input symbols
+    // 8. Map and filter, validate input symbols
     const decisions = sortedDecisions
       .filter((d) => {
         if (!inputSymbols.has(d.symbol.toUpperCase())) {
@@ -291,7 +264,7 @@ Respond ONLY with the JSON object, no markdown or explanation.`) : null;
         runId,
       }));
 
-    // 10. Warn if count mismatch
+    // 9. Warn if count mismatch
     if (decisions.length !== assessments.length) {
       log.warn('decision count mismatch', {
         expected: assessments.length,
@@ -299,14 +272,14 @@ Respond ONLY with the JSON object, no markdown or explanation.`) : null;
       });
     }
 
-    // 11. Log debug with action summary
+    // 10. Log debug with action summary
     log.debug('portfolio manager decisions', {
       runId,
       count: decisions.length,
       actions: decisions.map((d) => `${d.symbol}:${d.action}`).join(', '),
     });
 
-    // 12. Return DecisionSet
+    // 11. Return DecisionSet
     return {
       decisions,
       timestamp: Date.now(),

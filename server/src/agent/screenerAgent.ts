@@ -1,10 +1,8 @@
 import { z } from 'zod';
-import { ChatOpenAI } from '@langchain/openai';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
-import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { resolveConfigForAgent, resolveApiKey, LlmNotConfiguredError } from '../llm/openaiChatModel.js';
+import { resolveConfigForAgent } from '../llm/openaiChatModel.js';
+import { getRateLimitedLlm, getSynthesisLlm, isGeminiModel } from '../llm/rateLimitedLlm.js';
 import { SCREENER_SYSTEM_PROMPT } from '../llm/prompts/screener.js';
 import { createScreenerTools, type ScreenerToolsDeps } from './screenerTools.js';
 import { RunCollector } from './runCollector.js';
@@ -55,69 +53,29 @@ export async function runScreenerAgent(
       return [];
     }
 
-    // 1. Resolve config and API key
-    const resolved = resolveConfigForAgent('screener', {
-      model: config?.model,
-      temperature: config?.temperature,
-    });
-    const apiKey = resolveApiKey();
-    if (!apiKey) throw new LlmNotConfiguredError();
+    // 1. Get rate-limited LLM singleton
+    const rateLimitedLlm = getRateLimitedLlm();
+    const synthesisLlm = getSynthesisLlm();
+    const resolved = resolveConfigForAgent('screener', { model: config?.model, temperature: config?.temperature });
+    const isGemini = isGeminiModel();
 
-    // 2. Create LLM - use native Google API for Gemini models
-    const isGemini = /gemini/i.test(resolved.model);
-    
-    let reactLlm: BaseChatModel;
-    let synthesisLlm: BaseChatModel;
-    
-    if (isGemini) {
-      reactLlm = new ChatGoogleGenerativeAI({
-        model: resolved.model,
-        apiKey,
-        temperature: resolved.temperature,
-        maxRetries: 0,
-      });
-      synthesisLlm = new ChatGoogleGenerativeAI({
-        model: resolved.model,
-        apiKey,
-        temperature: 0,
-        maxRetries: 0,
-      });
-    } else {
-      reactLlm = new ChatOpenAI({
-        apiKey,
-        model: resolved.model,
-        temperature: resolved.temperature,
-        timeout: resolved.timeoutMs,
-        maxRetries: 0,
-        ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
-      });
-      synthesisLlm = new ChatOpenAI({
-        apiKey,
-        model: resolved.model,
-        temperature: 0,
-        timeout: resolved.timeoutMs,
-        maxRetries: 0,
-        ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
-      });
-    }
-
-    // 3. Create tools and collector
+    // 2. Create tools and collector
     const tools = createScreenerTools(deps.toolsDeps);
     const collector = new RunCollector(runId, 'screener', deps.messagesRepo, deps.artifactsRepo);
 
-    // 4. Build human content with candidate list
+    // 3. Build human content with candidate list
     const symbolsStr = candidates.map((c) => c.symbol).join(', ');
     const humanContent = `Screen the following candidates for investment merit: ${symbolsStr}
 
 For each candidate, evaluate sector momentum, earnings catalysts, and options market sentiment. Rank them by conviction and select the most promising for detailed analysis.`;
 
-    // 5. Write initial messages
+    // 4. Write initial messages
     collector.writeInitialMessages([
       { role: 'system', content: SCREENER_SYSTEM_PROMPT },
       { role: 'human', content: humanContent },
     ]);
 
-    // 6. Create and stream the react agent
+    // 5. Create and stream the react agent
     const recursionLimit = config?.recursionLimit ?? 10;
     log.debug('starting screener agent', {
       runId,
@@ -127,7 +85,7 @@ For each candidate, evaluate sector momentum, earnings catalysts, and options ma
     });
 
     const agent = createReactAgent({
-      llm: reactLlm,
+      llm: rateLimitedLlm.baseLlm,
       tools,
       stateModifier: SCREENER_SYSTEM_PROMPT,
     });
@@ -159,7 +117,7 @@ For each candidate, evaluate sector momentum, earnings catalysts, and options ma
     log.debug('stream complete', { candidateCount: candidates.length, eventCount });
     emitProgress(runId, 'screener', 'Synthesizing selections', {});
 
-    // 7. Structured synthesis with 1 retry
+    // 6. Structured synthesis with 1 retry
     const SelectionArraySchema = z.array(SelectionSchema);
     const synthesisPrompt = `Based on your screening above, provide your final selections as a JSON array. Each element should have:
 - "symbol": stock ticker
@@ -182,7 +140,7 @@ Return at least 3-5 selections if available. Respond ONLY with the JSON array, n
         // Skip withStructuredOutput for Gemini - use manual JSON extraction
         if (!isGemini) {
           try {
-            raw = await (synthesisLlm as any).withStructuredOutput(SelectionArraySchema).invoke(
+            raw = await (synthesisLlm.baseLlm as any).withStructuredOutput(SelectionArraySchema).invoke(
               synthesisMessages
             );
             if (Array.isArray(raw)) {
@@ -197,7 +155,7 @@ Return at least 3-5 selections if available. Respond ONLY with the JSON array, n
           }
         }
 
-        // Manual JSON extraction
+        // Manual JSON extraction with rate limit handling
         const response = await synthesisLlm.invoke(synthesisMessages);
         const content =
           typeof response.content === 'string'

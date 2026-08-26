@@ -1,10 +1,8 @@
 import { z } from 'zod';
-import { ChatOpenAI } from '@langchain/openai';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
-import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { resolveConfigForAgent, resolveApiKey, LlmNotConfiguredError } from '../llm/openaiChatModel.js';
+import { resolveConfigForAgent } from '../llm/openaiChatModel.js';
+import { getRateLimitedLlm, getSynthesisLlm, isGeminiModel } from '../llm/rateLimitedLlm.js';
 import { ANALYST_SYSTEM_PROMPT } from '../llm/prompts/analyst.js';
 import { createAgentTools, type AgentToolsDeps } from './tools.js';
 import { RunCollector } from './runCollector.js';
@@ -66,54 +64,17 @@ export async function runAnalystAgent(
   config?: AnalystAgentConfig
 ): Promise<SymbolAssessment | null> {
   try {
-    // 1. Resolve config and API key
+    // 1. Get rate-limited LLM singleton
+    const rateLimitedLlm = getRateLimitedLlm();
+    const synthesisLlm = getSynthesisLlm();
     const resolved = resolveConfigForAgent('analyst', { model: config?.model, temperature: config?.temperature });
-    const apiKey = resolveApiKey();
-    if (!apiKey) throw new LlmNotConfiguredError();
+    const isGemini = isGeminiModel();
 
-    // 2. Create LLM - use native Google API for Gemini models
-    const isGemini = /gemini/i.test(resolved.model);
-    
-    let reactLlm: BaseChatModel;
-    let synthesisLlm: BaseChatModel;
-    
-    if (isGemini) {
-      reactLlm = new ChatGoogleGenerativeAI({
-        model: resolved.model,
-        apiKey,
-        temperature: resolved.temperature,
-        maxRetries: 0,
-      });
-      synthesisLlm = new ChatGoogleGenerativeAI({
-        model: resolved.model,
-        apiKey,
-        temperature: 0,
-        maxRetries: 0,
-      });
-    } else {
-      reactLlm = new ChatOpenAI({
-        apiKey,
-        model: resolved.model,
-        temperature: resolved.temperature,
-        timeout: resolved.timeoutMs,
-        maxRetries: 0,
-        ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
-      });
-      synthesisLlm = new ChatOpenAI({
-        apiKey,
-        model: resolved.model,
-        temperature: 0,
-        timeout: resolved.timeoutMs,
-        maxRetries: 0,
-        ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
-      });
-    }
-
-    // 3. Create tools and collector
+    // 2. Create tools and collector
     const tools = createAgentTools(deps.toolsDeps);
     const collector = new RunCollector(runId, symbol, deps.messagesRepo, deps.artifactsRepo);
 
-    // 4. Build human content with optional investor profile injection
+    // 3. Build human content with optional investor profile injection
     let humanContent = `Research ${symbol} and provide a thorough investment assessment.`;
     if (config?.investorProfile) {
       const profile = config.investorProfile;
@@ -127,13 +88,13 @@ export async function runAnalystAgent(
       humanContent += profileStr;
     }
 
-    // 5. Write initial messages
+    // 4. Write initial messages
     collector.writeInitialMessages([
       { role: 'system', content: ANALYST_SYSTEM_PROMPT },
       { role: 'human', content: humanContent },
     ]);
 
-    // 6. Create and stream the react agent
+    // 5. Create and stream the react agent
     const recursionLimit = config?.recursionLimit ?? 10;
     log.debug('starting analyst agent', {
       runId,
@@ -143,7 +104,7 @@ export async function runAnalystAgent(
     });
 
     const agent = createReactAgent({
-      llm: reactLlm,
+      llm: rateLimitedLlm.baseLlm,
       tools,
       stateModifier: ANALYST_SYSTEM_PROMPT,
     });
@@ -175,14 +136,13 @@ export async function runAnalystAgent(
     log.debug('stream complete', { symbol, eventCount });
     emitProgress(runId, 'analyst', `${symbol}: synthesizing assessment`, { symbol });
 
-    // 7. Structured synthesis with token guard and message trimming
+    // 6. Structured synthesis with token guard and message trimming
     const maxTokens = config?.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS;
     
     // Trim reasoning if too long
     let reasoningText = finalReasoningText || '(No reasoning captured)';
     const reasoningTokens = estimateTokens(reasoningText);
     if (reasoningTokens > maxTokens * 0.6) {
-      // Keep last ~60% of max tokens worth of reasoning
       const targetChars = Math.floor(maxTokens * 0.6 * 4);
       reasoningText = '...' + reasoningText.slice(-targetChars);
       log.debug('trimmed reasoning text', { symbol, originalTokens: reasoningTokens, targetChars });
@@ -217,7 +177,6 @@ Respond ONLY with the JSON object, no markdown or explanation.`;
         estimatedTokens: estimatedTotal, 
         maxTokens,
       });
-      // Still attempt but log warning - LLM may truncate or fail gracefully
     }
 
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -228,7 +187,7 @@ Respond ONLY with the JSON object, no markdown or explanation.`;
         if (!isGemini) {
           try {
             log.debug('attempting withStructuredOutput', { symbol });
-            raw = await (synthesisLlm as any).withStructuredOutput(AssessmentSchema).invoke(
+            raw = await (synthesisLlm.baseLlm as any).withStructuredOutput(AssessmentSchema).invoke(
               synthesisMessages
             );
             if (raw && typeof raw === 'object' && 'score' in raw) {
@@ -244,7 +203,7 @@ Respond ONLY with the JSON object, no markdown or explanation.`;
           }
         }
         
-        // Manual JSON extraction (always used for Gemini)
+        // Manual JSON extraction with rate limit handling
         const response = await synthesisLlm.invoke(synthesisMessages);
         const content =
           typeof response.content === 'string'
