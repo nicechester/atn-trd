@@ -17,7 +17,7 @@ import { settingsEvents } from '../config/settingsService.js';
 import { getLlmLimits } from '@atn-trd/shared';
 import { logger } from '../lib/logger.js';
 import { runSnapshotJob } from './jobs/snapshot.js';
-import { runMissedFillJob } from './jobs/missedFill.js';
+import { runMarketOpenFillJob } from './jobs/marketOpenFill.js';
 import { getDatabase } from '../db/index.js';
 import { RunsRepo } from '../repos/runsRepo.js';
 import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
@@ -58,7 +58,7 @@ let activeJob: Cron | null = null;
 let snapshotCronJob: Cron | null = null;
 
 // Missed-fill recovery job; runs hourly to fill orders that missed market open.
-let missedFillJob: Cron | null = null;
+let marketOpenFillJob: Cron | null = null;
 
 // ── job handlers ──────────────────────────────────────────────────────────────
 
@@ -219,17 +219,21 @@ export function startScheduler(): void {
     snapshotCronJob = null;
   }
 
-  // Register missed-fill recovery job (hourly) to fill orders that missed market open
+  // Register market open fill job (9:30 AM ET on trading days)
   try {
     const db = getDatabase();
-    missedFillJob = new Cron('0 * * * *', { protect: true }, async () => {
-      const settings = getSettings();
-      await runMissedFillJob(db, { slippageBps: settings.paperAccount.slippageBps });
-    });
-    log.info('missed-fill job registered', { cron: '0 * * * *' });
+    marketOpenFillJob = new Cron(
+      '30 9 * * 1-5',
+      { timezone: 'America/New_York', protect: true },
+      async () => {
+        const settings = getSettings();
+        await runMarketOpenFillJob(db, { slippageBps: settings.paperAccount.slippageBps });
+      }
+    );
+    log.info('market-open-fill job registered', { cron: '30 9 * * 1-5', timezone: 'America/New_York' });
   } catch (err) {
-    log.error('failed to register missed-fill job', { error: err instanceof Error ? err.message : String(err) });
-    missedFillJob = null;
+    log.error('failed to register market-open-fill job', { error: err instanceof Error ? err.message : String(err) });
+    marketOpenFillJob = null;
   }
 
   settingsEvents.on('change', () => {
@@ -250,9 +254,9 @@ export function stopScheduler(): void {
     snapshotCronJob = null;
   }
 
-  if (missedFillJob) {
-    missedFillJob.stop();
-    missedFillJob = null;
+  if (marketOpenFillJob) {
+    marketOpenFillJob.stop();
+    marketOpenFillJob = null;
   }
 
   log.info('scheduler stopped');

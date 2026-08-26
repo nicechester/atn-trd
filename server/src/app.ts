@@ -15,6 +15,12 @@ import {
   patchWatchlistHandler,
 } from './routes/watchlist.js';
 import { nextRunsHandler } from './routes/scheduler.js';
+import {
+  verifySchedulerAuth,
+  triggerTradingCycleHandler,
+  triggerSnapshotHandler,
+  triggerMarketOpenFillHandler,
+} from './routes/trigger.js';
 import { listRunsHandler, getRunHandler, triggerRunHandler, getRunCoverageHandler, cancelRunHandler } from './routes/runs.js';
 import { getPortfolioHandler, getPortfolioHistoryHandler, transferFundsHandler } from './routes/portfolio.js';
 import { listTradesHandler, getTradeHandler, listPendingOrdersHandler, cancelPendingOrderHandler, cancelPendingOrdersBulkHandler } from './routes/trades.js';
@@ -61,6 +67,9 @@ export function createApp(options: AppOptions = {}): Express {
   app.get('/api/datasources', listDataSourcesHandler);
   app.post('/api/datasources/:id/test', testDataSourceHandler);
   app.get('/api/scheduler/next-runs', nextRunsHandler);
+  app.post('/api/trigger/trading-cycle', verifySchedulerAuth, triggerTradingCycleHandler);
+  app.post('/api/trigger/snapshot', verifySchedulerAuth, triggerSnapshotHandler);
+  app.post('/api/trigger/market-open-fill', verifySchedulerAuth, triggerMarketOpenFillHandler);
   app.get('/api/runs', listRunsHandler);
   app.get('/api/runs/:id', getRunHandler);
   app.get('/api/runs/:id/coverage', getRunCoverageHandler);

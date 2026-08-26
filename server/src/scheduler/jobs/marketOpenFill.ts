@@ -1,8 +1,8 @@
 /**
- * Hourly job: fill accepted orders that missed their market open.
+ * Market open fill job: fill accepted orders at market open price.
  *
- * Scans for accepted orders whose settlement date has passed and fills them
- * at the historical open price. For today's settlements, fetches live quote.
+ * Runs at 9:30 AM ET to fill orders submitted after previous market close.
+ * Uses live quote for today's open price.
  */
 
 import type Database from 'better-sqlite3';
@@ -16,7 +16,7 @@ import { notionalCents } from '../../lib/money.js';
 import { logger } from '../../lib/logger.js';
 import { resolveApiKey } from '../../datasources/apiKeys.js';
 
-const log = logger.child({ component: 'missed-fill' });
+const log = logger.child({ component: 'market-open-fill' });
 
 /** Fetch today's open price from Finnhub quote endpoint */
 async function fetchTodayOpenCents(symbol: string): Promise<number | null> {
@@ -44,7 +44,7 @@ async function fetchTodayOpenCents(symbol: string): Promise<number | null> {
   }
 }
 
-export async function runMissedFillJob(
+export async function runMarketOpenFillJob(
   db: Database.Database,
   config: { slippageBps: number } = { slippageBps: 5 }
 ): Promise<{ filled: number; rejected: number; skipped: number }> {
@@ -189,7 +189,7 @@ export async function runMissedFillJob(
       ordersRepo.updateStatus(order.id, 'filled');
     })();
 
-    log.info('startup fill executed', {
+    log.info('market open fill executed', {
       orderId: order.id,
       symbol: order.symbol,
       side: order.side,
@@ -200,6 +200,6 @@ export async function runMissedFillJob(
     filled++;
   }
 
-  log.info('startup fill job complete', { filled, rejected, skipped });
+  log.info('market open fill job complete', { filled, rejected, skipped });
   return { filled, rejected, skipped };
 }
