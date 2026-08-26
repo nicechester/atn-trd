@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { portfolio as portfolioApi, type Portfolio } from '../api/client';
 import { centsToUSD, formatPnl } from '../lib/format';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import styles from './Portfolio.module.css';
 
 export default function PortfolioPage() {
@@ -9,7 +10,10 @@ export default function PortfolioPage() {
   const [loading, setLoading] = useState(true);
   const [transferAmount, setTransferAmount] = useState('');
   const [transferring, setTransferring] = useState(false);
+  const [seedAmount, setSeedAmount] = useState('10000');
+  const [initializing, setInitializing] = useState(false);
   const { addToast } = useToast();
+  const { canWrite } = useAuth();
 
   useEffect(() => {
     loadPortfolio();
@@ -48,11 +52,52 @@ export default function PortfolioPage() {
 
   if (loading) return <p>Loading…</p>;
 
+  async function handleInit() {
+    const amount = parseFloat(seedAmount);
+    if (isNaN(amount) || amount <= 0) {
+      addToast('Enter a valid amount', 'error');
+      return;
+    }
+    setInitializing(true);
+    try {
+      await portfolioApi.init(Math.round(amount * 100));
+      addToast(`Portfolio initialized with ${centsToUSD(Math.round(amount * 100))}`, 'success');
+      loadPortfolio();
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Init failed', 'error');
+    } finally {
+      setInitializing(false);
+    }
+  }
+
   if (!data) {
     return (
       <div>
         <h1>Portfolio</h1>
-        <p className={styles.muted}>Portfolio not initialized. Run the agent to create a paper portfolio.</p>
+        <p className={styles.muted}>Portfolio not initialized.</p>
+        {canWrite && (
+          <div className={styles.initSection}>
+            <div className={styles.transferRow}>
+              <span className={styles.dollarSign}>$</span>
+              <input
+                type="number"
+                className={styles.transferInput}
+                placeholder="10000"
+                value={seedAmount}
+                onChange={e => setSeedAmount(e.target.value)}
+                min="0"
+                step="1000"
+              />
+              <button
+                className={styles.depositBtn}
+                onClick={handleInit}
+                disabled={initializing || !seedAmount}
+              >
+                {initializing ? 'Initializing...' : 'Initialize Portfolio'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

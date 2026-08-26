@@ -25,7 +25,7 @@ import {
   triggerMarketOpenFillHandler,
 } from './routes/trigger.js';
 import { listRunsHandler, getRunHandler, triggerRunHandler, getRunCoverageHandler, cancelRunHandler } from './routes/runs.js';
-import { getPortfolioHandler, getPortfolioHistoryHandler, transferFundsHandler } from './routes/portfolio.js';
+import { getPortfolioHandler, getPortfolioHistoryHandler, transferFundsHandler, initPortfolioHandler } from './routes/portfolio.js';
 import { listTradesHandler, getTradeHandler, listPendingOrdersHandler, cancelPendingOrderHandler, cancelPendingOrdersBulkHandler } from './routes/trades.js';
 import { getCalibrationHandler } from './routes/calibration.js';
 import { getPerformanceHandler } from './routes/performance.js';
@@ -99,6 +99,7 @@ export function createApp(options: AppOptions = {}): Express {
   app.post('/api/datasources/:id/test', requireAuth, requireWrite, testDataSourceHandler);
   app.post('/api/runs', requireAuth, requireWrite, triggerRunHandler);
   app.post('/api/runs/:id/cancel', requireAuth, requireWrite, cancelRunHandler);
+  app.post('/api/portfolio/init', requireAuth, requireWrite, initPortfolioHandler);
   app.post('/api/portfolio/transfer', requireAuth, requireWrite, transferFundsHandler);
   app.post('/api/trades/pending/cancel-bulk', requireAuth, requireWrite, cancelPendingOrdersBulkHandler);
   app.post('/api/trades/pending/:id/cancel', requireAuth, requireWrite, cancelPendingOrderHandler);

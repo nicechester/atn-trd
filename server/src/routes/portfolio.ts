@@ -51,6 +51,42 @@ const TransferSchema = z.object({
   type: z.enum(['deposit', 'withdraw']),
 });
 
+const InitSchema = z.object({
+  seedCents: z.number().int().min(1),
+});
+
+/** POST /api/portfolio/init — initialize portfolio with seed money */
+export function initPortfolioHandler(req: Request, res: Response, next: NextFunction): void {
+  try {
+    const parsed = InitSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError('Invalid init request', parsed.error.issues);
+    }
+
+    const { seedCents } = parsed.data;
+    const db = getDatabase();
+    const portfolioRepo = new PortfolioRepo(db);
+    const existing = portfolioRepo.read();
+
+    if (existing) {
+      throw new ValidationError('Portfolio already initialized');
+    }
+
+    const now = Date.now();
+    portfolioRepo.write({
+      cashCents: seedCents,
+      startingCashCents: seedCents,
+      startedAt: now,
+      resetAt: null,
+      baseCurrency: 'USD',
+    });
+
+    res.json({ ok: true, data: { cashCents: seedCents } });
+  } catch (err) {
+    next(err);
+  }
+}
+
 /** POST /api/portfolio/transfer — deposit or withdraw cash */
 export function transferFundsHandler(req: Request, res: Response, next: NextFunction): void {
   try {
