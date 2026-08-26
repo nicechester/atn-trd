@@ -124,7 +124,7 @@ export default function SettingsWatchlist(): JSX.Element {
 
   async function handleModeChange(newMode: 'manual' | 'dynamic') {
     try {
-      await api.settings.patch({ watchlist: { mode: newMode } });
+      await api.settings.patch({ watchlist: { mode: newMode }, screener: { enabled: newMode === 'dynamic' } });
       setWatchlistSettings(prev => ({ ...prev, mode: newMode }));
       addToast(`Watchlist mode changed to ${newMode}`, 'success');
     } catch (err) {
