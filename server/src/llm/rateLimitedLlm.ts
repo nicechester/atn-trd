@@ -5,8 +5,8 @@
  * all concurrent callers wait on the same cooldown promise, then retry together.
  * 
  * Features:
- * - Exponential backoff starting at 20s, max 5 retries
- * - Parses retry delay from Gemini 429 response
+ * - Exponential backoff starting at 60s, max 5 retries
+ * - Parses retry delay from Gemini 429 response (uses longer of parsed or base)
  * - Shared cooldown prevents wasted API calls during rate limit window
  */
 
@@ -71,7 +71,7 @@ class RateLimitedLlm {
 
   constructor(llm: BaseChatModel, config: RateLimitedLlmConfig = {}) {
     this.llm = llm;
-    this.baseDelayMs = config.baseDelayMs ?? 20_000;
+    this.baseDelayMs = config.baseDelayMs ?? 60_000; // 60s base delay for Gemini free tier
     this.maxRetries = config.maxRetries ?? 5;
   }
 
@@ -109,12 +109,15 @@ class RateLimitedLlm {
         // Only set cooldown if not already set (first caller to hit 429 wins)
         if (!this.waitPromise) {
           const parsedDelay = parseRetryDelay(err);
-          const delay = parsedDelay ?? this.baseDelayMs * Math.pow(2, attempt);
+          const exponentialDelay = this.baseDelayMs * Math.pow(2, attempt);
+          // Use the longer of parsed delay or exponential backoff
+          const delay = Math.max(parsedDelay ?? 0, exponentialDelay);
           
           log.warn('rate limited, backing off', { 
             attempt, 
             delayMs: delay,
-            parsedFromResponse: !!parsedDelay,
+            parsedFromResponse: parsedDelay,
+            exponentialDelay,
           });
 
           this.waitPromise = sleep(delay).then(() => {
@@ -122,6 +125,7 @@ class RateLimitedLlm {
           });
         }
 
+        // Always wait on the shared promise
         await this.waitPromise;
       }
     }
@@ -169,7 +173,8 @@ class RateLimitedLlm {
 
         if (!this.waitPromise) {
           const parsedDelay = parseRetryDelay(err);
-          const delay = parsedDelay ?? this.baseDelayMs * Math.pow(2, attempt);
+          const exponentialDelay = this.baseDelayMs * Math.pow(2, attempt);
+          const delay = Math.max(parsedDelay ?? 0, exponentialDelay);
           
           log.warn('rate limited on stream, backing off', { attempt, delayMs: delay });
 
@@ -178,6 +183,7 @@ class RateLimitedLlm {
           });
         }
 
+        // Always wait on the shared promise
         await this.waitPromise;
       }
     }
@@ -290,7 +296,7 @@ class SynthesisLlmWrapper extends RateLimitedLlm {
 
   async invoke(messages: BaseMessage[]): Promise<any> {
     const maxRetries = 5;
-    const baseDelayMs = 20_000;
+    const baseDelayMs = 60_000; // 60s base delay
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       // Check shared cooldown from main instance OR our own
@@ -316,9 +322,10 @@ class SynthesisLlmWrapper extends RateLimitedLlm {
         // Set shared cooldown
         if (!SynthesisLlmWrapper.sharedWaitPromise && !(mainInstance as any)?.waitPromise) {
           const parsedDelay = parseRetryDelay(err);
-          const delay = parsedDelay ?? baseDelayMs * Math.pow(2, attempt);
+          const exponentialDelay = baseDelayMs * Math.pow(2, attempt);
+          const delay = Math.max(parsedDelay ?? 0, exponentialDelay);
           
-          log.warn('synthesis rate limited, backing off', { attempt, delayMs: delay });
+          log.warn('synthesis rate limited, backing off', { attempt, delayMs: delay, parsedDelay, exponentialDelay });
 
           SynthesisLlmWrapper.sharedWaitPromise = sleep(delay).then(() => {
             SynthesisLlmWrapper.sharedWaitPromise = null;
@@ -330,7 +337,9 @@ class SynthesisLlmWrapper extends RateLimitedLlm {
           }
         }
 
-        await SynthesisLlmWrapper.sharedWaitPromise || (mainInstance as any)?.waitPromise;
+        // Always wait on the shared promise
+        const waitPromise = SynthesisLlmWrapper.sharedWaitPromise || (mainInstance as any)?.waitPromise;
+        if (waitPromise) await waitPromise;
       }
     }
 
