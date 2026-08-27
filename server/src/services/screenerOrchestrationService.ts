@@ -63,7 +63,7 @@ export async function runScreener(
       minMarketCap: dynamicConfig.minMarketCap,
     };
 
-    const preFilterResult = await runPreFilter(preFilterConfig, deps.toolsDeps);
+    const preFilterResult = await runPreFilter(preFilterConfig, deps.toolsDeps, runId);
 
     if (preFilterResult.candidates.length === 0) {
       log.warn('pre-filter returned zero candidates');

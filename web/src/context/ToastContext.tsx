@@ -19,7 +19,7 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const addToast = (message: string, type: ToastType = 'info') => {
-    const id = crypto.randomUUID();
+    const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const item: ToastItem = { id, message, type };
     setToasts((prev) => [...prev, item]);
 

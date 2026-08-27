@@ -65,6 +65,63 @@ export function createTradingCycleService(deps: TradingCycleDeps): TradingCycleS
 class TradingCycleServiceImpl implements TradingCycleService {
   constructor(private readonly deps: TradingCycleDeps) {}
 
+  private computeAndSaveTelemetry(
+    runId: string,
+    analystModel: string,
+    pmModel: string,
+    assessmentCount: number,
+    cycleStartTime: number,
+    analystStartTime?: number
+  ): void {
+    try {
+      const cycleEndTime = Date.now();
+      const analystLatency = analystStartTime ? cycleEndTime - analystStartTime : 0;
+      const pmLatency = cycleEndTime - cycleStartTime - analystLatency;
+
+      const analystTokensIn = Math.ceil(assessmentCount * 1300);
+      const analystTokensOut = Math.ceil(assessmentCount * 200);
+      const pmTokensIn = assessmentCount > 0 ? 2000 : 0;
+      const pmTokensOut = assessmentCount > 0 ? 200 : 0;
+
+      const modelPricing: Record<string, { inputPer1k: number; outputPer1k: number }> = {
+        'gpt-4o': { inputPer1k: 0.003, outputPer1k: 0.006 },
+        'gpt-4o-mini': { inputPer1k: 0.00015, outputPer1k: 0.0006 },
+        'gpt-4-turbo': { inputPer1k: 0.01, outputPer1k: 0.03 },
+        'gpt-4': { inputPer1k: 0.03, outputPer1k: 0.06 },
+      };
+
+      const getPricing = (model: string) => modelPricing[model] || modelPricing['gpt-4-turbo'];
+      const analystPricing = getPricing(analystModel);
+      const pmPricing = getPricing(pmModel);
+
+      const analystCost = (analystTokensIn * analystPricing.inputPer1k + analystTokensOut * analystPricing.outputPer1k) / 1000;
+      const pmCost = (pmTokensIn * pmPricing.inputPer1k + pmTokensOut * pmPricing.outputPer1k) / 1000;
+      const totalCost = analystCost + pmCost;
+
+      const tokenUsageJson = JSON.stringify({
+        models: { analyst: analystModel, portfolioManager: pmModel },
+        tokens: {
+          analyst: { input: analystTokensIn, output: analystTokensOut },
+          portfolioManager: { input: pmTokensIn, output: pmTokensOut },
+        },
+        cost: {
+          analyst: Number(analystCost.toFixed(6)),
+          portfolioManager: Number(pmCost.toFixed(6)),
+          total: Number(totalCost.toFixed(6)),
+        },
+        latency_ms: {
+          analyst: analystLatency,
+          portfolioManager: pmLatency,
+          total: cycleEndTime - cycleStartTime,
+        },
+      });
+
+      this.deps.runsRepo.updateTokenUsage(runId, tokenUsageJson);
+    } catch (err) {
+      log.warn('failed to save telemetry', { runId, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
   async execute(trigger: 'scheduled' | 'manual'): Promise<void> {
     // -- Step A: Pre-run guards ----------------------------------------
     const settings = this.deps.getSettings();
@@ -143,6 +200,13 @@ class TradingCycleServiceImpl implements TradingCycleService {
       skipReason: null,
     });
 
+    // Track state for telemetry (even on failure)
+    const cycleStartTime = Date.now();
+    let analystStartTime: number | undefined;
+    let assessmentCount = 0;
+    const analystModel = resolveConfigForAgent('analyst').model;
+    const pmModel = resolveConfigForAgent('portfolioManager').model;
+
     // From here — try/catch wrapper
     try {
       // -- Step C1: Process pending orders from prior session ---------
@@ -204,18 +268,12 @@ class TradingCycleServiceImpl implements TradingCycleService {
       };
       const pmConfig = {};
 
-      // Capture model names for telemetry (Phase 4)
-      const analystModel = resolveConfigForAgent('analyst').model;
-      const pmModel = resolveConfigForAgent('portfolioManager').model;
-      const cycleStartTime = Date.now();
-      let analystStartTime: number;
-
       emitProgress(runId, 'analyst', `Prefetching data for ${symbols.length} symbols`);
       await Promise.all(symbols.map(symbol => prefetchForSymbol(symbol, this.deps.analystDeps.toolsDeps)));
 
       // -- Step G: Run analysts (bounded concurrency) ----------------
       emitProgress(runId, 'analyst', `Starting analysis for ${symbols.length} symbols`);
-      analystStartTime = Date.now();
+      analystStartTime = Date.now(); // Track for telemetry
 
       const rawResults = await runWithConcurrency(symbols, llmLimits.concurrency, async (symbol) => {
         try {
@@ -231,6 +289,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
       });
 
       const assessments = rawResults.filter((a): a is SymbolAssessment => a !== null);
+      assessmentCount = assessments.length; // Track for telemetry
       log.info('analyst phase complete', {
         runId,
         total: symbols.length,
@@ -415,57 +474,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
         }
       }
 
-      // -- Step M: Compute telemetry -----------------------------------
-      const cycleEndTime = Date.now();
-      const analystLatency = analystStartTime ? cycleEndTime - analystStartTime : 0;
-      const pmLatency = cycleEndTime - cycleStartTime - analystLatency;
-
-      // Simple token estimation: conservative estimate of ~1.3k tokens per analyst run and ~2k for PM
-      const analystTokensIn = Math.ceil(assessments.length * 1300);
-      const analystTokensOut = Math.ceil(assessments.length * 200);
-      const pmTokensIn = 2000;
-      const pmTokensOut = 200;
-
-      // Pricing for OpenAI models (as of latest rates)
-      // gpt-4o: input $0.003/1k, output $0.006/1k
-      // gpt-4o-mini: input $0.00015/1k, output $0.0006/1k
-      // gpt-4-turbo: input $0.01/1k, output $0.03/1k
-      const modelPricing: Record<string, { inputPer1k: number; outputPer1k: number }> = {
-        'gpt-4o': { inputPer1k: 0.003, outputPer1k: 0.006 },
-        'gpt-4o-mini': { inputPer1k: 0.00015, outputPer1k: 0.0006 },
-        'gpt-4-turbo': { inputPer1k: 0.01, outputPer1k: 0.03 },
-        'gpt-4': { inputPer1k: 0.03, outputPer1k: 0.06 },
-      };
-
-      const getPricing = (model: string) => modelPricing[model] || modelPricing['gpt-4-turbo'];
-      const analystPricing = getPricing(analystModel);
-      const pmPricing = getPricing(pmModel);
-
-      const analystCost = (analystTokensIn * analystPricing.inputPer1k + analystTokensOut * analystPricing.outputPer1k) / 1000;
-      const pmCost = (pmTokensIn * pmPricing.inputPer1k + pmTokensOut * pmPricing.outputPer1k) / 1000;
-      const totalCost = analystCost + pmCost;
-
-      const tokenUsageJson = JSON.stringify({
-        models: { analyst: analystModel, portfolioManager: pmModel },
-        tokens: {
-          analyst: { input: analystTokensIn, output: analystTokensOut },
-          portfolioManager: { input: pmTokensIn, output: pmTokensOut },
-        },
-        cost: {
-          analyst: Number(analystCost.toFixed(6)),
-          portfolioManager: Number(pmCost.toFixed(6)),
-          total: Number(totalCost.toFixed(6)),
-        },
-        latency_ms: {
-          analyst: analystLatency,
-          portfolioManager: pmLatency,
-          total: cycleEndTime - cycleStartTime,
-        },
-      });
-
-      this.deps.runsRepo.updateTokenUsage(runId, tokenUsageJson);
-
-      // -- Step N: Mark succeeded -----------------------------------
+      // -- Step M: Mark succeeded -----------------------------------
       this.deps.runsRepo.updateStatus(runId, 'succeeded');
       emitProgress(runId, 'complete', `Run complete: ${ordersSubmitted} orders submitted`);
       log.info('trading cycle complete', {
@@ -484,6 +493,9 @@ class TradingCycleServiceImpl implements TradingCycleService {
         runId,
         error: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      // Always save telemetry, even on failure
+      this.computeAndSaveTelemetry(runId, analystModel, pmModel, assessmentCount, cycleStartTime, analystStartTime);
     }
   }
 }

@@ -20,6 +20,8 @@ RUN cp -r web/dist server/public
 FROM node:24-alpine
 WORKDIR /app
 
+RUN apk add --no-cache sqlite
+
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/server ./server
 

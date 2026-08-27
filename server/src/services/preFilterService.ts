@@ -3,6 +3,7 @@ import { getUniverse } from '../config/universeLoader.js';
 import { runWithConcurrency } from '../lib/concurrency.js';
 import type { AgentToolsDeps } from '../agent/tools.js';
 import type { FundamentalsPayload } from '../datasources/fundamentals/yahooFundamentals.js';
+import { emitProgress } from './runProgress.js';
 
 const log = logger.child({ component: 'pre-filter' });
 
@@ -34,7 +35,8 @@ const PREFILTER_CONCURRENCY = 5;
  */
 export async function runPreFilter(
   config: PreFilterConfig,
-  deps: AgentToolsDeps
+  deps: AgentToolsDeps,
+  runId?: string
 ): Promise<PreFilterResult> {
   // 1. Get universe symbols
   const symbols = getUniverse(config.universes, config.customSymbols);
@@ -47,17 +49,23 @@ export async function runPreFilter(
 
   // 2. Fetch fundamentals with bounded concurrency, catching per-symbol failures
   const rejected: Array<{ symbol: string; reason: string }> = [];
+  let processed = 0;
   const fundamentalsResults = await runWithConcurrency(
     symbols,
     PREFILTER_CONCURRENCY,
     async (symbol) => {
       try {
         const result = await deps.fundamentalsSource.fetch({ symbol });
+        processed++;
+        if (runId && processed % 10 === 0) {
+          emitProgress(runId, 'screener', `Fetching fundamentals... ${processed}/${symbols.length}`, { symbol });
+        }
         return { symbol, fundamentals: result.data };
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         rejected.push({ symbol, reason });
         log.debug('fundamentals fetch failed', { symbol, reason });
+        processed++;
         return null;
       }
     }
