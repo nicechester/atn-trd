@@ -14,10 +14,10 @@ steps:
       - '-c'
       - |
         gcloud compute ssh atn-trd-vm --zone=us-central1-a --tunnel-through-iap --command='
-          docker pull us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/app:latest
-          docker stop atn-trd 2>/dev/null || true
-          docker rm atn-trd 2>/dev/null || true
-          docker run -d --name atn-trd --restart=unless-stopped \
+          sudo docker pull us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/app:latest
+          sudo docker stop atn-trd 2>/dev/null || true
+          sudo docker rm atn-trd 2>/dev/null || true
+          sudo docker run -d --name atn-trd --restart=unless-stopped \
             -p 3000:3000 \
             -v /mnt/stateful_partition/data:/app/data \
             --env-file /mnt/stateful_partition/.env \
