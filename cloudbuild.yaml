@@ -14,7 +14,7 @@ steps:
       - '-c'
       - |
         gcloud compute ssh atn-trd-vm --zone=us-central1-a --tunnel-through-iap --command='
-          sudo docker pull us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/app:latest
+          sudo docker --config /mnt/stateful_partition/.docker pull us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/app:latest
           sudo docker stop atn-trd 2>/dev/null || true
           sudo docker rm atn-trd 2>/dev/null || true
           sudo docker run -d --name atn-trd --restart=unless-stopped \
