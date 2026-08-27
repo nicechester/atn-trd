@@ -104,18 +104,6 @@ describe('createEmbeddingService', () => {
     });
   });
 
-  it('honours a custom base URL', async () => {
-    let capturedUrl = '';
-    globalThis.fetch = fakeFetch(async (url) => {
-      capturedUrl = url;
-      return new Response(JSON.stringify({ data: [{ embedding: [1], index: 0 }] }), { status: 200 });
-    });
-
-    const service = createEmbeddingService({ apiKey: 'sk-test', baseUrl: 'https://gateway.example/v1' });
-    await service.embed('hi');
-
-    assert.equal(capturedUrl, 'https://gateway.example/v1/embeddings');
-  });
 });
 
 describe('truncateForEmbedding', () => {

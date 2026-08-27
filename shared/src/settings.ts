@@ -124,6 +124,8 @@ export const SettingsSchema = z.object({
 
   semanticMemory: z.object({
     enabled: z.boolean().default(false),
+    provider: z.enum(['openai', 'gemini']).default('openai'),
+    model: z.string().default(''),
   }).default({}),
 
   screener: z.object({
@@ -213,6 +215,8 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   semanticMemory: {
     enabled: false,
+    provider: 'openai',
+    model: '',
   },
   screener: {
     enabled: false,

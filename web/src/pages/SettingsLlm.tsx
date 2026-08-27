@@ -14,6 +14,8 @@ type LlmFormState = {
   analystModel: string;
   portfolioManagerModel: string;
   semanticMemoryEnabled: boolean;
+  embeddingProvider: 'openai' | 'gemini';
+  embeddingModel: string;
 };
 
 type LlmTestResult = {
@@ -43,6 +45,8 @@ export default function SettingsLlm(): JSX.Element {
           analystModel: llm.agents?.analyst?.model ?? '',
           portfolioManagerModel: llm.agents?.portfolioManager?.model ?? '',
           semanticMemoryEnabled: settingsRes.data.semanticMemory?.enabled ?? false,
+          embeddingProvider: settingsRes.data.semanticMemory?.provider ?? 'openai',
+          embeddingModel: settingsRes.data.semanticMemory?.model ?? '',
         });
         setApiKeyIsSet(secretsRes.data.some((s: { name: string; isSet: boolean }) => s.name === 'LLM_API_KEY' && s.isSet));
       })
@@ -84,6 +88,8 @@ export default function SettingsLlm(): JSX.Element {
         },
         semanticMemory: {
           enabled: form.semanticMemoryEnabled,
+          provider: form.embeddingProvider,
+          model: form.embeddingModel.trim(),
         },
       });
       addToast('LLM settings saved', 'success');
@@ -205,7 +211,33 @@ export default function SettingsLlm(): JSX.Element {
             />
             <label className={styles.label} htmlFor="semanticMemoryEnabled">Semantic Memory (learn from past assessments and trade outcomes)</label>
           </div>
-          <p className={styles.hint}>Requires an API key above. Embeds assessments and realized trade outcomes so the agent can recall similar past situations.</p>
+          <p className={styles.hint}>Embeds assessments and realized trade outcomes so the agent can recall similar past situations.</p>
+          {form.semanticMemoryEnabled && (
+            <>
+              <div className={styles.field}>
+                <label className={styles.label}>Embedding Provider</label>
+                <select
+                  className={styles.input}
+                  value={form.embeddingProvider}
+                  onChange={e => setForm({ ...form, embeddingProvider: e.target.value as 'openai' | 'gemini' })}
+                >
+                  <option value="openai">OpenAI (text-embedding-3-large)</option>
+                  <option value="gemini">Gemini (text-embedding-004, free)</option>
+                </select>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>Embedding Model Override</label>
+                <input
+                  className={styles.input}
+                  type="text"
+                  value={form.embeddingModel}
+                  onChange={e => setForm({ ...form, embeddingModel: e.target.value })}
+                  placeholder={form.embeddingProvider === 'gemini' ? 'text-embedding-004' : 'text-embedding-3-large'}
+                />
+                <p className={styles.hint}>Leave blank to use the default model for the selected provider.</p>
+              </div>
+            </>
+          )}
           <div className={styles.actions} style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
             <button
               type="button"

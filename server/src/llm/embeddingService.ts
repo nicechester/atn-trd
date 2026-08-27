@@ -1,10 +1,11 @@
 /**
  * Embedding service for generating text embeddings.
- * Uses OpenAI-compatible embedding API.
+ * Supports OpenAI and Gemini APIs (configured via settings).
  */
 
 import { logger } from '../lib/logger.js';
-import { resolveApiKey, resolveConfig, LlmNotConfiguredError } from './openaiChatModel.js';
+import { resolveApiKey, LlmNotConfiguredError } from './openaiChatModel.js';
+import { getSettings } from '../config/settingsService.js';
 
 const log = logger.child({ component: 'embedding' });
 
@@ -14,16 +15,22 @@ export interface EmbeddingService {
 }
 
 export interface EmbeddingConfig {
+  provider?: 'openai' | 'gemini';
   model?: string;
   apiKey?: string;
-  baseUrl?: string;
 }
 
-const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-large';
+const DEFAULT_OPENAI_MODEL = 'text-embedding-3-large';
+const DEFAULT_GEMINI_MODEL = 'text-embedding-004';
 
 export function createEmbeddingService(config: EmbeddingConfig = {}): EmbeddingService {
-  const resolved = resolveConfig(config);
-  const embeddingModel = config.model ?? process.env.EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL;
+  // Get settings for provider/model if not explicitly passed
+  const settings = getSettings();
+  const provider = config.provider ?? settings.semanticMemory.provider ?? 'openai';
+  const useGemini = provider === 'gemini';
+  const embeddingModel = config.model 
+    || settings.semanticMemory.model 
+    || (useGemini ? DEFAULT_GEMINI_MODEL : DEFAULT_OPENAI_MODEL);
 
   async function embed(text: string): Promise<number[]> {
     const [result] = await embedBatch([text]);
@@ -36,38 +43,78 @@ export function createEmbeddingService(config: EmbeddingConfig = {}): EmbeddingS
     const apiKey = resolveApiKey(config.apiKey);
     if (!apiKey) throw new LlmNotConfiguredError();
 
-    const baseUrl = resolved.baseUrl ?? 'https://api.openai.com/v1';
+    log.debug('generating embeddings', { count: texts.length, model: embeddingModel, provider });
 
-    log.debug('generating embeddings', { count: texts.length, model: embeddingModel });
-
-    const response = await fetch(`${baseUrl}/embeddings`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: embeddingModel,
-        input: texts,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      log.error('embedding API error', { status: response.status, error: errorText });
-      throw new Error(`Embedding API error: ${response.status} ${errorText}`);
+    if (useGemini) {
+      return embedBatchGemini(texts, apiKey, embeddingModel);
+    } else {
+      return embedBatchOpenAI(texts, apiKey, embeddingModel);
     }
-
-    const data = await response.json() as {
-      data: Array<{ embedding: number[]; index: number }>;
-    };
-
-    // Sort by index to maintain order
-    const sorted = data.data.sort((a, b) => a.index - b.index);
-    return sorted.map(d => d.embedding);
   }
 
   return { embed, embedBatch };
+}
+
+async function embedBatchOpenAI(
+  texts: string[],
+  apiKey: string,
+  model: string
+): Promise<number[][]> {
+  const url = 'https://api.openai.com/v1/embeddings';
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({ model, input: texts }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    log.error('embedding API error', { status: response.status, error: errorText });
+    throw new Error(`Embedding API error: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json() as {
+    data: Array<{ embedding: number[]; index: number }>;
+  };
+
+  const sorted = data.data.sort((a, b) => a.index - b.index);
+  return sorted.map(d => d.embedding);
+}
+
+async function embedBatchGemini(
+  texts: string[],
+  apiKey: string,
+  model: string
+): Promise<number[][]> {
+  // Gemini batchEmbedContents endpoint
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:batchEmbedContents?key=${apiKey}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      requests: texts.map(text => ({
+        model: `models/${model}`,
+        content: { parts: [{ text }] },
+      })),
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    log.error('embedding API error', { status: response.status, error: errorText });
+    throw new Error(`Embedding API error: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json() as {
+    embeddings: Array<{ values: number[] }>;
+  };
+
+  return data.embeddings.map(e => e.values);
 }
 
 /**
