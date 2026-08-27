@@ -29,11 +29,45 @@ interface RateLimitedLlmConfig {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Blocking Queue - serializes all LLM calls                                  */
+/* -------------------------------------------------------------------------- */
+
+/** Queue tail - each call chains off this promise */
+let queueTail: Promise<void> = Promise.resolve();
+
+/** Minimum delay between requests (4s = 15 req/min with buffer) */
+const MIN_DELAY_MS = 4000;
+
+/* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Enqueue a task to run after all previous tasks complete.
+ * Returns when it's this task's turn.
+ */
+function enqueue(): Promise<void> {
+  const myTurn = queueTail;
+  let resolve: () => void;
+  queueTail = new Promise<void>((r) => { resolve = r; });
+  
+  return myTurn.then(() => {
+    // Return a release function via closure - caller must call it when done
+    (enqueue as any)._release = resolve!;
+  });
+}
+
+/** Release the queue for the next caller */
+function releaseQueue(): void {
+  const release = (enqueue as any)._release;
+  if (release) {
+    delete (enqueue as any)._release;
+    release();
+  }
 }
 
 /**
@@ -65,7 +99,6 @@ function is429Error(err: unknown): boolean {
 
 class RateLimitedLlm {
   private llm: BaseChatModel;
-  private waitPromise: Promise<void> | null = null;
   private baseDelayMs: number;
   private maxRetries: number;
 
@@ -84,33 +117,31 @@ class RateLimitedLlm {
   }
 
   /**
-   * Invoke with rate limit handling and shared cooldown queue.
+   * Invoke with blocking queue - only one LLM call at a time.
    */
   async invoke(messages: BaseMessage[]): Promise<any> {
-    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
-      // Wait if someone else triggered cooldown
-      if (this.waitPromise) {
-        log.debug('waiting for shared cooldown', { attempt });
-        await this.waitPromise;
-      }
+    await enqueue();
+    log.debug('acquired queue slot');
+    
+    try {
+      for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+        try {
+          const result = await this.llm.invoke(messages);
+          // Success - wait minimum delay before releasing
+          await sleep(MIN_DELAY_MS);
+          return result;
+        } catch (err) {
+          if (!is429Error(err)) {
+            throw err;
+          }
 
-      try {
-        return await this.llm.invoke(messages);
-      } catch (err) {
-        if (!is429Error(err)) {
-          throw err;
-        }
+          if (attempt === this.maxRetries - 1) {
+            log.error('max retries exceeded for rate limit', { attempt });
+            throw err;
+          }
 
-        if (attempt === this.maxRetries - 1) {
-          log.error('max retries exceeded for rate limit', { attempt });
-          throw err;
-        }
-
-        // Only set cooldown if not already set (first caller to hit 429 wins)
-        if (!this.waitPromise) {
           const parsedDelay = parseRetryDelay(err);
           const exponentialDelay = this.baseDelayMs * Math.pow(2, attempt);
-          // Use the longer of parsed delay or exponential backoff
           const delay = Math.max(parsedDelay ?? 0, exponentialDelay);
           
           log.warn('rate limited, backing off', { 
@@ -120,72 +151,59 @@ class RateLimitedLlm {
             exponentialDelay,
           });
 
-          this.waitPromise = sleep(delay).then(() => {
-            this.waitPromise = null;
-          });
+          await sleep(delay);
         }
-
-        // Always wait on the shared promise
-        await this.waitPromise;
       }
+      throw new Error('Max retries exceeded');
+    } finally {
+      releaseQueue();
     }
-
-    throw new Error('Max retries exceeded');
   }
 
   /**
-   * Stream events with rate limit handling.
-   * Note: Streaming is harder to retry mid-stream, so we only handle
-   * initial connection failures.
+   * Stream events with blocking queue.
    */
   async *streamEvents(
     input: { messages: BaseMessage[] },
     config: { version: string; recursionLimit: number }
   ): AsyncGenerator<any> {
-    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
-      // Wait if in cooldown
-      if (this.waitPromise) {
-        log.debug('waiting for shared cooldown before stream', { attempt });
-        await this.waitPromise;
-      }
-
-      try {
-        // For streaming, we need to use the underlying LLM's stream method
-        // This is typically used with createReactAgent which handles its own streaming
-        const stream = (this.llm as any).streamEvents?.(input, config);
-        if (stream) {
-          for await (const event of stream) {
-            yield event;
+    await enqueue();
+    log.debug('acquired queue slot for stream');
+    
+    try {
+      for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+        try {
+          const stream = (this.llm as any).streamEvents?.(input, config);
+          if (stream) {
+            for await (const event of stream) {
+              yield event;
+            }
+            await sleep(MIN_DELAY_MS);
+            return;
           }
+          yield await this.llm.invoke(input.messages);
+          await sleep(MIN_DELAY_MS);
           return;
-        }
-        // Fallback: just invoke
-        yield await this.invoke(input.messages);
-        return;
-      } catch (err) {
-        if (!is429Error(err)) {
-          throw err;
-        }
+        } catch (err) {
+          if (!is429Error(err)) {
+            throw err;
+          }
 
-        if (attempt === this.maxRetries - 1) {
-          throw err;
-        }
+          if (attempt === this.maxRetries - 1) {
+            throw err;
+          }
 
-        if (!this.waitPromise) {
           const parsedDelay = parseRetryDelay(err);
           const exponentialDelay = this.baseDelayMs * Math.pow(2, attempt);
           const delay = Math.max(parsedDelay ?? 0, exponentialDelay);
           
           log.warn('rate limited on stream, backing off', { attempt, delayMs: delay });
 
-          this.waitPromise = sleep(delay).then(() => {
-            this.waitPromise = null;
-          });
+          await sleep(delay);
         }
-
-        // Always wait on the shared promise
-        await this.waitPromise;
       }
+    } finally {
+      releaseQueue();
     }
   }
 }
@@ -289,62 +307,10 @@ export function getSynthesisLlm(): RateLimitedLlm {
 }
 
 /**
- * Wrapper that shares cooldown state with the main instance.
+ * Synthesis LLM - uses same global cooldown as main instance.
  */
 class SynthesisLlmWrapper extends RateLimitedLlm {
-  private static sharedWaitPromise: Promise<void> | null = null;
-
-  async invoke(messages: BaseMessage[]): Promise<any> {
-    const maxRetries = 5;
-    const baseDelayMs = 60_000; // 60s base delay
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      // Check shared cooldown from main instance OR our own
-      const mainInstance = instance;
-      const sharedWait = (mainInstance as any)?.waitPromise || SynthesisLlmWrapper.sharedWaitPromise;
-      
-      if (sharedWait) {
-        log.debug('synthesis waiting for shared cooldown', { attempt });
-        await sharedWait;
-      }
-
-      try {
-        return await this.baseLlm.invoke(messages);
-      } catch (err) {
-        if (!is429Error(err)) {
-          throw err;
-        }
-
-        if (attempt === maxRetries - 1) {
-          throw err;
-        }
-
-        // Set shared cooldown
-        if (!SynthesisLlmWrapper.sharedWaitPromise && !(mainInstance as any)?.waitPromise) {
-          const parsedDelay = parseRetryDelay(err);
-          const exponentialDelay = baseDelayMs * Math.pow(2, attempt);
-          const delay = Math.max(parsedDelay ?? 0, exponentialDelay);
-          
-          log.warn('synthesis rate limited, backing off', { attempt, delayMs: delay, parsedDelay, exponentialDelay });
-
-          SynthesisLlmWrapper.sharedWaitPromise = sleep(delay).then(() => {
-            SynthesisLlmWrapper.sharedWaitPromise = null;
-          });
-
-          // Also set on main instance if it exists
-          if (mainInstance) {
-            (mainInstance as any).waitPromise = SynthesisLlmWrapper.sharedWaitPromise;
-          }
-        }
-
-        // Always wait on the shared promise
-        const waitPromise = SynthesisLlmWrapper.sharedWaitPromise || (mainInstance as any)?.waitPromise;
-        if (waitPromise) await waitPromise;
-      }
-    }
-
-    throw new Error('Max retries exceeded');
-  }
+  // Inherits invoke() which uses global cooldown - no override needed
 }
 
 /** Reset singleton (for testing) */
