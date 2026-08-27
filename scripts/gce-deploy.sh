@@ -1,6 +1,6 @@
 #!/bin/bash
 # Deploy atn-trd to Compute Engine VM
-# Run this to update the running container
+# Run this to manually update the running container (or push to main for Cloud Build)
 
 set -e
 
@@ -18,19 +18,21 @@ docker push ${IMAGE_REPO}:${IMAGE_TAG}
 
 echo "=== Deploying to VM ==="
 gcloud compute ssh $VM_NAME --zone=$ZONE --project=$PROJECT_ID --command="
-  docker pull ${IMAGE_REPO}:${IMAGE_TAG}
-  docker stop atn-trd 2>/dev/null || true
-  docker rm atn-trd 2>/dev/null || true
-  docker run -d \
+  sudo docker --config /mnt/stateful_partition/.docker pull ${IMAGE_REPO}:${IMAGE_TAG}
+  sudo docker stop atn-trd 2>/dev/null || true
+  sudo docker rm atn-trd 2>/dev/null || true
+  sudo docker run -d \
     --name atn-trd \
     --restart=unless-stopped \
     -p 8080:8080 \
-    -v /mnt/stateful_partition/data:/data \
+    -v /mnt/stateful_partition/data:/app/data \
     --env-file /mnt/stateful_partition/.env \
     ${IMAGE_REPO}:${IMAGE_TAG}
-  docker logs -f atn-trd --tail=20 &
-  sleep 5
+  echo '=== Container started ==='
+  sudo docker ps
 "
 
+VM_IP=$(gcloud compute instances describe $VM_NAME --zone=$ZONE --project=$PROJECT_ID --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+echo ""
 echo "=== Deploy complete ==="
-echo "App running at: http://\$(gcloud compute instances describe $VM_NAME --zone=$ZONE --project=$PROJECT_ID --format='get(networkInterfaces[0].accessConfigs[0].natIP)'):8080"
+echo "App running at: http://${VM_IP}:8080"
