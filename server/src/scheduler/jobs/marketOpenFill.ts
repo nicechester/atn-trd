@@ -11,7 +11,7 @@ import { FillsRepo } from '../../repos/fillsRepo.js';
 import { PositionsRepo, type PositionRow } from '../../repos/positionsRepo.js';
 import { PortfolioRepo } from '../../repos/portfolioRepo.js';
 import { PricesRepo } from '../../repos/pricesRepo.js';
-import { nextTradingDateStr, toETDateStr, isMarketHours } from '../marketCalendar.js';
+import { nextTradingDateStr, toETDateStr, isMarketHours, isTradingDay } from '../marketCalendar.js';
 import { notionalCents } from '../../lib/money.js';
 import { logger } from '../../lib/logger.js';
 import { resolveApiKey } from '../../datasources/apiKeys.js';
@@ -48,6 +48,12 @@ export async function runMarketOpenFillJob(
   db: Database.Database,
   config: { slippageBps: number } = { slippageBps: 5 }
 ): Promise<{ filled: number; rejected: number; skipped: number }> {
+  // Skip on holidays
+  if (!isTradingDay(new Date())) {
+    log.info('market open fill job skipped (not a trading day)');
+    return { filled: 0, rejected: 0, skipped: 0 };
+  }
+
   const ordersRepo = new OrdersRepo(db);
   const fillsRepo = new FillsRepo(db);
   const positionsRepo = new PositionsRepo(db);
