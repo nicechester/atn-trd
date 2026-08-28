@@ -17,6 +17,7 @@ import { settingsEvents } from '../config/settingsService.js';
 import { getLlmLimits } from '@atn-trd/shared';
 import { logger } from '../lib/logger.js';
 import { runSnapshotJob } from './jobs/snapshot.js';
+import { isTradingDay } from './marketCalendar.js';
 import { runMarketOpenFillJob } from './jobs/marketOpenFill.js';
 import { getDatabase } from '../db/index.js';
 import { RunsRepo } from '../repos/runsRepo.js';
@@ -76,6 +77,12 @@ function registerJobs(): void {
 
   try {
     activeJob = new Cron(cron, { timezone, protect: true }, async () => {
+      // Skip on holidays
+      if (!isTradingDay(new Date())) {
+        log.info('trading cycle skipped (not a trading day)');
+        return;
+      }
+
       try {
         const db = getDatabase();
         const settings = getSettings();
