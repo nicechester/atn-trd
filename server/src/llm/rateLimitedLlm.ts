@@ -12,8 +12,10 @@
 
 import { ChatOpenAI } from '@langchain/openai';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { BaseChatModel, type BaseChatModelCallOptions } from '@langchain/core/language_models/chat_models';
 import type { BaseMessage } from '@langchain/core/messages';
+import type { ChatResult } from '@langchain/core/outputs';
+import type { CallbackManagerForLLMRun } from '@langchain/core/callbacks/manager';
 import { resolveConfigForAgent, resolveApiKey, LlmNotConfiguredError } from './openaiChatModel.js';
 import { logger } from '../lib/logger.js';
 
@@ -94,42 +96,58 @@ function is429Error(err: unknown): boolean {
 }
 
 /* -------------------------------------------------------------------------- */
-/* RateLimitedLlm Class                                                       */
+/* RateLimitedLlm Class - extends BaseChatModel for use with LangGraph        */
 /* -------------------------------------------------------------------------- */
 
-class RateLimitedLlm {
+class RateLimitedLlm extends BaseChatModel<BaseChatModelCallOptions> {
   private llm: BaseChatModel;
   private baseDelayMs: number;
   private maxRetries: number;
 
   constructor(llm: BaseChatModel, config: RateLimitedLlmConfig = {}) {
+    super({});
     this.llm = llm;
-    this.baseDelayMs = config.baseDelayMs ?? 60_000; // 60s base delay for Gemini free tier
+    this.baseDelayMs = config.baseDelayMs ?? 60_000;
     this.maxRetries = config.maxRetries ?? 5;
   }
 
-  /**
-   * Get the underlying LLM for operations that need direct access
-   * (e.g., createReactAgent, streamEvents)
-   */
-  get baseLlm(): BaseChatModel {
-    return this.llm;
+  _llmType(): string {
+    return 'rate-limited-wrapper';
+  }
+
+  /** Bind tools to the underlying LLM */
+  override bindTools(tools: any[], kwargs?: any): BaseChatModel {
+    const boundLlm = this.llm.bindTools?.(tools, kwargs) ?? this.llm;
+    return new RateLimitedLlm(boundLlm as BaseChatModel, {
+      baseDelayMs: this.baseDelayMs,
+      maxRetries: this.maxRetries,
+    });
   }
 
   /**
-   * Invoke with blocking queue - only one LLM call at a time.
+   * Core generation method - all LLM calls go through here.
+   * Implements blocking queue with retry logic.
    */
-  async invoke(messages: BaseMessage[]): Promise<any> {
+  async _generate(
+    messages: BaseMessage[],
+    options: this['ParsedCallOptions'],
+    runManager?: CallbackManagerForLLMRun
+  ): Promise<ChatResult> {
     await enqueue();
     log.debug('acquired queue slot');
-    
+
     try {
       for (let attempt = 0; attempt < this.maxRetries; attempt++) {
         try {
-          const result = await this.llm.invoke(messages);
-          // Success - wait minimum delay before releasing
+          // Call underlying LLM's _generate
+          const result = await this.llm.invoke(messages, {
+            ...options,
+            callbacks: runManager ? [runManager] : undefined,
+          });
           await sleep(MIN_DELAY_MS);
-          return result;
+          return {
+            generations: [{ message: result, text: typeof result.content === 'string' ? result.content : '' }],
+          };
         } catch (err) {
           if (!is429Error(err)) {
             throw err;
@@ -143,9 +161,9 @@ class RateLimitedLlm {
           const parsedDelay = parseRetryDelay(err);
           const exponentialDelay = this.baseDelayMs * Math.pow(2, attempt);
           const delay = Math.max(parsedDelay ?? 0, exponentialDelay);
-          
-          log.warn('rate limited, backing off', { 
-            attempt, 
+
+          log.warn('rate limited, backing off', {
+            attempt,
             delayMs: delay,
             parsedFromResponse: parsedDelay,
             exponentialDelay,
@@ -155,53 +173,6 @@ class RateLimitedLlm {
         }
       }
       throw new Error('Max retries exceeded');
-    } finally {
-      releaseQueue();
-    }
-  }
-
-  /**
-   * Stream events with blocking queue.
-   */
-  async *streamEvents(
-    input: { messages: BaseMessage[] },
-    config: { version: string; recursionLimit: number }
-  ): AsyncGenerator<any> {
-    await enqueue();
-    log.debug('acquired queue slot for stream');
-    
-    try {
-      for (let attempt = 0; attempt < this.maxRetries; attempt++) {
-        try {
-          const stream = (this.llm as any).streamEvents?.(input, config);
-          if (stream) {
-            for await (const event of stream) {
-              yield event;
-            }
-            await sleep(MIN_DELAY_MS);
-            return;
-          }
-          yield await this.llm.invoke(input.messages);
-          await sleep(MIN_DELAY_MS);
-          return;
-        } catch (err) {
-          if (!is429Error(err)) {
-            throw err;
-          }
-
-          if (attempt === this.maxRetries - 1) {
-            throw err;
-          }
-
-          const parsedDelay = parseRetryDelay(err);
-          const exponentialDelay = this.baseDelayMs * Math.pow(2, attempt);
-          const delay = Math.max(parsedDelay ?? 0, exponentialDelay);
-          
-          log.warn('rate limited on stream, backing off', { attempt, delayMs: delay });
-
-          await sleep(delay);
-        }
-      }
     } finally {
       releaseQueue();
     }
@@ -269,48 +240,11 @@ export function getRateLimitedLlm(): RateLimitedLlm {
 }
 
 /**
- * Get a synthesis LLM (temperature=0) with shared rate limiting.
- * Returns a wrapper that uses the same cooldown queue.
+ * Get synthesis LLM - returns the same singleton.
+ * Temperature differences are minor; using same instance ensures queue is respected.
  */
 export function getSynthesisLlm(): RateLimitedLlm {
-  const resolved = resolveConfigForAgent('analyst');
-  const apiKey = resolveApiKey();
-  
-  if (!apiKey) {
-    throw new LlmNotConfiguredError();
-  }
-
-  const isGemini = /gemini/i.test(resolved.model);
-  
-  let baseLlm: BaseChatModel;
-  
-  if (isGemini) {
-    baseLlm = new ChatGoogleGenerativeAI({
-      model: resolved.model,
-      apiKey,
-      temperature: 0,
-      maxRetries: 0,
-    });
-  } else {
-    baseLlm = new ChatOpenAI({
-      apiKey,
-      model: resolved.model,
-      temperature: 0,
-      timeout: resolved.timeoutMs,
-      maxRetries: 0,
-      ...(resolved.baseUrl ? { configuration: { baseURL: resolved.baseUrl } } : {}),
-    });
-  }
-
-  // Share the same cooldown state by returning a wrapper that checks the main instance's waitPromise
-  return new SynthesisLlmWrapper(baseLlm);
-}
-
-/**
- * Synthesis LLM - uses same global cooldown as main instance.
- */
-class SynthesisLlmWrapper extends RateLimitedLlm {
-  // Inherits invoke() which uses global cooldown - no override needed
+  return getRateLimitedLlm();
 }
 
 /** Reset singleton (for testing) */

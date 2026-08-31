@@ -14,6 +14,10 @@ type DashState = {
   nextRuns: string[];
   dataSources: Array<{ id: string; name: string; enabled: boolean; configured: boolean }>;
   lastRun: AgentRunRow | null;
+};
+
+type NavState = {
+  loading: boolean;
   nav: Portfolio | null;
 };
 
@@ -22,6 +26,7 @@ export default function DashboardPage(): JSX.Element {
   const { canWrite } = useAuth();
   const navigate = useNavigate();
   const [state, setState] = useState<DashState | null>(null);
+  const [navState, setNavState] = useState<NavState>({ loading: true, nav: null });
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<string[]>([]);
   const [expanded, setExpanded] = useState(true);
@@ -29,12 +34,11 @@ export default function DashboardPage(): JSX.Element {
 
   useEffect(() => {
     async function load() {
-      const [settingsRes, schedulerRes, dsRes, runsRes, portfolioRes] = await Promise.allSettled([
+      const [settingsRes, schedulerRes, dsRes, runsRes] = await Promise.allSettled([
         api.settings.get(),
         api.scheduler.nextRuns(3),
         api.datasources.list(),
         api.runs.list(1, 0),
-        api.portfolio.get(),
       ]);
 
       const trading = settingsRes.status === 'fulfilled'
@@ -53,20 +57,26 @@ export default function DashboardPage(): JSX.Element {
         ? runsRes.value.data[0]
         : null;
 
-      let nav: Portfolio | null = null;
-      if (portfolioRes.status === 'fulfilled') {
-        nav = portfolioRes.value.data;
-      } else if (portfolioRes.status === 'rejected') {
-        const err = portfolioRes.reason;
+      setState({ trading, nextRuns, dataSources, lastRun });
+    }
+    load();
+  }, []);
+
+  // Lazy load NAV (requires live price fetches)
+  useEffect(() => {
+    async function loadNav() {
+      try {
+        const portfolioRes = await api.portfolio.get();
+        setNavState({ loading: false, nav: portfolioRes.data });
+      } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to load portfolio';
         if (!msg.includes('not initialized')) {
           addToast(msg, 'error');
         }
+        setNavState({ loading: false, nav: null });
       }
-
-      setState({ trading, nextRuns, dataSources, lastRun, nav });
     }
-    load();
+    loadNav();
   }, []);
 
   async function runNow() {
@@ -155,16 +165,18 @@ export default function DashboardPage(): JSX.Element {
         </Card>
 
         <Card title="Current NAV">
-          {state.nav
-            ? <>
-                <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 var(--spacing-xs, 4px)' }}>
-                  {centsToUSD(state.nav.totalValueCents)}
-                </p>
-                <p className={state.nav.totalReturnPercent >= 0 ? styles.positive : styles.negative}>
-                  {state.nav.totalReturnPercent >= 0 ? '+' : ''}{state.nav.totalReturnPercent.toFixed(2)}% total return
-                </p>
-              </>
-            : <p className={styles.muted}>Portfolio not initialized.</p>
+          {navState.loading
+            ? <p className={styles.muted}>Loading...</p>
+            : navState.nav
+              ? <>
+                  <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 var(--spacing-xs, 4px)' }}>
+                    {centsToUSD(navState.nav.totalValueCents)}
+                  </p>
+                  <p className={navState.nav.totalReturnPercent >= 0 ? styles.positive : styles.negative}>
+                    {navState.nav.totalReturnPercent >= 0 ? '+' : ''}{navState.nav.totalReturnPercent.toFixed(2)}% total return
+                  </p>
+                </>
+              : <p className={styles.muted}>Portfolio not initialized.</p>
           }
         </Card>
 

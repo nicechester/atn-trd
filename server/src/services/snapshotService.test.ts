@@ -15,6 +15,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const migrationsDir = path.join(__dirname, '../db/migrations');
 
+/** Get today's date in YYYY-MM-DD format */
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Get yesterday's date in YYYY-MM-DD format */
+function yesterday(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * Mock PriceFeed for testing
  */
@@ -112,7 +124,7 @@ describe('SnapshotService', () => {
       assert.ok(result.portfolioSnapshotId);
 
       // Verify portfolio snapshot was written
-      const snapshot = snapshotsRepo.getPortfolioSnapshot('2026-08-19');
+      const snapshot = snapshotsRepo.getPortfolioSnapshot(today());
       assert.ok(snapshot);
       assert.equal(snapshot.cashCents, 10000000);
       assert.equal(snapshot.positionsValueCents, 0);
@@ -140,7 +152,7 @@ describe('SnapshotService', () => {
       assert.equal(result.status, 'ok');
 
       // Verify weights
-      const snapshot = snapshotsRepo.getPortfolioSnapshot('2026-08-19');
+      const snapshot = snapshotsRepo.getPortfolioSnapshot(today());
       assert.ok(snapshot);
       assert.ok(snapshot.weightsJson);
 
@@ -169,7 +181,7 @@ describe('SnapshotService', () => {
 
       assert.equal(result.status, 'ok');
 
-      const snapshot = snapshotsRepo.getPortfolioSnapshot('2026-08-19');
+      const snapshot = snapshotsRepo.getPortfolioSnapshot(today());
       assert.ok(snapshot);
       assert.equal(snapshot.unrealizedPnlCents, 100000); // 100 shares * $10 gain = $1000 = 100000 cents
     });
@@ -181,7 +193,7 @@ describe('SnapshotService', () => {
       const result1 = await service.captureSnapshot();
       assert.equal(result1.status, 'ok');
 
-      let snapshot = snapshotsRepo.getPortfolioSnapshot('2026-08-19');
+      let snapshot = snapshotsRepo.getPortfolioSnapshot(today());
       const firstId = snapshot?.id;
 
       // Add a position and capture again
@@ -200,7 +212,7 @@ describe('SnapshotService', () => {
       assert.equal(result2.status, 'ok');
 
       // Verify only one snapshot exists for the date (upserted)
-      snapshot = snapshotsRepo.getPortfolioSnapshot('2026-08-19');
+      snapshot = snapshotsRepo.getPortfolioSnapshot(today());
       assert.ok(snapshot);
       // On conflict update, the id stays the same (not updated)
       assert.equal(snapshot.id, firstId);
@@ -229,7 +241,7 @@ describe('SnapshotService', () => {
       assert.equal(result.benchmarkSnapshotId, null);
 
       // Verify portfolio was still captured
-      const snapshot = snapshotsRepo.getPortfolioSnapshot('2026-08-19');
+      const snapshot = snapshotsRepo.getPortfolioSnapshot(today());
       assert.ok(snapshot);
       assert.equal(snapshot.cashCents, 10000000);
     });
@@ -237,7 +249,7 @@ describe('SnapshotService', () => {
     it('falls back to latest bar if SPY price unavailable', async () => {
       // Don't set price, but set latest bar
       const bar: HistoricalPrice = {
-        barDate: '2026-08-18',
+        barDate: yesterday(),
         openCents: 45000,
         highCents: 45000,
         lowCents: 45000,
@@ -253,7 +265,7 @@ describe('SnapshotService', () => {
       assert.ok(result.benchmarkSnapshotId);
 
       // Verify benchmark was written
-      const benchmarkSnapshot = snapshotsRepo.getBenchmarkSnapshot('SPY', '2026-08-19');
+      const benchmarkSnapshot = snapshotsRepo.getBenchmarkSnapshot('SPY', today());
       assert.ok(benchmarkSnapshot);
       assert.equal(benchmarkSnapshot.closeCents, 45000);
     });
@@ -265,7 +277,7 @@ describe('SnapshotService', () => {
 
       assert.equal(result.status, 'ok');
 
-      const snapshot = snapshotsRepo.getPortfolioSnapshot('2026-08-19');
+      const snapshot = snapshotsRepo.getPortfolioSnapshot(today());
       assert.ok(snapshot);
       assert.equal(snapshot.weightsJson, '[]');
     });
@@ -298,7 +310,7 @@ describe('SnapshotService', () => {
 
       assert.equal(result.status, 'ok');
 
-      const snapshot = snapshotsRepo.getPortfolioSnapshot('2026-08-19');
+      const snapshot = snapshotsRepo.getPortfolioSnapshot(today());
       assert.ok(snapshot);
 
       const weights = JSON.parse(snapshot.weightsJson!);

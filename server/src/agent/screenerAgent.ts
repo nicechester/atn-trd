@@ -85,7 +85,7 @@ For each candidate, evaluate sector momentum, earnings catalysts, and options ma
     });
 
     const agent = createReactAgent({
-      llm: rateLimitedLlm.baseLlm,
+      llm: rateLimitedLlm,
       tools,
       stateModifier: SCREENER_SYSTEM_PROMPT,
     });
@@ -140,7 +140,7 @@ Return at least 3-5 selections if available. Respond ONLY with the JSON array, n
         // Skip withStructuredOutput for Gemini - use manual JSON extraction
         if (!isGemini) {
           try {
-            raw = await (synthesisLlm.baseLlm as any).withStructuredOutput(SelectionArraySchema).invoke(
+            raw = await (synthesisLlm as any).withStructuredOutput(SelectionArraySchema).invoke(
               synthesisMessages
             );
             if (Array.isArray(raw)) {

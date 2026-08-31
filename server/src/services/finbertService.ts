@@ -24,8 +24,8 @@ async function getPipeline() {
   pipelinePromise = (async () => {
     log.info('loading FinBERT model...');
     const { pipeline: createPipeline } = await import('@xenova/transformers');
-    pipeline = await createPipeline('sentiment-analysis', 'ProsusAI/finbert', {
-      quantized: true, // Use quantized ONNX for faster inference
+    pipeline = await createPipeline('sentiment-analysis', 'Xenova/finbert', {
+      quantized: true,
     });
     log.info('FinBERT model loaded');
     return pipeline;

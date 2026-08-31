@@ -108,7 +108,7 @@ export async function runAnalystAgent(
     });
 
     const agent = createReactAgent({
-      llm: rateLimitedLlm.baseLlm,
+      llm: rateLimitedLlm,
       tools,
       stateModifier: ANALYST_SYSTEM_PROMPT,
     });
@@ -192,7 +192,7 @@ Respond ONLY with the JSON object, no markdown or explanation.`;
         if (!isGemini) {
           try {
             log.debug('attempting withStructuredOutput', { symbol });
-            raw = await (synthesisLlm.baseLlm as any).withStructuredOutput(AssessmentSchema).invoke(
+            raw = await (synthesisLlm as any).withStructuredOutput(AssessmentSchema).invoke(
               synthesisMessages
             );
             if (raw && typeof raw === 'object' && 'score' in raw) {

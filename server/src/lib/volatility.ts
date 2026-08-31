@@ -28,7 +28,7 @@ export function computeAnnualizedVolatility(
   for (let i = 1; i < sortedBars.length; i++) {
     const prevClose = sortedBars[i - 1].close;
     const currClose = sortedBars[i].close;
-    if (prevClose > 0) {
+    if (prevClose > 0 && currClose > 0) {
       const dailyReturn = Math.log(currClose / prevClose);
       dailyReturns.push(dailyReturn);
     }

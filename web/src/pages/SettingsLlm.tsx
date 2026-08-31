@@ -192,15 +192,15 @@ export default function SettingsLlm(): JSX.Element {
             <p className={styles.hint}>Leave blank to use the default model above.</p>
           </div>
           <div className={styles.field}>
-            <label className={styles.label}>Portfolio Manager Model Override</label>
+            <label className={styles.label}>Portfolio Manager</label>
             <input
               className={styles.input}
               type="text"
-              value={form.portfolioManagerModel}
-              onChange={e => setForm({ ...form, portfolioManagerModel: e.target.value })}
-              placeholder="e.g., gpt-4o-mini"
+              value="FinBERT (rule-based)"
+              disabled
+              style={{ opacity: 0.6 }}
             />
-            <p className={styles.hint}>Leave blank to use the default model above.</p>
+            <p className={styles.hint}>Position sizing uses FinBERT sentiment scores with rule-based logic (no LLM).</p>
           </div>
           <div className={`${styles.field} ${styles.checkboxField}`}>
             <input
@@ -232,7 +232,7 @@ export default function SettingsLlm(): JSX.Element {
                   type="text"
                   value={form.embeddingModel}
                   onChange={e => setForm({ ...form, embeddingModel: e.target.value })}
-                  placeholder={form.embeddingProvider === 'gemini' ? 'text-embedding-004' : 'text-embedding-3-large'}
+                  placeholder={form.embeddingProvider === 'gemini' ? 'gemini-embedding-001' : 'text-embedding-3-large'}
                 />
                 <p className={styles.hint}>Leave blank to use the default model for the selected provider.</p>
               </div>

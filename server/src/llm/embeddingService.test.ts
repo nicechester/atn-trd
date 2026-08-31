@@ -1,5 +1,10 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { runMigrations } from '../db/migrate.js';
+import { initializeDatabase, closeDatabase, getDatabase } from '../db/index.js';
 import {
   createEmbeddingService,
   truncateForEmbedding,
@@ -9,11 +14,21 @@ import {
 } from './embeddingService.ts';
 import { LlmNotConfiguredError } from './openaiChatModel.ts';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const migrationsDir = path.join(__dirname, '../db/migrations');
+
 const ENV_KEYS = ['OPENAI_API_KEY', 'LLM_API_KEY', 'OPENAI_API_URL', 'LLM_API_URL', 'EMBEDDING_MODEL'] as const;
 let savedEnv: Record<string, string | undefined> = {};
 let originalFetch: typeof fetch;
+let tmpDir: string;
 
 beforeEach(() => {
+  // Initialize temp database for settings
+  tmpDir = fs.mkdtempSync(path.join('/tmp', 'embedding-test-'));
+  initializeDatabase(tmpDir);
+  runMigrations(getDatabase(), migrationsDir);
+  
   savedEnv = {};
   for (const key of ENV_KEYS) {
     savedEnv[key] = process.env[key];
@@ -23,6 +38,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  closeDatabase();
+  fs.rmSync(tmpDir, { recursive: true, force: true });
   for (const key of ENV_KEYS) {
     if (savedEnv[key] === undefined) delete process.env[key];
     else process.env[key] = savedEnv[key];

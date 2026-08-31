@@ -188,7 +188,7 @@ Respond ONLY with the JSON object, no markdown or explanation.`) : null;
         // Skip withStructuredOutput for Gemini - use manual JSON extraction
         if (!isGemini) {
           try {
-            raw = await (synthesisLlm.baseLlm as any).withStructuredOutput(LlmDecisionSetSchema).invoke(messages);
+            raw = await (synthesisLlm as any).withStructuredOutput(LlmDecisionSetSchema).invoke(messages);
             if (raw && typeof raw === 'object' && 'decisions' in raw) {
               parsed = LlmDecisionSetSchema.parse(raw);
               log.debug('portfolio manager output complete', { runId, decisionCount: parsed.decisions.length });

@@ -80,7 +80,18 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
     const orders = ordersRepo.listByRun(id);
     const messages = messagesRepo.listByRun(id);
     const artifacts = artifactsRepo.listByRun(id);
-    const rejections = rejectionsRepo.listByRun(id);
+    const rejectionsRaw = rejectionsRepo.listByRun(id);
+    const rejections = rejectionsRaw.map(r => ({
+      id: r.id,
+      runId: r.run_id,
+      decisionId: r.decision_id,
+      symbol: r.symbol,
+      action: r.action,
+      confidence: r.confidence,
+      targetWeight: r.target_weight,
+      reason: r.reason,
+      createdAt: r.created_at,
+    }));
     const screenerSelections = screenerSelectionsRepo.listByRun(id);
 
     // For each order, fetch its fills
