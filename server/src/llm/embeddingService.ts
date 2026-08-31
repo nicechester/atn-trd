@@ -29,7 +29,7 @@ export function createEmbeddingService(config: EmbeddingConfig = {}): EmbeddingS
   const provider = config.provider ?? settings.semanticMemory.provider ?? 'openai';
   const useGemini = provider === 'gemini';
   const embeddingModel = config.model 
-    || settings.semanticMemory.model 
+    || settings.semanticMemory.model?.trim() 
     || (useGemini ? DEFAULT_GEMINI_MODEL : DEFAULT_OPENAI_MODEL);
 
   async function embed(text: string): Promise<number[]> {

@@ -222,7 +222,7 @@ export default function SettingsLlm(): JSX.Element {
                   onChange={e => setForm({ ...form, embeddingProvider: e.target.value as 'openai' | 'gemini' })}
                 >
                   <option value="openai">OpenAI (text-embedding-3-large)</option>
-                  <option value="gemini">Gemini (text-embedding-004, free)</option>
+                  <option value="gemini">Gemini (gemini-embedding-001, free)</option>
                 </select>
               </div>
               <div className={styles.field}>
