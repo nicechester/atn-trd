@@ -18,7 +18,10 @@ import { resolveApiKey } from '../../datasources/apiKeys.js';
 
 const log = logger.child({ component: 'market-open-fill' });
 
-/** Fetch today's open price from Finnhub quote endpoint */
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 20_000;
+
+/** Fetch today's open price from Finnhub quote endpoint with exponential backoff */
 async function fetchTodayOpenCents(symbol: string): Promise<number | null> {
   const apiKey = resolveApiKey('FINNHUB_API_KEY');
   if (!apiKey) {
@@ -26,22 +29,35 @@ async function fetchTodayOpenCents(symbol: string): Promise<number | null> {
     return null;
   }
 
-  try {
-    const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`);
-    if (!res.ok) {
-      log.warn('Finnhub quote request failed', { symbol, status: res.status });
-      return null;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`);
+      if (!res.ok) {
+        // Retry on 5xx or 429
+        if (res.status >= 500 || res.status === 429) {
+          const delay = BASE_DELAY_MS * 2 ** attempt;
+          log.warn('Finnhub quote request failed, retrying', { symbol, status: res.status, attempt: attempt + 1, delayMs: delay });
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        log.warn('Finnhub quote request failed', { symbol, status: res.status });
+        return null;
+      }
+      const data = await res.json() as { o?: number };
+      if (typeof data.o !== 'number' || data.o <= 0) {
+        log.warn('Invalid open price from Finnhub', { symbol, data });
+        return null;
+      }
+      return Math.round(data.o * 100);
+    } catch (err) {
+      const delay = BASE_DELAY_MS * 2 ** attempt;
+      log.warn('Finnhub quote fetch error, retrying', { symbol, attempt: attempt + 1, delayMs: delay, error: err instanceof Error ? err.message : String(err) });
+      await new Promise(r => setTimeout(r, delay));
     }
-    const data = await res.json() as { o?: number };
-    if (typeof data.o !== 'number' || data.o <= 0) {
-      log.warn('Invalid open price from Finnhub', { symbol, data });
-      return null;
-    }
-    return Math.round(data.o * 100);
-  } catch (err) {
-    log.warn('Finnhub quote fetch error', { symbol, error: err instanceof Error ? err.message : String(err) });
-    return null;
   }
+
+  log.warn('Finnhub quote fetch failed after retries', { symbol, maxRetries: MAX_RETRIES });
+  return null;
 }
 
 export async function runMarketOpenFillJob(
