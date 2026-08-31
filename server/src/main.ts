@@ -79,4 +79,19 @@ async function main(): Promise<void> {
   }
 }
 
+// Global handlers for uncaught errors - log and continue rather than crash
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught exception', {
+    error: err instanceof Error ? err.message : String(err),
+    stack: err instanceof Error ? err.stack : undefined,
+  });
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled rejection', {
+    error: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
+});
+
 main();

@@ -5,30 +5,108 @@ import type { OrdersRepo } from '../repos/ordersRepo.js';
 import type { WatchlistRepo } from '../repos/watchlistRepo.js';
 import type { CalibrationRepo } from '../repos/calibrationRepo.js';
 import { RejectionsRepo } from '../repos/rejectionsRepo.js';
+import { scoreFinBERT } from './finbertService.js';
 import type { PortfolioService } from './portfolioService.js';
 import type { SemanticMemoryService } from './semanticMemoryService.js';
 import type { Broker } from '../brokers/types.js';
 import type { AnalystAgentDeps } from '../agent/analystAgent.js';
 import type { RiskPriceFeed } from './riskService.js';
-import type { Settings } from '@atn-trd/shared';
+import type { Settings, DecisionSet, Decision } from '@atn-trd/shared';
 import { getLlmLimits } from '@atn-trd/shared';
 import type Database from 'better-sqlite3';
 import type { SymbolAssessment } from '../agent/analystAgent.js';
 import { runAnalystAgent } from '../agent/analystAgent.js';
 import { prefetchForSymbol } from '../agent/tools.js';
-import { runPortfolioManagerAgent } from '../agent/portfolioManagerAgent.js';
-import type { PortfolioContext, PortfolioConstraints } from '../agent/portfolioManagerAgent.js';
+import type { PortfolioConstraints } from '../agent/portfolioManagerAgent.js';
 import { createRiskService, type RiskConstraints } from './riskService.js';
 import { isTradingDay } from '../scheduler/marketCalendar.js';
 import { logger } from '../lib/logger.js';
 import { emitProgress } from './runProgress.js';
 import type { OrderRequest } from '../brokers/types.js';
-import type { Decision } from '@atn-trd/shared';
 import { resolveConfigForAgent } from '../llm/openaiChatModel.js';
 import { runWithConcurrency } from '../lib/concurrency.js';
 import type { AgentToolsDeps } from '../agent/tools.js';
 
 const log = logger.child({ component: 'trading-cycle' });
+
+export interface EnhancedAssessment extends SymbolAssessment {
+  finbertScore: number; // -1 to 1 normalized FinBERT score
+  finbertLabel: 'positive' | 'negative' | 'neutral';
+  finbertConfidence: number; // 0-1 FinBERT confidence
+}
+
+/* -------------------------------------------------------------------------- */
+/* Rule-based Position Sizing using FinBERT scores                            */
+/* -------------------------------------------------------------------------- */
+
+const MIN_CONFIDENCE_THRESHOLD = 0.6;
+const MIN_SENTIMENT_THRESHOLD = 0.15;
+const MAX_POSITION_WEIGHT = 0.05; // 5% max per position
+const BASE_WEIGHT = 0.02; // 2% base allocation
+
+/**
+ * Generate trading decisions from FinBERT-enhanced assessments.
+ * Replaces LLM-based portfolio manager with deterministic rule-based logic.
+ */
+function generateDecisionsFromFinBERT(
+  assessments: EnhancedAssessment[],
+  currentPositions: string[],
+  constraints: PortfolioConstraints
+): DecisionSet {
+  const positionSet = new Set(currentPositions.map(s => s.toUpperCase()));
+  const decisions: Decision[] = [];
+
+  for (const a of assessments) {
+    const symbol = a.symbol.toUpperCase();
+    const isHolding = positionSet.has(symbol);
+    const confidence = Number.isFinite(a.finbertConfidence) ? a.finbertConfidence : 0;
+    const sentiment = Number.isFinite(a.finbertScore) ? a.finbertScore : 0;
+
+    // Skip blocked symbols
+    if (constraints.symbolBlocklist.includes(symbol)) {
+      continue;
+    }
+
+    let action: Decision['action'];
+    let targetWeight: number | undefined;
+    let rationale: string;
+
+    // Decision logic based on FinBERT scores
+    if (confidence < MIN_CONFIDENCE_THRESHOLD || Math.abs(sentiment) < MIN_SENTIMENT_THRESHOLD) {
+      // Low confidence or neutral sentiment → HOLD
+      action = 'hold';
+      rationale = `FinBERT: confidence=${confidence.toFixed(2)}, sentiment=${sentiment.toFixed(2)} - below thresholds`;
+    } else if (sentiment > MIN_SENTIMENT_THRESHOLD) {
+      // Positive sentiment → BUY or ADD
+      const weight = BASE_WEIGHT * (1 + sentiment) * confidence;
+      targetWeight = Math.min(MAX_POSITION_WEIGHT, Number.isFinite(weight) ? weight : 0);
+      action = isHolding ? 'add' : 'buy';
+      rationale = `FinBERT positive (${a.finbertLabel}): score=${sentiment.toFixed(2)}, conf=${confidence.toFixed(2)} → target ${(targetWeight * 100).toFixed(1)}%`;
+    } else {
+      // Negative sentiment → SELL or TRIM
+      action = isHolding ? 'trim' : 'sell';
+      targetWeight = isHolding ? 0.01 : 0; // Trim to 1% or sell entirely
+      rationale = `FinBERT negative (${a.finbertLabel}): score=${sentiment.toFixed(2)}, conf=${confidence.toFixed(2)}`;
+    }
+
+    decisions.push({
+      symbol,
+      action,
+      targetWeight,
+      confidence,
+      rationale,
+      runId: '', // Will be set by caller
+    });
+  }
+
+  // Sort by confidence descending for priority
+  decisions.sort((a, b) => b.confidence - a.confidence);
+
+  return {
+    decisions,
+    timestamp: Date.now(),
+  };
+}
 
 const RUN_TIMEOUT_MS = 60 * 60 * 1000;
 
@@ -266,7 +344,6 @@ class TradingCycleServiceImpl implements TradingCycleService {
         investorProfile: settings.investorProfile,
         maxContextTokens: llmLimits.maxContextTokens,
       };
-      const pmConfig = {};
 
       emitProgress(runId, 'analyst', `Prefetching data for ${symbols.length} symbols`);
       await Promise.all(symbols.map(symbol => prefetchForSymbol(symbol, this.deps.analystDeps.toolsDeps)));
@@ -301,9 +378,45 @@ class TradingCycleServiceImpl implements TradingCycleService {
         return;
       }
 
-      // -- Step G: Persist assessments -------------------------------
+      // -- Step G2: FinBERT sentiment scoring -------------------------
+      emitProgress(runId, 'finbert', 'Running FinBERT sentiment analysis');
+      const enhancedAssessments: EnhancedAssessment[] = [];
+
+      for (const assessment of assessments) {
+        try {
+          const finbertResult = await scoreFinBERT(assessment.sentimentSummary);
+          enhancedAssessments.push({
+            ...assessment,
+            finbertScore: finbertResult.normalizedScore,
+            finbertLabel: finbertResult.label,
+            finbertConfidence: finbertResult.score,
+          });
+          log.debug('FinBERT scored assessment', {
+            symbol: assessment.symbol,
+            llmScore: assessment.score,
+            finbertScore: finbertResult.normalizedScore,
+            finbertLabel: finbertResult.label,
+          });
+        } catch (err) {
+          // Fall back to LLM score if FinBERT fails
+          log.warn('FinBERT scoring failed, using LLM score', {
+            symbol: assessment.symbol,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          enhancedAssessments.push({
+            ...assessment,
+            finbertScore: assessment.score,
+            finbertLabel: assessment.score > 0.15 ? 'positive' : assessment.score < -0.15 ? 'negative' : 'neutral',
+            finbertConfidence: assessment.confidence,
+          });
+        }
+      }
+
+      log.info('FinBERT scoring complete', { runId, count: enhancedAssessments.length });
+
+      // -- Step G3: Persist assessments -------------------------------
       const assessmentIdBySymbol = new Map<string, string>();
-      for (const a of assessments) {
+      for (const a of enhancedAssessments) {
         const id = this.deps.assessmentsRepo.create({
           runId,
           symbol: a.symbol,
@@ -313,6 +426,10 @@ class TradingCycleServiceImpl implements TradingCycleService {
           risks: a.risks ?? null,
           catalysts: a.catalysts ?? null,
           evidenceIdsJson: null,
+          sentimentSummary: a.sentimentSummary,
+          finbertScore: a.finbertScore,
+          finbertLabel: a.finbertLabel,
+          finbertConfidence: a.finbertConfidence,
         });
         assessmentIdBySymbol.set(a.symbol, id);
 
@@ -336,7 +453,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
       }
 
       // -- Step H: Build portfolio context and constraints -----------
-      const portfolioContext: PortfolioContext = {
+      const portfolioContext = {
         cashPercent:
           portfolio.totalValueCents > 0
             ? (portfolio.cashCents / portfolio.totalValueCents) * 100
@@ -355,20 +472,24 @@ class TradingCycleServiceImpl implements TradingCycleService {
         investorProfile: settings.investorProfile,
       };
 
-      // -- Step I: Portfolio manager ------------------------------
-      emitProgress(runId, 'portfolio-manager', 'Portfolio manager making decisions');
-      const decisionSet = await runPortfolioManagerAgent(
-        runId,
-        assessments,
-        portfolioContext,
-        portfolioConstraints,
-        pmConfig
+      // -- Step I: Generate decisions from FinBERT scores (rule-based) --
+      emitProgress(runId, 'portfolio-manager', 'Generating decisions from FinBERT scores');
+      const decisionSet = generateDecisionsFromFinBERT(
+        enhancedAssessments,
+        portfolioContext.currentPositions,
+        portfolioConstraints
       );
 
-      if (!decisionSet) {
-        this.deps.runsRepo.updateStatus(runId, 'failed', 'portfolio manager returned no decisions');
-        return;
+      // Set runId on all decisions
+      for (const d of decisionSet.decisions) {
+        d.runId = runId;
       }
+
+      log.info('rule-based decisions generated', {
+        runId,
+        count: decisionSet.decisions.length,
+        actions: decisionSet.decisions.map(d => `${d.symbol}:${d.action}`).join(', '),
+      });
 
       // -- Step J: Persist decisions --------------------------------
       const persistedDecisions: Decision[] = decisionSet.decisions.map(d => {

@@ -28,10 +28,14 @@ class MockArtifactsRepo {
 class MockAssessmentsRepo {
   private assessments: AssessmentRow[] = [];
 
-  addAssessment(assessment: Omit<AssessmentRow, 'id' | 'createdAt'>): void {
+  addAssessment(assessment: Omit<AssessmentRow, 'id' | 'createdAt' | 'sentimentSummary' | 'finbertScore' | 'finbertLabel' | 'finbertConfidence'>): void {
     this.assessments.push({
       id: `ass-${this.assessments.length}`,
       createdAt: Date.now(),
+      sentimentSummary: null,
+      finbertScore: null,
+      finbertLabel: null,
+      finbertConfidence: null,
       ...assessment,
     });
   }

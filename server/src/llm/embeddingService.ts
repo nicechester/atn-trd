@@ -21,7 +21,7 @@ export interface EmbeddingConfig {
 }
 
 const DEFAULT_OPENAI_MODEL = 'text-embedding-3-large';
-const DEFAULT_GEMINI_MODEL = 'text-embedding-004';
+const DEFAULT_GEMINI_MODEL = 'gemini-embedding-001';
 
 export function createEmbeddingService(config: EmbeddingConfig = {}): EmbeddingService {
   // Get settings for provider/model if not explicitly passed

@@ -10,6 +10,10 @@ export interface AssessmentRow {
   risks: string | null;
   catalysts: string | null;
   evidenceIdsJson: string | null; // JSON array
+  sentimentSummary: string | null;
+  finbertScore: number | null;
+  finbertLabel: 'positive' | 'negative' | 'neutral' | null;
+  finbertConfidence: number | null;
   createdAt: number;
 }
 
@@ -21,8 +25,8 @@ export class AssessmentsRepo {
     const createdAt = Date.now();
     this.db
       .prepare(
-        `INSERT INTO assessments (id, run_id, symbol, score, confidence, thesis, risks, catalysts, evidence_ids_json, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO assessments (id, run_id, symbol, score, confidence, thesis, risks, catalysts, evidence_ids_json, sentiment_summary, finbert_score, finbert_label, finbert_confidence, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -34,6 +38,10 @@ export class AssessmentsRepo {
         assessment.risks,
         assessment.catalysts,
         assessment.evidenceIdsJson,
+        assessment.sentimentSummary,
+        assessment.finbertScore,
+        assessment.finbertLabel,
+        assessment.finbertConfidence,
         createdAt
       );
     return id;
@@ -43,7 +51,9 @@ export class AssessmentsRepo {
     return this.db
       .prepare(
         `SELECT id, run_id as runId, symbol, score, confidence, thesis, risks, catalysts,
-                evidence_ids_json as evidenceIdsJson, created_at as createdAt
+                evidence_ids_json as evidenceIdsJson, sentiment_summary as sentimentSummary,
+                finbert_score as finbertScore, finbert_label as finbertLabel,
+                finbert_confidence as finbertConfidence, created_at as createdAt
          FROM assessments WHERE id = ?`
       )
       .get(id) as AssessmentRow | undefined;
@@ -53,7 +63,9 @@ export class AssessmentsRepo {
     return this.db
       .prepare(
         `SELECT id, run_id as runId, symbol, score, confidence, thesis, risks, catalysts,
-                evidence_ids_json as evidenceIdsJson, created_at as createdAt
+                evidence_ids_json as evidenceIdsJson, sentiment_summary as sentimentSummary,
+                finbert_score as finbertScore, finbert_label as finbertLabel,
+                finbert_confidence as finbertConfidence, created_at as createdAt
          FROM assessments WHERE run_id = ? ORDER BY symbol`
       )
       .all(runId) as AssessmentRow[];
@@ -63,7 +75,9 @@ export class AssessmentsRepo {
     return this.db
       .prepare(
         `SELECT id, run_id as runId, symbol, score, confidence, thesis, risks, catalysts,
-                evidence_ids_json as evidenceIdsJson, created_at as createdAt
+                evidence_ids_json as evidenceIdsJson, sentiment_summary as sentimentSummary,
+                finbert_score as finbertScore, finbert_label as finbertLabel,
+                finbert_confidence as finbertConfidence, created_at as createdAt
          FROM assessments WHERE run_id = ? AND symbol = ?`
       )
       .get(runId, symbol) as AssessmentRow | undefined;

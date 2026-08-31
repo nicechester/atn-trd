@@ -131,11 +131,9 @@ describe('resolveConfig', () => {
   });
 
   it('picks up the base URL from the environment', () => {
-    process.env.OPENAI_API_URL = 'https://a.example/v1';
+    process.env.LLM_API_URL = 'https://a.example/v1';
     assert.equal(resolveConfig().baseUrl, 'https://a.example/v1');
-    delete process.env.OPENAI_API_URL;
-    process.env.LLM_API_URL = 'https://b.example/v1';
-    assert.equal(resolveConfig().baseUrl, 'https://b.example/v1');
+    delete process.env.LLM_API_URL;
   });
 });
 

@@ -30,6 +30,9 @@ const AssessmentSchema = z.object({
   thesis: z.string().describe('Primary investment thesis, 2–4 sentences, evidence-backed'),
   risks: z.string().nullable().describe('Key risks; null if none identified'),
   catalysts: z.string().nullable().describe('Near-term catalysts; null if none identified'),
+  sentimentSummary: z
+    .string()
+    .describe('1-2 sentence summary of market sentiment for FinBERT scoring'),
 });
 
 export interface SymbolAssessment {
@@ -39,6 +42,7 @@ export interface SymbolAssessment {
   thesis: string;
   risks: string | null;
   catalysts: string | null;
+  sentimentSummary: string;
 }
 
 export interface AnalystAgentDeps {
@@ -104,7 +108,7 @@ export async function runAnalystAgent(
     });
 
     const agent = createReactAgent({
-      llm: rateLimitedLlm.baseLlm,
+      llm: rateLimitedLlm,
       tools,
       stateModifier: ANALYST_SYSTEM_PROMPT,
     });
@@ -154,7 +158,8 @@ export async function runAnalystAgent(
   "confidence": <number from 0 to 1>,
   "thesis": "<2-4 sentence investment thesis>",
   "risks": "<key risks or null>",
-  "catalysts": "<near-term catalysts or null>"
+  "catalysts": "<near-term catalysts or null>",
+  "sentimentSummary": "<1-2 sentence summary of overall market sentiment for this stock, suitable for sentiment analysis>"
 }
 Respond ONLY with the JSON object, no markdown or explanation.`;
 
@@ -187,7 +192,7 @@ Respond ONLY with the JSON object, no markdown or explanation.`;
         if (!isGemini) {
           try {
             log.debug('attempting withStructuredOutput', { symbol });
-            raw = await (synthesisLlm.baseLlm as any).withStructuredOutput(AssessmentSchema).invoke(
+            raw = await (synthesisLlm as any).withStructuredOutput(AssessmentSchema).invoke(
               synthesisMessages
             );
             if (raw && typeof raw === 'object' && 'score' in raw) {
