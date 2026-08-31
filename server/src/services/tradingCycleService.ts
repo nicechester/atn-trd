@@ -5,6 +5,7 @@ import type { OrdersRepo } from '../repos/ordersRepo.js';
 import type { WatchlistRepo } from '../repos/watchlistRepo.js';
 import type { CalibrationRepo } from '../repos/calibrationRepo.js';
 import { RejectionsRepo } from '../repos/rejectionsRepo.js';
+import { scoreFinBERT } from './finbertService.js';
 import type { PortfolioService } from './portfolioService.js';
 import type { SemanticMemoryService } from './semanticMemoryService.js';
 import type { Broker } from '../brokers/types.js';
@@ -29,6 +30,12 @@ import { runWithConcurrency } from '../lib/concurrency.js';
 import type { AgentToolsDeps } from '../agent/tools.js';
 
 const log = logger.child({ component: 'trading-cycle' });
+
+export interface EnhancedAssessment extends SymbolAssessment {
+  finbertScore: number; // -1 to 1 normalized FinBERT score
+  finbertLabel: 'positive' | 'negative' | 'neutral';
+  finbertConfidence: number; // 0-1 FinBERT confidence
+}
 
 const RUN_TIMEOUT_MS = 60 * 60 * 1000;
 
@@ -301,9 +308,45 @@ class TradingCycleServiceImpl implements TradingCycleService {
         return;
       }
 
-      // -- Step G: Persist assessments -------------------------------
+      // -- Step G2: FinBERT sentiment scoring -------------------------
+      emitProgress(runId, 'finbert', 'Running FinBERT sentiment analysis');
+      const enhancedAssessments: EnhancedAssessment[] = [];
+
+      for (const assessment of assessments) {
+        try {
+          const finbertResult = await scoreFinBERT(assessment.sentimentSummary);
+          enhancedAssessments.push({
+            ...assessment,
+            finbertScore: finbertResult.normalizedScore,
+            finbertLabel: finbertResult.label,
+            finbertConfidence: finbertResult.score,
+          });
+          log.debug('FinBERT scored assessment', {
+            symbol: assessment.symbol,
+            llmScore: assessment.score,
+            finbertScore: finbertResult.normalizedScore,
+            finbertLabel: finbertResult.label,
+          });
+        } catch (err) {
+          // Fall back to LLM score if FinBERT fails
+          log.warn('FinBERT scoring failed, using LLM score', {
+            symbol: assessment.symbol,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          enhancedAssessments.push({
+            ...assessment,
+            finbertScore: assessment.score,
+            finbertLabel: assessment.score > 0.15 ? 'positive' : assessment.score < -0.15 ? 'negative' : 'neutral',
+            finbertConfidence: assessment.confidence,
+          });
+        }
+      }
+
+      log.info('FinBERT scoring complete', { runId, count: enhancedAssessments.length });
+
+      // -- Step G3: Persist assessments -------------------------------
       const assessmentIdBySymbol = new Map<string, string>();
-      for (const a of assessments) {
+      for (const a of enhancedAssessments) {
         const id = this.deps.assessmentsRepo.create({
           runId,
           symbol: a.symbol,
@@ -313,6 +356,10 @@ class TradingCycleServiceImpl implements TradingCycleService {
           risks: a.risks ?? null,
           catalysts: a.catalysts ?? null,
           evidenceIdsJson: null,
+          sentimentSummary: a.sentimentSummary,
+          finbertScore: a.finbertScore,
+          finbertLabel: a.finbertLabel,
+          finbertConfidence: a.finbertConfidence,
         });
         assessmentIdBySymbol.set(a.symbol, id);
 
@@ -359,7 +406,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
       emitProgress(runId, 'portfolio-manager', 'Portfolio manager making decisions');
       const decisionSet = await runPortfolioManagerAgent(
         runId,
-        assessments,
+        enhancedAssessments,
         portfolioContext,
         portfolioConstraints,
         pmConfig
