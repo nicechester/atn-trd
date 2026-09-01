@@ -67,15 +67,6 @@ interface YahooChartResponse {
 
 const NOT_FOUND_MESSAGE = /(not found|no data found|invalid (?:symbol|crumb)|quote not found|symbol may be delisted)/i;
 
-interface YahooFinanceModule {
-  quote(
-    symbol: string,
-    queryOptions?: Record<string, unknown>,
-    moduleOptions?: Record<string, unknown>
-  ): Promise<YahooQuoteRaw | YahooQuoteRaw[] | undefined>;
-  suppressNotices?(notices: string[]): void;
-}
-
 let cachedQuoteFn: YahooQuoteFn | null = null;
 
 /**
@@ -84,11 +75,8 @@ let cachedQuoteFn: YahooQuoteFn | null = null;
  */
 const defaultQuoteFn: YahooQuoteFn = async (symbol: string) => {
   if (!cachedQuoteFn) {
-    const mod = (await import('yahoo-finance2')) as unknown as {
-      default?: YahooFinanceModule;
-    } & YahooFinanceModule;
-    const yf = (mod.default ?? mod) as YahooFinanceModule;
-    yf.suppressNotices?.(['yahooSurvey', 'ripHistorical']);
+    const { default: YahooFinance } = await import('yahoo-finance2');
+    const yf = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] });
     cachedQuoteFn = async (s: string) => {
       // validateResult:false keeps us resilient to Yahoo schema drift; we
       // validate the handful of fields we actually use below.
