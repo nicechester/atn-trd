@@ -8,6 +8,7 @@ type FormState = {
   maxPositionWeightPercent: number;
   maxConcurrentPositions: number;
   maxNewPositionsPerRun: number;
+  maxNewAllocationPercentPerRun: number;
   minCashReservePercent: number;
   maxOrderNotionalDollars: number;
   maxDrawdownPercent: number;
@@ -29,6 +30,7 @@ export default function SettingsRisk(): JSX.Element {
           maxPositionWeightPercent: r.maxPositionWeightPercent,
           maxConcurrentPositions: r.maxConcurrentPositions,
           maxNewPositionsPerRun: r.maxNewPositionsPerRun,
+          maxNewAllocationPercentPerRun: r.maxNewAllocationPercentPerRun,
           minCashReservePercent: r.minCashReservePercent,
           maxOrderNotionalDollars: Math.round(r.maxOrderNotionalCents / 100),
           maxDrawdownPercent: r.maxDrawdownPercent,
@@ -60,6 +62,7 @@ export default function SettingsRisk(): JSX.Element {
           maxPositionWeightPercent: form.maxPositionWeightPercent,
           maxConcurrentPositions: form.maxConcurrentPositions,
           maxNewPositionsPerRun: form.maxNewPositionsPerRun,
+          maxNewAllocationPercentPerRun: form.maxNewAllocationPercentPerRun,
           minCashReservePercent: form.minCashReservePercent,
           maxOrderNotionalCents: Math.round(form.maxOrderNotionalDollars * 100),
           maxDrawdownPercent: form.maxDrawdownPercent,
@@ -85,6 +88,7 @@ export default function SettingsRisk(): JSX.Element {
           { label: 'Max Position Weight (%)', field: 'maxPositionWeightPercent', min: 0, max: 100, step: 0.1 },
           { label: 'Max Concurrent Positions', field: 'maxConcurrentPositions', min: 1, step: 1 },
           { label: 'Max New Positions Per Run', field: 'maxNewPositionsPerRun', min: 0, step: 1 },
+          { label: 'Max New Allocation Per Run (%)', field: 'maxNewAllocationPercentPerRun', min: 0, max: 100, step: 1 },
           { label: 'Min Cash Reserve (%)', field: 'minCashReservePercent', min: 0, max: 100, step: 0.1 },
           { label: 'Max Order Notional (USD)', field: 'maxOrderNotionalDollars', min: 1, step: 1 },
           { label: 'Max Drawdown (%)', field: 'maxDrawdownPercent', min: 0, max: 100, step: 0.1 },

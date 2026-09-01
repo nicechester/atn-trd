@@ -106,6 +106,7 @@ export const SettingsSchema = z.object({
     maxPositionWeightPercent: z.number().min(0).max(100).default(20),
     maxConcurrentPositions: z.number().int().min(1).default(10),
     maxNewPositionsPerRun: z.number().int().min(0).default(3),
+    maxNewAllocationPercentPerRun: z.number().min(0).max(100).default(15), // Max % of portfolio to deploy in new buys per run
     minCashReservePercent: z.number().min(0).max(100).default(10),
     maxOrderNotionalCents: z.number().int().positive().default(500000), // $5,000
     maxDrawdownPercent: z.number().min(0).max(100).default(30),
@@ -200,6 +201,7 @@ export const DEFAULT_SETTINGS: Settings = {
     maxPositionWeightPercent: 20,
     maxConcurrentPositions: 10,
     maxNewPositionsPerRun: 3,
+    maxNewAllocationPercentPerRun: 15,
     minCashReservePercent: 10,
     maxOrderNotionalCents: 500000,
     maxDrawdownPercent: 30,

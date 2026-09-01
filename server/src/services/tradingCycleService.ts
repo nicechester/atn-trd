@@ -42,66 +42,158 @@ export interface EnhancedAssessment extends SymbolAssessment {
 const MIN_CONFIDENCE_THRESHOLD = 0.6;
 const MIN_SENTIMENT_THRESHOLD = 0.15;
 const MAX_POSITION_WEIGHT = 0.05; // 5% max per position
-const BASE_WEIGHT = 0.02; // 2% base allocation
+const CONVICTION_HURDLE = 0.65; // Minimum conviction to admit a trade
+
+interface BudgetContext {
+  availableCashPercent: number; // Cash available for new buys (after reserve)
+  maxNewAllocationPercent: number; // Max % to deploy this run
+}
+
+interface BuyCandidate {
+  symbol: string;
+  sentiment: number;
+  confidence: number;
+  label: 'positive' | 'negative' | 'neutral';
+  conviction: number; // |sentiment| × confidence
+}
+
+/**
+ * Greedy Fractional Knapsack allocation for buy candidates.
+ * Sorts by conviction (value) and packs until budget exhausted.
+ */
+function allocateBudgetKnapsack(
+  candidates: BuyCandidate[],
+  budgetPercent: number
+): Map<string, number> {
+  const allocations = new Map<string, number>();
+  
+  // Sort by conviction descending (greedy: highest value first)
+  const sorted = [...candidates].sort((a, b) => b.conviction - a.conviction);
+  
+  let remainingBudget = budgetPercent;
+  
+  for (const candidate of sorted) {
+    // Skip below hurdle rate
+    if (candidate.conviction < CONVICTION_HURDLE) continue;
+    if (remainingBudget <= 0) break;
+    
+    // Allocation proportional to conviction, capped by max position weight and remaining budget
+    const desiredWeight = Math.min(
+      candidate.conviction * MAX_POSITION_WEIGHT, // Scale by conviction
+      MAX_POSITION_WEIGHT,
+      remainingBudget
+    );
+    
+    if (desiredWeight > 0.005) { // Min 0.5% to avoid dust allocations
+      allocations.set(candidate.symbol, desiredWeight);
+      remainingBudget -= desiredWeight;
+    }
+  }
+  
+  return allocations;
+}
 
 /**
  * Generate trading decisions from FinBERT-enhanced assessments.
- * Replaces LLM-based portfolio manager with deterministic rule-based logic.
+ * Uses Greedy Fractional Knapsack for budget-aware allocation.
  */
 function generateDecisionsFromFinBERT(
   assessments: EnhancedAssessment[],
   currentPositions: string[],
-  constraints: PortfolioConstraints
+  constraints: PortfolioConstraints,
+  budgetContext?: BudgetContext
 ): DecisionSet {
   const positionSet = new Set(currentPositions.map(s => s.toUpperCase()));
   const decisions: Decision[] = [];
-
+  
+  // Phase 1: Identify buy candidates for knapsack allocation
+  const buyCandidates: BuyCandidate[] = [];
+  
   for (const a of assessments) {
     const symbol = a.symbol.toUpperCase();
     const isHolding = positionSet.has(symbol);
     const confidence = Number.isFinite(a.finbertConfidence) ? a.finbertConfidence : 0;
     const sentiment = Number.isFinite(a.finbertScore) ? a.finbertScore : 0;
-
-    // Skip blocked symbols
-    if (constraints.symbolBlocklist.includes(symbol)) {
-      continue;
+    
+    if (constraints.symbolBlocklist.includes(symbol)) continue;
+    
+    // Collect new buy candidates for knapsack
+    if (!isHolding && 
+        confidence >= MIN_CONFIDENCE_THRESHOLD && 
+        sentiment > MIN_SENTIMENT_THRESHOLD) {
+      buyCandidates.push({
+        symbol,
+        sentiment,
+        confidence,
+        label: a.finbertLabel,
+        conviction: Math.abs(sentiment) * confidence,
+      });
     }
-
+  }
+  
+  // Phase 2: Run knapsack allocation for new buys
+  const effectiveBudget = budgetContext 
+    ? Math.min(budgetContext.availableCashPercent, budgetContext.maxNewAllocationPercent)
+    : 100;
+  const buyAllocations = allocateBudgetKnapsack(buyCandidates, effectiveBudget / 100);
+  
+  // Phase 3: Generate all decisions
+  for (const a of assessments) {
+    const symbol = a.symbol.toUpperCase();
+    const isHolding = positionSet.has(symbol);
+    const confidence = Number.isFinite(a.finbertConfidence) ? a.finbertConfidence : 0;
+    const sentiment = Number.isFinite(a.finbertScore) ? a.finbertScore : 0;
+    
+    if (constraints.symbolBlocklist.includes(symbol)) continue;
+    
     let action: Decision['action'];
     let targetWeight: number | undefined;
     let rationale: string;
-
-    // Decision logic based on FinBERT scores
+    
     if (confidence < MIN_CONFIDENCE_THRESHOLD || Math.abs(sentiment) < MIN_SENTIMENT_THRESHOLD) {
-      // Low confidence or neutral sentiment → HOLD
       action = 'hold';
       rationale = `FinBERT: confidence=${confidence.toFixed(2)}, sentiment=${sentiment.toFixed(2)} - below thresholds`;
     } else if (sentiment > MIN_SENTIMENT_THRESHOLD) {
-      // Positive sentiment → BUY or ADD
-      const weight = BASE_WEIGHT * (1 + sentiment) * confidence;
-      targetWeight = Math.min(MAX_POSITION_WEIGHT, Number.isFinite(weight) ? weight : 0);
-      action = isHolding ? 'add' : 'buy';
-      rationale = `FinBERT positive (${a.finbertLabel}): score=${sentiment.toFixed(2)}, conf=${confidence.toFixed(2)} → target ${(targetWeight * 100).toFixed(1)}%`;
+      if (isHolding) {
+        // ADD to existing position (not subject to knapsack)
+        action = 'add';
+        targetWeight = Math.min(MAX_POSITION_WEIGHT, sentiment * confidence * MAX_POSITION_WEIGHT);
+        rationale = `FinBERT positive (${a.finbertLabel}): score=${sentiment.toFixed(2)}, conf=${confidence.toFixed(2)} → add to ${(targetWeight * 100).toFixed(1)}%`;
+      } else {
+        // BUY new position - use knapsack allocation
+        const allocated = buyAllocations.get(symbol);
+        if (allocated) {
+          action = 'buy';
+          targetWeight = allocated;
+          const conviction = Math.abs(sentiment) * confidence;
+          rationale = `FinBERT positive (${a.finbertLabel}): conviction=${conviction.toFixed(2)} → allocated ${(targetWeight * 100).toFixed(1)}%`;
+        } else {
+          // Below hurdle or budget exhausted
+          action = 'hold';
+          const conviction = Math.abs(sentiment) * confidence;
+          rationale = `FinBERT positive but skipped: conviction=${conviction.toFixed(2)} below hurdle or budget exhausted`;
+        }
+      }
     } else {
       // Negative sentiment → SELL or TRIM
-      action = isHolding ? 'trim' : 'sell';
-      targetWeight = isHolding ? 0.01 : 0; // Trim to 1% or sell entirely
+      action = isHolding ? 'trim' : 'hold';
+      targetWeight = isHolding ? 0.01 : undefined;
       rationale = `FinBERT negative (${a.finbertLabel}): score=${sentiment.toFixed(2)}, conf=${confidence.toFixed(2)}`;
     }
-
+    
     decisions.push({
       symbol,
       action,
       targetWeight,
       confidence,
       rationale,
-      runId: '', // Will be set by caller
+      runId: '',
     });
   }
-
-  // Sort by confidence descending for priority
+  
+  // Sort by conviction (confidence as proxy) descending
   decisions.sort((a, b) => b.confidence - a.confidence);
-
+  
   return {
     decisions,
     timestamp: Date.now(),
@@ -474,10 +566,25 @@ class TradingCycleServiceImpl implements TradingCycleService {
 
       // -- Step I: Generate decisions from FinBERT scores (rule-based) --
       emitProgress(runId, 'portfolio-manager', 'Generating decisions from FinBERT scores');
+      
+      // Build budget context for knapsack allocation
+      const budgetContext: BudgetContext = {
+        availableCashPercent: Math.max(0, portfolioContext.cashPercent - settings.risk.minCashReservePercent),
+        maxNewAllocationPercent: settings.risk.maxNewAllocationPercentPerRun,
+      };
+
+      log.info('budget context for knapsack allocation', {
+        runId,
+        availableCashPercent: budgetContext.availableCashPercent.toFixed(1),
+        maxNewAllocationPercent: budgetContext.maxNewAllocationPercent,
+        effectiveBudget: Math.min(budgetContext.availableCashPercent, budgetContext.maxNewAllocationPercent).toFixed(1),
+      });
+
       const decisionSet = generateDecisionsFromFinBERT(
         enhancedAssessments,
         portfolioContext.currentPositions,
-        portfolioConstraints
+        portfolioConstraints,
+        budgetContext
       );
 
       // Set runId on all decisions
