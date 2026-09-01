@@ -82,23 +82,74 @@
   background: var(--color-bg-secondary);
   border-radius: var(--spacing-xs);
   border: 1px solid var(--color-border);
-  overflow-x: auto;
+}
+
+.chartWrapper {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.yAxis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-align: right;
+  padding: 4px 0;
+}
+
+.chartArea {
+  flex: 1;
+  min-width: 0;
 }
 
 .chart {
-  min-width: 600px;
-  height: auto;
+  width: 100%;
+  height: 200px;
+  display: block;
+}
+
+.xAxis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  padding-top: var(--spacing-xs);
+}
+
+.legendBox {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: var(--spacing-xs);
+  font-size: 0.75rem;
+  padding-top: 4px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  white-space: nowrap;
+}
+
+.legendLineStrategy {
+  width: 20px;
+  height: 3px;
+  background: var(--color-success, #4ade80);
+}
+
+.legendLineBenchmark {
+  width: 20px;
+  height: 3px;
+  background: var(--color-info, #60a5fa);
 }
 
 .gridLine {
   stroke: var(--color-border);
-  stroke-width: 0.5;
-  stroke-dasharray: 2, 2;
-}
-
-.axisLabel {
-  font-size: 0.75rem;
-  fill: var(--color-text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 4, 4;
 }
 
 .strategyLine {
@@ -113,13 +164,27 @@
   stroke-width: 2;
 }
 
-.legend {
-  font-size: 0.75rem;
-}
-
-.legendText {
-  fill: var(--color-text);
-  font-size: 0.75rem;
+@media (max-width: 640px) {
+  .chartWrapper {
+    flex-direction: column;
+  }
+  .yAxis {
+    flex-direction: row;
+    justify-content: space-between;
+    order: 2;
+  }
+  .chartArea {
+    order: 1;
+  }
+  .legendBox {
+    flex-direction: row;
+    order: 3;
+    justify-content: center;
+    gap: var(--spacing-md);
+  }
+  .chart {
+    height: 180px;
+  }
 }
 
 .note {

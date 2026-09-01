@@ -95,8 +95,15 @@ export default function LlmUsagePane(): JSX.Element | null {
     return <Card title="LLM Usage"><p style={{ color: 'var(--color-text-muted)' }}>No telemetry data available yet.</p></Card>;
   }
 
+  const gridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: 'var(--spacing-md)',
+    marginBottom: 'var(--spacing-lg)',
+  };
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)' }}>
+    <div style={gridStyle}>
       <Card title="Current Models">
         <div style={{ fontSize: '0.875rem', lineHeight: '1.6' }}>
           <div>

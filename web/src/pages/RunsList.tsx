@@ -65,7 +65,8 @@ export default function RunsListPage() {
       {filtered.length === 0
         ? <p className={styles.muted}>No runs found.</p>
         : (
-          <table className={styles.table}>
+          <div className={styles.tableWrapper}>
+            <table className={styles.table}>
             <thead>
               <tr>
                 <th className={styles.th}>Status</th>
@@ -101,6 +102,7 @@ export default function RunsListPage() {
               ))}
             </tbody>
           </table>
+            </div>
         )
       }
     </div>

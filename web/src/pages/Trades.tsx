@@ -113,6 +113,7 @@ export default function TradesPage() {
               </button>
             )}
           </div>
+          <div className={styles.tableWrapper}>
           <table className={styles.table}>
             <thead>
               <tr>
@@ -159,6 +160,7 @@ export default function TradesPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </>
       )}
 
@@ -166,6 +168,7 @@ export default function TradesPage() {
       {filtered.length === 0
         ? <p className={styles.muted}>No trades found.</p>
         : (
+          <div className={styles.tableWrapper}>
           <table className={styles.table}>
             <thead>
               <tr>
@@ -196,6 +199,7 @@ export default function TradesPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )
       }
     </div>

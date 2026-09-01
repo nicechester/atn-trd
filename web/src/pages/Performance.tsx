@@ -50,20 +50,19 @@ export default function PerformancePage() {
   const maxReturn = Math.max(...allReturns, 0);
   const returnRange = maxReturn - minReturn;
   const chartHeight = 300;
-  const chartWidth = Math.max(600, Math.min(1000, data.series.length * 2));
-  const padding = 40;
+  const chartWidth = 1000;
 
-  // Scale functions
-  const scaleX = (index: number) => padding + (index / (data.series.length - 1)) * (chartWidth - 2 * padding);
-  const scaleY = (value: number) => chartHeight - padding - ((value - minReturn) / returnRange) * (chartHeight - 2 * padding);
+  // Scale functions - now using full viewBox since labels are outside
+  const scaleX = (index: number) => (index / Math.max(data.series.length - 1, 1)) * chartWidth;
+  const scaleY = (value: number) => chartHeight - ((value - minReturn) / (returnRange || 1)) * chartHeight;
 
   // Generate SVG path for line chart
   const strategyPath = data.series
     .map((point, i) => `${scaleX(i)},${scaleY(point.strategyReturn)}`)
-    .join(' L ');
+    .join(' ');
   const benchmarkPath = data.series
     .map((point, i) => `${scaleX(i)},${scaleY(point.benchmarkReturn)}`)
-    .join(' L ');
+    .join(' ');
 
   const strategyReturn = (data.totalStrategyReturn * 100).toFixed(2);
   const benchmarkReturn = (data.totalBenchmarkReturn * 100).toFixed(2);
@@ -134,44 +133,44 @@ export default function PerformancePage() {
       </div>
 
       <div className={styles.chartContainer}>
-        <svg
-          className={styles.chart}
-          width={chartWidth}
-          height={chartHeight}
-          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-        >
-          {/* Grid lines */}
-          {[0, 0.25, 0.5, 0.75, 1].map((tick) => {
-            const y = chartHeight - padding - tick * (chartHeight - 2 * padding);
-            const value = minReturn + tick * returnRange;
-            return (
-              <g key={`grid-${tick}`}>
-                <line x1={padding} y1={y} x2={chartWidth - padding} y2={y} className={styles.gridLine} />
-                <text x={padding - 10} y={y + 4} className={styles.axisLabel} textAnchor="end">
-                  {(value * 100).toFixed(0)}%
-                </text>
-              </g>
-            );
-          })}
+        <div className={styles.chartWrapper}>
+          <div className={styles.yAxis}>
+            {[1, 0.75, 0.5, 0.25, 0].map((tick) => {
+              const value = minReturn + tick * returnRange;
+              return <span key={tick}>{(value * 100).toFixed(0)}%</span>;
+            })}
+          </div>
+          <div className={styles.chartArea}>
+            <svg
+              className={styles.chart}
+              viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+              preserveAspectRatio="none"
+            >
+              {/* Grid lines */}
+              {[0, 0.25, 0.5, 0.75, 1].map((tick) => {
+                const y = chartHeight - tick * chartHeight;
+                return (
+                  <line key={`grid-${tick}`} x1={0} y1={y} x2={chartWidth} y2={y} className={styles.gridLine} />
+                );
+              })}
 
-          {/* Benchmark line (SPY) */}
-          <polyline points={benchmarkPath} className={styles.benchmarkLine} />
+              {/* Benchmark line (SPY) */}
+              <polyline points={benchmarkPath} className={styles.benchmarkLine} />
 
-          {/* Strategy line */}
-          <polyline points={strategyPath} className={styles.strategyLine} />
-
-          {/* Legend */}
-          <g className={styles.legend}>
-            <line x1={chartWidth - 180} y1={padding + 10} x2={chartWidth - 160} y2={padding + 10} className={styles.strategyLine} />
-            <text x={chartWidth - 155} y={padding + 14} className={styles.legendText}>
-              Strategy
-            </text>
-            <line x1={chartWidth - 180} y1={padding + 30} x2={chartWidth - 160} y2={padding + 30} className={styles.benchmarkLine} />
-            <text x={chartWidth - 155} y={padding + 34} className={styles.legendText}>
-              SPY
-            </text>
-          </g>
-        </svg>
+              {/* Strategy line */}
+              <polyline points={strategyPath} className={styles.strategyLine} />
+            </svg>
+            <div className={styles.xAxis}>
+              {data.series.filter((_, i) => i === 0 || i === data.series.length - 1 || i % Math.ceil(data.series.length / 5) === 0).map((point) => (
+                <span key={point.date}>{point.date.slice(5)}</span>
+              ))}
+            </div>
+          </div>
+          <div className={styles.legendBox}>
+            <div className={styles.legendItem}><span className={styles.legendLineStrategy} /> Strategy</div>
+            <div className={styles.legendItem}><span className={styles.legendLineBenchmark} /> SPY</div>
+          </div>
+        </div>
       </div>
 
       <p className={styles.note}>

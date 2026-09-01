@@ -84,29 +84,31 @@ export default function SettingsRisk(): JSX.Element {
   return (
     <Card title="Risk Parameters">
       <form onSubmit={handleSubmit}>
-        {[
-          { label: 'Max Position Weight (%)', field: 'maxPositionWeightPercent', min: 0, max: 100, step: 0.1 },
-          { label: 'Max Concurrent Positions', field: 'maxConcurrentPositions', min: 1, step: 1 },
-          { label: 'Max New Positions Per Run', field: 'maxNewPositionsPerRun', min: 0, step: 1 },
-          { label: 'Max New Allocation Per Run (%)', field: 'maxNewAllocationPercentPerRun', min: 0, max: 100, step: 1 },
-          { label: 'Min Cash Reserve (%)', field: 'minCashReservePercent', min: 0, max: 100, step: 0.1 },
-          { label: 'Max Order Notional (USD)', field: 'maxOrderNotionalDollars', min: 1, step: 1 },
-          { label: 'Max Drawdown (%)', field: 'maxDrawdownPercent', min: 0, max: 100, step: 0.1 },
-          { label: 'Min Confidence Threshold', field: 'minConfidenceThreshold', min: 0, max: 1, step: 0.01 },
-          { label: 'Earnings Blackout Days', field: 'earningsBlackoutDays', min: 0, step: 1 },
-        ].map(({ label, field, min, max, step }) => (
-          <div key={field} className={styles.field}>
-            <label className={styles.label}>{label}</label>
-            <input
-              className={styles.input}
-              type="number"
-              min={min}
-              max={max}
-              step={step}
-              {...n(field as keyof FormState)}
-            />
-          </div>
-        ))}
+        <div className={styles.grid}>
+          {[
+            { label: 'Max Position Weight (%)', field: 'maxPositionWeightPercent', min: 0, max: 100, step: 0.1 },
+            { label: 'Max Concurrent Positions', field: 'maxConcurrentPositions', min: 1, step: 1 },
+            { label: 'Max New Positions Per Run', field: 'maxNewPositionsPerRun', min: 0, step: 1 },
+            { label: 'Max New Allocation Per Run (%)', field: 'maxNewAllocationPercentPerRun', min: 0, max: 100, step: 1 },
+            { label: 'Min Cash Reserve (%)', field: 'minCashReservePercent', min: 0, max: 100, step: 0.1 },
+            { label: 'Max Order Notional (USD)', field: 'maxOrderNotionalDollars', min: 1, step: 1 },
+            { label: 'Max Drawdown (%)', field: 'maxDrawdownPercent', min: 0, max: 100, step: 0.1 },
+            { label: 'Min Confidence Threshold', field: 'minConfidenceThreshold', min: 0, max: 1, step: 0.01 },
+            { label: 'Earnings Blackout Days', field: 'earningsBlackoutDays', min: 0, step: 1 },
+          ].map(({ label, field, min, max, step }) => (
+            <div key={field} className={styles.field}>
+              <label className={styles.label}>{label}</label>
+              <input
+                className={styles.input}
+                type="number"
+                min={min}
+                max={max}
+                step={step}
+                {...n(field as keyof FormState)}
+              />
+            </div>
+          ))}
+        </div>
         <div className={styles.field}>
           <label className={styles.label}>Symbol Blocklist (one per line)</label>
           <textarea
