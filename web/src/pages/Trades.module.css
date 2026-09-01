@@ -1,6 +1,7 @@
 .filterBar { display: flex; gap: var(--spacing-md); align-items: center; margin-bottom: var(--spacing-md); }
 .filterInput { background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text); border-radius: var(--radius-sm, 4px); padding: var(--spacing-xs, 4px) var(--spacing-sm); font-size: inherit; }
-.table { width: 100%; border-collapse: collapse; }
+.tableWrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table { width: 100%; border-collapse: collapse; white-space: nowrap; }
 .th { text-align: left; padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--color-border); color: var(--color-text-muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
 .td { padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--color-border); }
 .badgeGreen { background: #4ade80; color: #052e16; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }

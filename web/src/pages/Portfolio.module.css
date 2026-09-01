@@ -4,7 +4,8 @@
 .statLabel { font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase; }
 .positive { color: var(--color-success, #4ade80); }
 .negative { color: var(--color-error, #f87171); }
-.table { width: 100%; border-collapse: collapse; }
+.tableWrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table { width: 100%; border-collapse: collapse; white-space: nowrap; }
 .th { text-align: left; padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--color-border); color: var(--color-text-muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
 .td { padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--color-border); }
 .tdNum { text-align: right; }
@@ -29,6 +30,20 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .transferRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .transferInput {
+    width: 100%;
+  }
+  .depositBtn, .withdrawBtn {
+    flex: 1;
+  }
 }
 
 .dollarSign {

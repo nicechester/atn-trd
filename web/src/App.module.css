@@ -2,6 +2,7 @@
   display: flex;
   height: 100vh;
   overflow: hidden;
+  flex-direction: column;
 }
 
 .main {
@@ -10,10 +11,23 @@
   padding: var(--spacing-xl);
 }
 
+@media (max-width: 1023px) {
+  .main {
+    padding: var(--spacing-md);
+    padding-top: calc(var(--touch-target-min) + var(--spacing-lg));
+  }
+}
+
 .loading {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100vh;
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
+}
+
+@media (min-width: 1024px) {
+  .layout {
+    flex-direction: row;
+  }
 }

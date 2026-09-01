@@ -167,6 +167,7 @@ export default function PortfolioPage() {
       {data.positions.length === 0
         ? <p className={styles.muted}>No open positions.</p>
         : (
+          <div className={styles.tableWrapper}>
           <table className={styles.table}>
             <thead>
               <tr>
@@ -201,6 +202,7 @@ export default function PortfolioPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )
       }
     </div>
