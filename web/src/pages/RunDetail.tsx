@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { runs as runsApi, type RunDetailData, type AgentRunRow, type DecisionRow, type AgentMessageRow, type ResearchArtifactRow, type RunCoverageData } from '../api/client';
-import { centsToUSD, formatTimestamp, formatDuration } from '../lib/format';
+import { centsToUSD, formatTimestamp, formatDuration, formatQty } from '../lib/format';
 import { useToast } from '../context/ToastContext';
 import CoverageHeatmap from '../components/CoverageHeatmap';
 import { RejectedDecisions } from '../components/RejectedDecisions';
@@ -214,7 +214,7 @@ export default function RunDetailPage() {
                 <strong>{o.symbol}</strong>
                 <span className={o.side === 'buy' ? styles.badgeGreen : styles.badgeRed}>{o.side}</span>
                 <span className={styles.badgeGray}>{o.status}</span>
-                <span className={styles.muted}>qty: {o.qty} · {o.type}</span>
+                <span className={styles.muted}>qty: {formatQty(o.qty)} · {o.type}</span>
               </div>
               <div className={styles.muted} style={{ fontSize: '0.8rem', marginBottom: 'var(--spacing-sm)' }}>
                 Submitted: {formatTimestamp(o.submittedAt)}
@@ -233,7 +233,7 @@ export default function RunDetailPage() {
                     {o.fills.map(f => (
                       <tr key={f.id}>
                         <td className={styles.td}>{f.barDate}</td>
-                        <td className={styles.td}>{f.qty}</td>
+                        <td className={styles.td}>{formatQty(f.qty)}</td>
                         <td className={styles.td}>{centsToUSD(f.priceCents)}</td>
                         <td className={styles.td}>{centsToUSD(f.feeCents)}</td>
                       </tr>

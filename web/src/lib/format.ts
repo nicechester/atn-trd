@@ -21,3 +21,7 @@ export function formatPnl(cents: number): string {
   const prefix = cents >= 0 ? '+' : '';
   return `${prefix}${centsToUSD(cents)}`;
 }
+
+export function formatQty(qty: number): string {
+  return Number.isInteger(qty) ? String(qty) : qty.toFixed(3).replace(/\.?0+$/, '');
+}

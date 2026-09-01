@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { trades as tradesApi, type FillWithOrder, type OrderRow } from '../api/client';
-import { centsToUSD, formatTimestamp } from '../lib/format';
+import { centsToUSD, formatTimestamp, formatQty } from '../lib/format';
 import { useToast } from '../context/ToastContext';
 import styles from './Trades.module.css';
 
@@ -151,7 +151,7 @@ export default function TradesPage() {
                   <td className={styles.td}>
                     <span className={styles.badgeYellow}>{o.status}</span>
                   </td>
-                  <td className={styles.td}>{o.qty}</td>
+                  <td className={styles.td}>{formatQty(o.qty)}</td>
                   <td className={styles.td}>{o.type}{o.limitPriceCents ? ` @ ${centsToUSD(o.limitPriceCents)}` : ''}</td>
                   <td className={styles.td}>
                     <button className={styles.cancelBtnSmall} onClick={() => cancelOne(o.id)}>Cancel</button>
@@ -192,7 +192,7 @@ export default function TradesPage() {
                     <span className={t.side === 'buy' ? styles.badgeGreen : styles.badgeRed}>{t.side}</span>
                   </td>
                   <td className={styles.td}>{t.mode}</td>
-                  <td className={styles.td}>{t.qty}</td>
+                  <td className={styles.td}>{formatQty(t.qty)}</td>
                   <td className={styles.td}>{centsToUSD(t.priceCents)}</td>
                   <td className={styles.td}>{centsToUSD(t.feeCents)}</td>
                 </tr>

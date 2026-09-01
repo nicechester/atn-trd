@@ -27,37 +27,6 @@ export interface VolatilityMetrics {
   impliedVol: number | null;
 }
 
-interface YahooFinanceModule {
-  chart(
-    symbol: string,
-    queryOptions?: Record<string, unknown>,
-    moduleOptions?: Record<string, unknown>
-  ): Promise<unknown>;
-  suppressNotices?(notices: string[]): void;
-}
-
-let cachedChartFn:
-  | ((symbol: string, range: string, interval: string) => Promise<YahooChartRaw | null | undefined>)
-  | null = null;
-
-/** Lazy-loaded yahoo-finance2 chart function */
-const defaultChartFn = async (
-  symbol: string,
-  range: string,
-  interval: string
-): Promise<YahooChartRaw | null | undefined> => {
-  if (!cachedChartFn) {
-    const mod = (await import('yahoo-finance2')) as unknown as {
-      default?: YahooFinanceModule;
-    } & YahooFinanceModule;
-    const yf = (mod.default ?? mod) as YahooFinanceModule;
-    yf.suppressNotices?.(['yahooSurvey', 'ripHistorical']);
-    cachedChartFn = async (s: string, r: string, i: string) =>
-      (await yf.chart(s, { period1: undefined, period2: undefined, range: r, interval: i }, { validateResult: false })) as YahooChartRaw;
-  }
-  return cachedChartFn(symbol, range, interval);
-};
-
 interface YahooChartRaw {
   chart?: {
     result?: Array<{
@@ -71,6 +40,27 @@ interface YahooChartRaw {
     error?: { code?: string; description?: string } | null;
   };
 }
+
+let cachedChartFn:
+  | ((symbol: string, periodDays: number, interval: string) => Promise<YahooChartRaw | null | undefined>)
+  | null = null;
+
+/** Lazy-loaded yahoo-finance2 chart function */
+const defaultChartFn = async (
+  symbol: string,
+  periodDays: number,
+  interval: string
+): Promise<YahooChartRaw | null | undefined> => {
+  if (!cachedChartFn) {
+    const { default: YahooFinance } = await import('yahoo-finance2');
+    const yf = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] });
+    cachedChartFn = async (s: string, days: number, i: string) => {
+      const period1 = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      return (await yf.chart(s, { period1, interval: i as '1d' }, { validateResult: false })) as YahooChartRaw;
+    };
+  }
+  return cachedChartFn(symbol, periodDays, interval);
+};
 
 /**
  * Calculate historical volatility from price array.
@@ -133,8 +123,8 @@ export async function getVolatilityMetrics(symbol: string): Promise<VolatilityMe
   let impliedVol: number | null = null;
 
   try {
-    // Fetch 60 days of price history
-    const priceChart = await defaultChartFn(normalized, '3mo', '1d');
+    // Fetch 90 days of price history (3 months)
+    const priceChart = await defaultChartFn(normalized, 90, '1d');
     const prices = extractPrices(priceChart);
 
     if (prices && prices.length > 0) {

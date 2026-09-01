@@ -193,29 +193,17 @@ export interface YahooFundamentalsOptions {
   now?: () => number;
 }
 
-interface YahooFinanceModule {
-  quoteSummary(
-    symbol: string,
-    queryOptions?: Record<string, unknown>,
-    moduleOptions?: Record<string, unknown>
-  ): Promise<unknown>;
-  suppressNotices?(notices: string[]): void;
-}
-
 let cachedFn: QuoteSummaryFn | null = null;
 
 /** Loaded lazily so unit tests never import yahoo-finance2. */
 const defaultQuoteSummaryFn: QuoteSummaryFn = async (symbol, modules) => {
   if (!cachedFn) {
-    const mod = (await import('yahoo-finance2')) as unknown as {
-      default?: YahooFinanceModule;
-    } & YahooFinanceModule;
-    const yf = (mod.default ?? mod) as YahooFinanceModule;
-    yf.suppressNotices?.(['yahooSurvey', 'ripHistorical']);
+    const { default: YahooFinance } = await import('yahoo-finance2');
+    const yf = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] });
     cachedFn = async (s, mods) =>
       // validateResult:false keeps us resilient to Yahoo schema drift; only the
       // handful of fields used below are read, and each is coerced defensively.
-      (await yf.quoteSummary(s, { modules: [...mods] }, { validateResult: false })) as QuoteSummaryRaw;
+      (await yf.quoteSummary(s, { modules: mods as unknown as undefined }, { validateResult: false })) as QuoteSummaryRaw;
   }
   return cachedFn(symbol, modules);
 };

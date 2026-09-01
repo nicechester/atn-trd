@@ -107,25 +107,13 @@ export interface YahooOptionsOptions {
   now?: () => number;
 }
 
-interface YahooFinanceModule {
-  options(
-    symbol: string,
-    queryOptions?: Record<string, unknown>,
-    moduleOptions?: Record<string, unknown>
-  ): Promise<unknown>;
-  suppressNotices?(notices: string[]): void;
-}
-
 let cachedFn: YahooOptionsFn | null = null;
 
 /** Loaded lazily so unit tests never import yahoo-finance2. */
 const defaultOptionsFn: YahooOptionsFn = async (symbol, query) => {
   if (!cachedFn) {
-    const mod = (await import('yahoo-finance2')) as unknown as {
-      default?: YahooFinanceModule;
-    } & YahooFinanceModule;
-    const yf = (mod.default ?? mod) as YahooFinanceModule;
-    yf.suppressNotices?.(['yahooSurvey', 'ripHistorical']);
+    const { default: YahooFinance } = await import('yahoo-finance2');
+    const yf = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] });
     cachedFn = async (s, q) =>
       // validateResult:false keeps us resilient to Yahoo schema drift.
       (await yf.options(

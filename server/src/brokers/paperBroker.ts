@@ -8,7 +8,7 @@ import { PortfolioRepo, type PortfolioRow } from '../repos/portfolioRepo.js';
 import { DecisionsRepo } from '../repos/decisionsRepo.js';
 import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
 import type { SemanticMemoryService } from '../services/semanticMemoryService.js';
-import { notionalCents } from '../lib/money.js';
+import { notionalCents, MIN_QTY } from '../lib/money.js';
 import { isTradingDay, nextSessionOpen, nextSessionClose, nextTradingDateStr, toETDateStr, isMarketHours } from '../scheduler/marketCalendar.js';
 import { logger } from '../lib/logger.js';
 
@@ -177,6 +177,27 @@ export class PaperBroker implements Broker {
       });
 
       this.ordersRepo.updateStatus(orderId, 'rejected', undefined, 'Quantity must be positive');
+      return this.rowToState(this.ordersRepo.get(orderId)!);
+    } else if (req.qty < MIN_QTY) {
+      const orderId = this.ordersRepo.create({
+        clientOrderId: req.clientOrderId,
+        decisionId: null,
+        runId: null,
+        broker: 'paper',
+        brokerOrderId: null,
+        mode: 'paper',
+        symbol: req.symbol,
+        side: req.side,
+        qty: req.qty,
+        type: req.type,
+        limitPriceCents: req.limitPriceCents ?? null,
+        tif: req.tif,
+        status: 'pending',
+        rejectReason: null,
+        submittedAt: now,
+      });
+
+      this.ordersRepo.updateStatus(orderId, 'rejected', undefined, 'Quantity below minimum tradable size (0.001 shares)');
       return this.rowToState(this.ordersRepo.get(orderId)!);
     }
 
