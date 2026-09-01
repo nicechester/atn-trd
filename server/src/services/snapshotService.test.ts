@@ -8,6 +8,7 @@ import type { PriceFeed, HistoricalPrice } from './priceService.js';
 import { PositionsRepo } from '../repos/positionsRepo.js';
 import { PortfolioRepo } from '../repos/portfolioRepo.js';
 import { SnapshotsRepo } from '../repos/snapshotsRepo.js';
+import { toETDateStr } from '../scheduler/marketCalendar.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,16 +16,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const migrationsDir = path.join(__dirname, '../db/migrations');
 
-/** Get today's date in YYYY-MM-DD format */
+/** Get today's date in YYYY-MM-DD format (ET timezone, matching snapshotService) */
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toETDateStr(new Date());
 }
 
-/** Get yesterday's date in YYYY-MM-DD format */
+/** Get yesterday's date in YYYY-MM-DD format (ET timezone) */
 function yesterday(): string {
   const d = new Date();
   d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
+  return toETDateStr(d);
 }
 
 /**
