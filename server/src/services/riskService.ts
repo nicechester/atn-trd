@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { Decision, DecisionSet, Order } from '@atn-trd/shared';
-import { notionalCents, toCents } from '../lib/money.js';
+import { notionalCents, toCents, floorQty, ceilQty } from '../lib/money.js';
 import { logger } from '../lib/logger.js';
 import type { Portfolio } from './portfolioService.js';
 
@@ -457,7 +457,7 @@ class RiskServiceImpl implements RiskService {
       targetNotionalCents = Math.round(targetWeight * totalValueCents);
       deltaNotionalCents = targetNotionalCents - currentNotionalCents;
       rawQty = deltaNotionalCents / priceCents;
-      qty = Math.floor(rawQty);
+      qty = floorQty(rawQty);
     } else if (decision.action === 'sell') {
       qty = currentQty;
       targetNotionalCents = 0;
@@ -468,11 +468,11 @@ class RiskServiceImpl implements RiskService {
       targetNotionalCents = Math.round(targetWeight * totalValueCents);
       deltaNotionalCents = currentNotionalCents - targetNotionalCents;
       rawQty = deltaNotionalCents / priceCents;
-      qty = Math.ceil(rawQty);
+      qty = ceilQty(rawQty);
 
       // No-shorting cap for trim
       qty = Math.min(qty, currentQty);
-      if (qty < Math.ceil(rawQty)) {
+      if (qty < ceilQty(rawQty)) {
         cappedByPosition = true;
       }
     }
@@ -524,7 +524,7 @@ class RiskServiceImpl implements RiskService {
       const projectedNotionalCents = currentNotionalCents + qty * priceCents;
 
       if (projectedNotionalCents > maxAllowedNotionalCents) {
-        const cappedQty = Math.floor((maxAllowedNotionalCents - currentNotionalCents) / priceCents);
+        const cappedQty = floorQty((maxAllowedNotionalCents - currentNotionalCents) / priceCents);
 
         if (cappedQty <= 0) {
           const rejection: Rejection = {
@@ -561,7 +561,7 @@ class RiskServiceImpl implements RiskService {
     // Check 13: Max order notional (all sides)
     const orderNotionalCents = qty * priceCents;
     if (orderNotionalCents > this.constraints.maxOrderNotionalCents) {
-      const cappedQty = Math.floor(this.constraints.maxOrderNotionalCents / priceCents);
+      const cappedQty = floorQty(this.constraints.maxOrderNotionalCents / priceCents);
 
       if (cappedQty <= 0) {
         const rejection: Rejection = {
@@ -601,7 +601,7 @@ class RiskServiceImpl implements RiskService {
       const orderNotionalCents2 = qty * priceCents;
 
       if (orderNotionalCents2 > availableCashCents) {
-        const cappedQty = Math.floor(availableCashCents / priceCents);
+        const cappedQty = floorQty(availableCashCents / priceCents);
 
         if (cappedQty <= 0) {
           const rejection: Rejection = {

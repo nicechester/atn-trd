@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { portfolio as portfolioApi, type Portfolio } from '../api/client';
-import { centsToUSD, formatPnl } from '../lib/format';
+import { centsToUSD, formatPnl, formatQty } from '../lib/format';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import styles from './Portfolio.module.css';
@@ -186,7 +186,7 @@ export default function PortfolioPage() {
               {data.positions.map(p => (
                 <tr key={p.symbol}>
                   <td className={styles.td}><strong>{p.symbol}</strong></td>
-                  <td className={`${styles.td} ${styles.tdNum}`}>{p.qty}</td>
+                  <td className={`${styles.td} ${styles.tdNum}`}>{formatQty(p.qty)}</td>
                   <td className={`${styles.td} ${styles.tdNum}`}>{centsToUSD(p.avgCostCents)}</td>
                   <td className={`${styles.td} ${styles.tdNum}`}>{centsToUSD(p.currentPriceCents)}</td>
                   <td className={`${styles.td} ${styles.tdNum}`}>{centsToUSD(p.costBasisCents)}</td>

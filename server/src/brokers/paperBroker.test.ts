@@ -178,6 +178,60 @@ describe('PaperBroker', () => {
       assert.equal(result.rejectReason, 'Quantity must be positive');
     });
 
+    it('rejects order with qty below MIN_QTY', async () => {
+      pricesRepo.upsert({
+        symbol: 'AAPL',
+        barDate: '2025-01-15',
+        openCents: 15000,
+        highCents: 15100,
+        lowCents: 14900,
+        closeCents: 15050,
+        adjCloseCents: 15050,
+        volume: 1000000,
+        provider: 'yahoo',
+        fetchedAt: Date.now(),
+      });
+
+      const result = await broker.submitOrder({
+        clientOrderId: crypto.randomUUID(),
+        symbol: 'AAPL',
+        side: 'buy',
+        qty: 0.0005,
+        type: 'market',
+        tif: 'day',
+      });
+
+      assert.equal(result.status, 'rejected');
+      assert.equal(result.rejectReason, 'Quantity below minimum tradable size (0.001 shares)');
+    });
+
+    it('fills fractional order successfully', async () => {
+      pricesRepo.upsert({
+        symbol: 'AAPL',
+        barDate: '2025-01-15',
+        openCents: 15000,
+        highCents: 15100,
+        lowCents: 14900,
+        closeCents: 15050,
+        adjCloseCents: 15050,
+        volume: 1000000,
+        provider: 'yahoo',
+        fetchedAt: Date.now(),
+      });
+
+      const result = await broker.submitOrder({
+        clientOrderId: crypto.randomUUID(),
+        symbol: 'AAPL',
+        side: 'buy',
+        qty: 2.5,
+        type: 'market',
+        tif: 'day',
+      });
+
+      assert.equal(result.status, 'filled');
+      assert.equal(result.qty, 2.5);
+    });
+
     it('rejects sell order for insufficient shares', async () => {
       pricesRepo.upsert({
         symbol: 'AAPL',
