@@ -11,27 +11,58 @@ import { runSignalCollection } from '../../services/signalCollectionService.js';
 import { SignalSnapshotsRepo } from '../../repos/signalSnapshotsRepo.js';
 import { PricesRepo } from '../../repos/pricesRepo.js';
 import { WatchlistRepo } from '../../repos/watchlistRepo.js';
+import { RunsRepo, type RunTrigger } from '../../repos/runsRepo.js';
 import { dataSourceRegistry } from '../../datasources/registry.js';
 import type { NewsDataSource } from '../../datasources/news/index.js';
 import { getSettings } from '../../config/settingsService.js';
 
 const log = logger.child({ component: 'signal-collection-job' });
 
-export async function runSignalCollectionJob(db: Database.Database): Promise<void> {
+export interface SignalCollectionSummary {
+  symbolsUpdated: number;
+  errors: number;
+  symbols: string[];
+}
+
+export async function runSignalCollectionJob(
+  db: Database.Database,
+  trigger: RunTrigger = 'signal_collection'
+): Promise<SignalCollectionSummary> {
   const now = new Date();
-
-  if (!isTradingDay(now)) {
-    log.info('not a trading day, skipping signal collection');
-    return;
-  }
-
   const settings = getSettings();
-  if (!settings.signals.enabled) {
-    log.info('signal collection disabled in settings');
-    return;
-  }
+  const runsRepo = new RunsRepo(db);
+
+  const summary: SignalCollectionSummary = {
+    symbolsUpdated: 0,
+    errors: 0,
+    symbols: [],
+  };
+
+  // Create run record
+  const runId = runsRepo.create({
+    trigger,
+    status: 'running',
+    startedAt: Date.now(),
+    finishedAt: null,
+    model: null,
+    settingsSnapshot: JSON.stringify(settings),
+    error: null,
+    tokenUsageJson: null,
+    skipReason: null,
+    summaryJson: null,
+  });
 
   try {
+    if (!isTradingDay(now) && trigger !== 'manual') {
+      runsRepo.setSkipped(runId, 'not a trading day');
+      return summary;
+    }
+
+    if (!settings.signals.enabled) {
+      runsRepo.setSkipped(runId, 'signal collection disabled');
+      return summary;
+    }
+
     const signalSnapshotsRepo = new SignalSnapshotsRepo(db);
     const pricesRepo = new PricesRepo(db);
     const watchlistRepo = new WatchlistRepo(db);
@@ -45,11 +76,18 @@ export async function runSignalCollectionJob(db: Database.Database): Promise<voi
       getSettings,
     });
 
-    const okCount = results.filter(r => r.status === 'ok').length;
-    const errorCount = results.filter(r => r.status === 'error').length;
+    summary.symbolsUpdated = results.filter(r => r.status === 'ok').length;
+    summary.errors = results.filter(r => r.status === 'error').length;
+    summary.symbols = results.filter(r => r.status === 'ok').map(r => r.symbol);
 
-    log.info('signal collection job complete', { ok: okCount, errors: errorCount });
+    runsRepo.updateStatus(runId, 'succeeded');
+    runsRepo.updateSummary(runId, JSON.stringify(summary));
+
+    log.info('signal collection job complete', { ok: summary.symbolsUpdated, errors: summary.errors });
+    return summary;
   } catch (err) {
+    runsRepo.updateStatus(runId, 'failed', err instanceof Error ? err.message : String(err));
     log.error('signal collection job failed', { error: err instanceof Error ? err.message : String(err) });
+    throw err;
   }
 }
