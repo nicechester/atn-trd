@@ -597,5 +597,97 @@ export const backtest = {
   },
 };
 
+// Strategic Plans
+export type PlanDirection = 'ACCUMULATE' | 'TRIM' | 'HEDGE';
+export type PlanStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'CANCELLED';
+
+export interface StrategicPlan {
+  id: string;
+  symbol: string;
+  direction: PlanDirection;
+  targetShares: number;
+  executedShares: number;
+  targetWeight: number | null;
+  targetBudgetCents: number | null;
+  trancheCount: number;
+  tranchesExecuted: number;
+  minDaysBetween: number;
+  entryCompositeScore: number | null;
+  convictionAtCreation: number | null;
+  status: PlanStatus;
+  pauseReason: string | null;
+  creationNotes: string | null;
+  createdAt: number;
+  lastTrancheAt: number | null;
+  completedAt: number | null;
+}
+
+export interface PlanTranche {
+  id: string;
+  planId: string;
+  trancheNumber: number;
+  shares: number;
+  priceCents: number;
+  orderId: string | null;
+  orderStatus: 'PENDING' | 'FILLED' | 'PARTIAL' | 'FAILED' | 'CANCELLED';
+  totalCostCents: number | null;
+  compositeScore: number | null;
+  regime: 'RISK_ON' | 'RISK_OFF' | 'NEUTRAL' | null;
+  executedAt: number;
+  filledAt: number | null;
+}
+
+export const plans = {
+  list(): Promise<{ ok: boolean; data: { active: StrategicPlan[]; paused: StrategicPlan[] } }> {
+    return request('/plans');
+  },
+  get(id: string): Promise<{ ok: boolean; data: { plan: StrategicPlan; tranches: PlanTranche[] } }> {
+    return request(`/plans/${encodeURIComponent(id)}`);
+  },
+};
+
+// Market Regime
+export type Regime = 'RISK_ON' | 'RISK_OFF' | 'NEUTRAL';
+
+export interface MarketRegime {
+  id: string;
+  asOfDate: string;
+  regime: Regime;
+  vixLevel: number | null;
+  yieldCurveSpread: number | null;
+  breadthPct: number | null;
+  riskScore: number;
+  indicatorsJson: string | null;
+  createdAt: number;
+  streak: number;
+}
+
+export const regime = {
+  current(): Promise<{ ok: boolean; data: MarketRegime | null }> {
+    return request('/regime/current');
+  },
+};
+
+// Signals
+export interface SignalSnapshot {
+  id: string;
+  symbol: string;
+  snapshotDate: string;
+  priceCents: number | null;
+  sentimentScore: number | null;
+  sentimentConfidence: number | null;
+  sentimentTrend: number | null;
+  priceVsSma50: number | null;
+  compositeScore: number | null;
+  compositeEwma: number | null;
+  createdAt: number;
+}
+
+export const signals = {
+  history(symbol: string, limit = 30): Promise<{ ok: boolean; data: SignalSnapshot[] }> {
+    return request(`/signals/${encodeURIComponent(symbol)}?limit=${limit}`);
+  },
+};
+
 // Unified API object
-export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades, calibration, performance, backtest };
+export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades, calibration, performance, backtest, plans, regime, signals };

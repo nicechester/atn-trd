@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { ThemeToggle } from './components/ThemeToggle';
+import { RegimeIndicator } from './components/RegimeIndicator';
 import styles from './Nav.module.css';
 
 export default function Nav(): JSX.Element {
@@ -71,6 +72,13 @@ export default function Nav(): JSX.Element {
             Calibration
           </NavLink>
           <NavLink
+            to="/plans"
+            className={({ isActive }) => isActive ? styles.activeLink : styles.link}
+            onClick={closeMobileMenu}
+          >
+            Plans
+          </NavLink>
+          <NavLink
             to="/backtest"
             className={({ isActive }) => isActive ? styles.activeLink : styles.link}
             onClick={closeMobileMenu}
@@ -86,6 +94,8 @@ export default function Nav(): JSX.Element {
           </NavLink>
 
           <div className={styles.spacer} />
+
+          <RegimeIndicator />
 
           <div className={styles.userSection}>
             <div className={styles.userInfo}>

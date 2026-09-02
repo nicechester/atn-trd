@@ -14,6 +14,7 @@ import TradesPage from './pages/Trades';
 import CalibrationPage from './pages/Calibration';
 import PerformancePage from './pages/Performance';
 import BacktestPage from './pages/Backtest';
+import PlansPage from './pages/Plans';
 import styles from './App.module.css';
 
 function AppContent(): JSX.Element {
@@ -41,6 +42,8 @@ function AppContent(): JSX.Element {
           <Route path="/calibration" element={<CalibrationPage />} />
           <Route path="/backtest" element={<BacktestPage />} />
           <Route path="/backtest/:id" element={<BacktestPage />} />
+          <Route path="/plans" element={<PlansPage />} />
+          <Route path="/plans/:id" element={<PlansPage />} />
           <Route path="/settings/*" element={<SettingsPage />} />
           <Route path="/secrets" element={<SecretsPage />} />
         </Routes>
