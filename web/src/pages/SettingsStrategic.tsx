@@ -289,6 +289,11 @@ export default function SettingsStrategic(): JSX.Element {
           <input type="checkbox" checked={form.executionEnabled}
             onChange={e => setForm({ ...form, executionEnabled: e.target.checked })} />
           <label className={styles.label}>Enable tranched execution</label>
+          <span className={styles.hint} style={{ marginLeft: 'auto' }}>
+            {form.executionEnabled && formatNextRun('Tranche Executor')
+              ? `Next: ${formatNextRun('Tranche Executor')}`
+              : '(Daily 4:15 PM ET)'}
+          </span>
         </div>
         <div className={styles.grid}>
           <div className={styles.field}>
