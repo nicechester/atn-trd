@@ -39,15 +39,16 @@ Most days, the correct answer is: **"No action — waiting."**
 | Rhythm | Frequency | Purpose |
 |--------|-----------|---------|
 | **Signal Collection** | Daily | Gather news, prices, macro, sentiment. No decisions. |
-| **Watchlist Curation** | Quarterly + Event-driven | Screener runs rarely. Manual overrides for IPOs/crises. |
+| **Watchlist Curation** | Quarterly + Event-driven | Screener picks symbols + assigns categories. Manual overrides for IPOs/crises. |
 | **Execution** | Signal-triggered only | Could be weeks of nothing, then action. |
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                 QUARTERLY / EVENT-DRIVEN                    │
-│  - Screener updates watchlist (rare)                        │
-│  - Manual overrides for IPOs, crises, major events          │
-│  - Sets long-term allocation targets                        │
+│  - Screener picks symbols autonomously                      │
+│  - Classifies each: GROWTH_CORE / DIVIDEND_GROWTH / INCOME  │
+│  - Estimates yield, dividend growth rate, expected CAGR     │
+│  - Manual overrides only for IPOs, crises, major events     │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                ▼
@@ -128,6 +129,34 @@ Store `composite_ewma` in `signal_snapshots`.
 ### 2. Market Regime Detection
 
 Determines whether the system should be accumulating equities or rotating to defensive assets.
+
+### 2.5 Screener Classification (Quarterly)
+
+When screener runs, it **autonomously classifies** each symbol:
+
+```typescript
+// Screener output per symbol
+{
+  symbol: 'JNJ',
+  rationale: 'Healthcare dividend aristocrat, 60+ years of increases',
+  conviction: 0.78,
+  category: 'DIVIDEND_GROWTH',   // Screener decides
+  dividendYield: 0.029,          // 2.9%
+  dividendGrowthRate: 0.06,      // 6% annual div growth
+  estimatedCAGR: 0.08,           // 8% total return estimate
+}
+
+function classifySymbol(fundamentals: Fundamentals): PlanCategory {
+  const { dividendYield, dividendGrowthRate } = fundamentals;
+  
+  if (dividendYield > 0.04) return 'INCOME_BOOSTER';       // >4% yield
+  if (dividendYield > 0.01 && dividendGrowthRate > 0.05) 
+    return 'DIVIDEND_GROWTH';                              // 1-4% yield + growing
+  return 'GROWTH_CORE';                                    // Low/no dividend
+}
+```
+
+This metadata flows to watchlist → plans → UI, all autonomously.
 
 #### Regime States
 
