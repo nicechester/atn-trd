@@ -19,6 +19,7 @@ import { logger } from '../lib/logger.js';
 import { runSnapshotJob } from './jobs/snapshot.js';
 import { isTradingDay } from './marketCalendar.js';
 import { runMarketOpenFillJob } from './jobs/marketOpenFill.js';
+import { runSignalCollectionJob } from './jobs/signalCollection.js';
 import { getDatabase } from '../db/index.js';
 import { RunsRepo } from '../repos/runsRepo.js';
 import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
@@ -60,6 +61,9 @@ let snapshotCronJob: Cron | null = null;
 
 // Missed-fill recovery job; runs hourly to fill orders that missed market open.
 let marketOpenFillJob: Cron | null = null;
+
+// Signal collection job; runs daily at 16:00 ET on trading days (before snapshot).
+let signalCollectionJob: Cron | null = null;
 
 // ── job handlers ──────────────────────────────────────────────────────────────
 
@@ -243,6 +247,22 @@ export function startScheduler(): void {
     marketOpenFillJob = null;
   }
 
+  // Register signal collection job (16:00 ET on trading days, before snapshot)
+  try {
+    const db = getDatabase();
+    signalCollectionJob = new Cron(
+      '0 16 * * 1-5',
+      { timezone: 'America/New_York', protect: true },
+      async () => {
+        await runSignalCollectionJob(db);
+      }
+    );
+    log.info('signal-collection job registered', { cron: '0 16 * * 1-5', timezone: 'America/New_York' });
+  } catch (err) {
+    log.error('failed to register signal-collection job', { error: err instanceof Error ? err.message : String(err) });
+    signalCollectionJob = null;
+  }
+
   settingsEvents.on('change', () => {
     log.info('settings changed, re-registering scheduler jobs');
     registerJobs();
@@ -264,6 +284,11 @@ export function stopScheduler(): void {
   if (marketOpenFillJob) {
     marketOpenFillJob.stop();
     marketOpenFillJob = null;
+  }
+
+  if (signalCollectionJob) {
+    signalCollectionJob.stop();
+    signalCollectionJob = null;
   }
 
   log.info('scheduler stopped');
