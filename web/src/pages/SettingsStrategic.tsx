@@ -38,7 +38,11 @@ type FormState = {
   hedgingEnabled: boolean;
   riskOffAssetsText: string;
   cashReserveInRiskOff: number;
+  autoTrimForCash: boolean;
   autoCreateHedgePlan: boolean;
+  minCashForHedge: number;
+  minRiskOffStreak: number;
+  notificationWebhookUrl: string;
   // Income Goal
   incomeGoalEnabled: boolean;
   targetAnnualDividendDollars: number;
@@ -78,7 +82,11 @@ export default function SettingsStrategic(): JSX.Element {
           hedgingEnabled: hedging.enabled,
           riskOffAssetsText: hedging.riskOffAssets.join('\n'),
           cashReserveInRiskOff: hedging.cashReserveInRiskOff * 100,
+          autoTrimForCash: hedging.autoTrimForCash,
           autoCreateHedgePlan: hedging.autoCreateHedgePlan,
+          minCashForHedge: hedging.minCashForHedge * 100,
+          minRiskOffStreak: hedging.minRiskOffStreak,
+          notificationWebhookUrl: hedging.notificationWebhookUrl,
           incomeGoalEnabled: incomeGoal.enabled,
           targetAnnualDividendDollars: Math.round(incomeGoal.targetAnnualDividendCents / 100),
           targetYear: incomeGoal.targetYear,
@@ -150,7 +158,11 @@ export default function SettingsStrategic(): JSX.Element {
           enabled: form.hedgingEnabled,
           riskOffAssets,
           cashReserveInRiskOff: form.cashReserveInRiskOff / 100,
+          autoTrimForCash: form.autoTrimForCash,
           autoCreateHedgePlan: form.autoCreateHedgePlan,
+          minCashForHedge: form.minCashForHedge / 100,
+          minRiskOffStreak: form.minRiskOffStreak,
+          notificationWebhookUrl: form.notificationWebhookUrl,
         },
         incomeGoal: {
           enabled: form.incomeGoalEnabled,
@@ -336,6 +348,25 @@ export default function SettingsStrategic(): JSX.Element {
             <input className={styles.input} type="number" min={10} max={80} step={5}
               value={form.cashReserveInRiskOff} onChange={e => setForm({ ...form, cashReserveInRiskOff: +e.target.value })} />
           </div>
+          <div className={styles.field}>
+            <label className={styles.label}>Min Cash for Hedge (%)</label>
+            <input className={styles.input} type="number" min={5} max={50} step={5}
+              value={form.minCashForHedge} onChange={e => setForm({ ...form, minCashForHedge: +e.target.value })} />
+            <span className={styles.hint}>Cash needed before creating hedge plan</span>
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label}>Min Risk-Off Streak (days)</label>
+            <input className={styles.input} type="number" min={1} max={10} step={1}
+              value={form.minRiskOffStreak} onChange={e => setForm({ ...form, minRiskOffStreak: +e.target.value })} />
+            <span className={styles.hint}>Consecutive risk-off days before hedging</span>
+          </div>
+        </div>
+        <div className={styles.grid}>
+          <div className={`${styles.field} ${styles.checkboxField}`}>
+            <input type="checkbox" checked={form.autoTrimForCash}
+              onChange={e => setForm({ ...form, autoTrimForCash: e.target.checked })} />
+            <label className={styles.label}>Auto-trim positions for cash</label>
+          </div>
           <div className={`${styles.field} ${styles.checkboxField}`}>
             <input type="checkbox" checked={form.autoCreateHedgePlan}
               onChange={e => setForm({ ...form, autoCreateHedgePlan: e.target.checked })} />
@@ -347,6 +378,14 @@ export default function SettingsStrategic(): JSX.Element {
           <textarea className={styles.textarea} value={form.riskOffAssetsText}
             onChange={e => setForm({ ...form, riskOffAssetsText: e.target.value })}
             placeholder="GLD&#10;TLT&#10;SHY" />
+        </div>
+        <div className={styles.field}>
+          <label className={styles.label}>Notification Webhook URL</label>
+          <input className={styles.input} type="url"
+            value={form.notificationWebhookUrl}
+            onChange={e => setForm({ ...form, notificationWebhookUrl: e.target.value })}
+            placeholder="https://discord.com/api/webhooks/... or https://hooks.slack.com/..." />
+          <span className={styles.hint}>Discord or Slack webhook for alerts (WAITING, PAUSED, EXECUTED, REGIME_CHANGE)</span>
         </div>
       </Card>
 

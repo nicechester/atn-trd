@@ -22,6 +22,8 @@ import {
   checkAndResumePlansForRegime,
   checkAndCancelPlansForSignal,
   createAutoTrimPlans,
+  maybeCreateAutoHedgePlan,
+  checkSectorExposure,
   cancelPlan,
   type StrategicPlanDeps,
 } from '../../services/strategicPlanService.js';
@@ -39,6 +41,7 @@ export interface TrancheExecutionSummary {
   plansResumed: number;
   plansCancelled: number;
   autoTrimPlans: number;
+  autoHedgePlan: string | null;
 }
 
 export async function runTrancheExecutorJob(
@@ -58,6 +61,7 @@ export async function runTrancheExecutorJob(
     plansResumed: 0,
     plansCancelled: 0,
     autoTrimPlans: 0,
+    autoHedgePlan: null,
   };
 
   // Create run record
@@ -120,6 +124,14 @@ export async function runTrancheExecutorJob(
       }
     }
 
+    // 2b. Auto-create hedge plan if conditions met
+    if (regime === 'RISK_OFF' && settings.hedging.autoCreateHedgePlan) {
+      const hedgeResult = maybeCreateAutoHedgePlan(deps);
+      if (hedgeResult.hedgePlanCreated) {
+        summary.autoHedgePlan = hedgeResult.symbol ?? null;
+      }
+    }
+
     // 3. Check signals and cancel degraded plans
     summary.plansCancelled = checkAndCancelPlansForSignal(deps);
 
@@ -160,6 +172,21 @@ export async function runTrancheExecutorJob(
         });
         log.warn('no price available', { symbol: plan.symbol });
         continue;
+      }
+
+      // Check sector exposure before executing (for ACCUMULATE plans)
+      if (plan.direction === 'ACCUMULATE') {
+        const trancheValueCents = price.adjCloseCents * 10; // Estimate ~10 shares
+        const sectorCheck = checkSectorExposure(deps, plan.symbol, trancheValueCents);
+        if (!sectorCheck.allowed) {
+          summary.tranchesSkipped.push({
+            symbol: plan.symbol,
+            planId: plan.id,
+            reason: sectorCheck.reason || 'sector exposure limit',
+          });
+          log.info('tranche skipped due to sector exposure', { symbol: plan.symbol, reason: sectorCheck.reason });
+          continue;
+        }
       }
 
       // Execute tranche with budget awareness (handles chunky stocks)
