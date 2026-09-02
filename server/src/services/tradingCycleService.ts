@@ -307,6 +307,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
         error: null,
         tokenUsageJson: null,
         skipReason: null,
+        summaryJson: null,
       });
       this.deps.runsRepo.setSkipped(id, 'kill switch is active');
       return;
@@ -323,6 +324,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
         error: null,
         tokenUsageJson: null,
         skipReason: null,
+        summaryJson: null,
       });
       this.deps.runsRepo.setSkipped(id, 'trading is disabled');
       return;
@@ -339,6 +341,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
         error: null,
         tokenUsageJson: null,
         skipReason: null,
+        summaryJson: null,
       });
       this.deps.runsRepo.setSkipped(id, 'not a trading day');
       return;
@@ -368,6 +371,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
       error: null,
       tokenUsageJson: null,
       skipReason: null,
+      summaryJson: null,
     });
 
     // Track state for telemetry (even on failure)

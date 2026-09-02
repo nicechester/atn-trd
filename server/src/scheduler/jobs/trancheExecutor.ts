@@ -1,6 +1,7 @@
 /**
  * Daily tranche executor job.
  * Runs daily to execute tranches for active strategic plans.
+ * Logs detailed "why no trade" audit trail.
  */
 
 import type Database from 'better-sqlite3';
@@ -13,6 +14,7 @@ import { MarketRegimeRepo } from '../../repos/marketRegimeRepo.js';
 import { PortfolioRepo } from '../../repos/portfolioRepo.js';
 import { PricesRepo } from '../../repos/pricesRepo.js';
 import { PositionsRepo } from '../../repos/positionsRepo.js';
+import { RunsRepo, type RunTrigger } from '../../repos/runsRepo.js';
 import {
   shouldExecuteTranche,
   executeTranche,
@@ -28,21 +30,61 @@ import { getSettings } from '../../config/settingsService.js';
 
 const log = logger.child({ component: 'tranche-executor-job' });
 
-export async function runTrancheExecutorJob(db: Database.Database): Promise<void> {
+export interface TrancheExecutionSummary {
+  regime: string;
+  activePlans: number;
+  tranchesExecuted: number;
+  tranchesSkipped: Array<{ symbol: string; planId: string; reason: string }>;
+  plansPaused: number;
+  plansResumed: number;
+  plansCancelled: number;
+  autoTrimPlans: number;
+}
+
+export async function runTrancheExecutorJob(
+  db: Database.Database,
+  trigger: RunTrigger = 'tranche_execution'
+): Promise<TrancheExecutionSummary> {
   const now = new Date();
-
-  if (!isTradingDay(now)) {
-    log.info('not a trading day, skipping tranche execution');
-    return;
-  }
-
   const settings = getSettings();
-  if (!settings.execution.enabled) {
-    log.info('execution disabled in settings');
-    return;
-  }
+  const runsRepo = new RunsRepo(db);
+
+  const summary: TrancheExecutionSummary = {
+    regime: 'UNKNOWN',
+    activePlans: 0,
+    tranchesExecuted: 0,
+    tranchesSkipped: [],
+    plansPaused: 0,
+    plansResumed: 0,
+    plansCancelled: 0,
+    autoTrimPlans: 0,
+  };
+
+  // Create run record
+  const runId = runsRepo.create({
+    trigger,
+    status: 'running',
+    startedAt: Date.now(),
+    finishedAt: null,
+    model: null,
+    settingsSnapshot: JSON.stringify(settings),
+    error: null,
+    tokenUsageJson: null,
+    skipReason: null,
+    summaryJson: null,
+  });
 
   try {
+    if (!isTradingDay(now) && trigger !== 'manual') {
+      runsRepo.setSkipped(runId, 'not a trading day');
+      return summary;
+    }
+
+    if (!settings.execution.enabled) {
+      runsRepo.setSkipped(runId, 'execution disabled');
+      return summary;
+    }
+
     const signalSnapshotsRepo = new SignalSnapshotsRepo(db);
     const strategicPlansRepo = new StrategicPlansRepo(db);
     const planTranchesRepo = new PlanTranchesRepo(db);
@@ -63,47 +105,60 @@ export async function runTrancheExecutorJob(db: Database.Database): Promise<void
     };
 
     // 1. Check regime and pause/resume plans accordingly
-    checkAndPausePlansForRegime(deps);
-    checkAndResumePlansForRegime(deps);
+    summary.plansPaused = checkAndPausePlansForRegime(deps);
+    summary.plansResumed = checkAndResumePlansForRegime(deps);
 
     // 2. If RISK_OFF, create auto-trim plans for hedging liquidity
     const regime = getCurrentRegime(marketRegimeRepo);
+    summary.regime = regime;
+
     if (regime === 'RISK_OFF' && settings.hedging.autoTrimForCash) {
       const streak = marketRegimeRepo.getRegimeStreak('RISK_OFF');
       if (streak >= settings.hedging.minRiskOffStreak) {
-        createAutoTrimPlans(deps);
+        const trimResult = createAutoTrimPlans(deps);
+        summary.autoTrimPlans = trimResult.trimPlansCreated;
       }
     }
 
     // 3. Check signals and cancel degraded plans
-    checkAndCancelPlansForSignal(deps);
+    summary.plansCancelled = checkAndCancelPlansForSignal(deps);
 
     // 4. Execute tranches for active plans
     const activePlans = strategicPlansRepo.listActive();
+    summary.activePlans = activePlans.length;
+
     const portfolio = portfolioRepo.read();
-    let tranchesExecuted = 0;
-    let tranchesSkipped = 0;
 
     for (const plan of activePlans) {
       const { execute, reason } = shouldExecuteTranche(deps, plan);
 
       if (!execute) {
+        summary.tranchesSkipped.push({
+          symbol: plan.symbol,
+          planId: plan.id,
+          reason: reason || 'unknown',
+        });
+
         log.debug('tranche skipped', { planId: plan.id, symbol: plan.symbol, reason });
 
         // Cancel if signal dropped below threshold
         if (reason?.includes('cancel threshold')) {
           cancelPlan(deps, plan.id, reason);
+          summary.plansCancelled++;
         }
 
-        tranchesSkipped++;
         continue;
       }
 
       // Get current price
       const price = pricesRepo.getLatest(plan.symbol);
       if (!price) {
+        summary.tranchesSkipped.push({
+          symbol: plan.symbol,
+          planId: plan.id,
+          reason: 'no price available',
+        });
         log.warn('no price available', { symbol: plan.symbol });
-        tranchesSkipped++;
         continue;
       }
 
@@ -112,22 +167,33 @@ export async function runTrancheExecutorJob(db: Database.Database): Promise<void
         deps,
         plan,
         price.adjCloseCents,
-        portfolio?.cashCents // Pass available cash for budget-aware calculation
+        portfolio?.cashCents
       );
 
       if (result) {
-        tranchesExecuted++;
+        summary.tranchesExecuted++;
       } else {
-        tranchesSkipped++;
+        summary.tranchesSkipped.push({
+          symbol: plan.symbol,
+          planId: plan.id,
+          reason: 'execution returned null',
+        });
       }
     }
 
+    runsRepo.updateStatus(runId, 'succeeded');
+    runsRepo.updateSummary(runId, JSON.stringify(summary));
+
     log.info('tranche executor job complete', {
-      activePlans: activePlans.length,
-      tranchesExecuted,
-      tranchesSkipped,
+      activePlans: summary.activePlans,
+      tranchesExecuted: summary.tranchesExecuted,
+      tranchesSkipped: summary.tranchesSkipped.length,
     });
+
+    return summary;
   } catch (err) {
+    runsRepo.updateStatus(runId, 'failed', err instanceof Error ? err.message : String(err));
     log.error('tranche executor job failed', { error: err instanceof Error ? err.message : String(err) });
+    throw err;
   }
 }

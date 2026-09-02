@@ -1,6 +1,7 @@
 /**
  * Cloud Scheduler trigger endpoints.
  * These endpoints are called by Cloud Scheduler with OIDC authentication.
+ * Also supports manual triggers for each job type.
  */
 
 import { Request, Response, NextFunction } from 'express';
@@ -38,6 +39,9 @@ import { resolveApiKey } from '../llm/openaiChatModel.js';
 import { logger } from '../lib/logger.js';
 import { runSnapshotJob } from '../scheduler/jobs/snapshot.js';
 import { runMarketOpenFillJob } from '../scheduler/jobs/marketOpenFill.js';
+import { runSignalCollectionJob } from '../scheduler/jobs/signalCollection.js';
+import { runPlanReviewJob } from '../scheduler/jobs/planReviewJob.js';
+import { runTrancheExecutorJob } from '../scheduler/jobs/trancheExecutor.js';
 
 const log = logger.child({ component: 'trigger-route' });
 
@@ -209,6 +213,57 @@ export async function triggerMarketOpenFillHandler(
     res.json({ ok: true });
   } catch (err) {
     log.error('market-open-fill failed', { error: err instanceof Error ? err.message : String(err) });
+    next(err);
+  }
+}
+
+/** POST /api/trigger/signal-collection - Manual trigger for signal collection */
+export async function triggerSignalCollectionHandler(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  log.info('signal collection triggered manually');
+  try {
+    const db = getDatabase();
+    const summary = await runSignalCollectionJob(db, 'manual');
+    res.json({ ok: true, summary });
+  } catch (err) {
+    log.error('signal collection failed', { error: err instanceof Error ? err.message : String(err) });
+    next(err);
+  }
+}
+
+/** POST /api/trigger/plan-review - Manual trigger for plan review */
+export async function triggerPlanReviewHandler(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  log.info('plan review triggered manually');
+  try {
+    const db = getDatabase();
+    const summary = await runPlanReviewJob(db, 'manual');
+    res.json({ ok: true, summary });
+  } catch (err) {
+    log.error('plan review failed', { error: err instanceof Error ? err.message : String(err) });
+    next(err);
+  }
+}
+
+/** POST /api/trigger/tranche-execution - Manual trigger for tranche execution */
+export async function triggerTrancheExecutionHandler(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  log.info('tranche execution triggered manually');
+  try {
+    const db = getDatabase();
+    const summary = await runTrancheExecutorJob(db, 'manual');
+    res.json({ ok: true, summary });
+  } catch (err) {
+    log.error('tranche execution failed', { error: err instanceof Error ? err.message : String(err) });
     next(err);
   }
 }

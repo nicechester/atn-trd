@@ -23,6 +23,9 @@ import {
   triggerTradingCycleHandler,
   triggerSnapshotHandler,
   triggerMarketOpenFillHandler,
+  triggerSignalCollectionHandler,
+  triggerPlanReviewHandler,
+  triggerTrancheExecutionHandler,
 } from './routes/trigger.js';
 import { listRunsHandler, getRunHandler, triggerRunHandler, getRunCoverageHandler, cancelRunHandler } from './routes/runs.js';
 import { getPortfolioHandler, getPortfolioHistoryHandler, transferFundsHandler, initPortfolioHandler } from './routes/portfolio.js';
@@ -64,6 +67,11 @@ export function createApp(options: AppOptions = {}): Express {
   app.post('/api/trigger/trading-cycle', verifySchedulerAuth, triggerTradingCycleHandler);
   app.post('/api/trigger/snapshot', verifySchedulerAuth, triggerSnapshotHandler);
   app.post('/api/trigger/market-open-fill', verifySchedulerAuth, triggerMarketOpenFillHandler);
+
+  // Manual triggers for plan-driven execution jobs (user auth + write permission)
+  app.post('/api/trigger/signal-collection', requireAuth, requireWrite, triggerSignalCollectionHandler);
+  app.post('/api/trigger/plan-review', requireAuth, requireWrite, triggerPlanReviewHandler);
+  app.post('/api/trigger/tranche-execution', requireAuth, requireWrite, triggerTrancheExecutionHandler);
 
   // ── Authenticated routes ────────────────────────────────────────────────────
   app.get('/api/auth/me', requireAuth, meHandler);
