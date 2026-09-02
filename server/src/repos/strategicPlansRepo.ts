@@ -18,6 +18,7 @@ export interface StrategicPlanRow {
   convictionAtCreation: number | null;
   status: PlanStatus;
   pauseReason: string | null;
+  creationNotes: string | null; // Audit trail: thesis + scores at creation
   createdAt: number;
   lastTrancheAt: number | null;
   completedAt: number | null;
@@ -31,8 +32,8 @@ export class StrategicPlansRepo {
       .prepare(
         `INSERT INTO strategic_plans (id, symbol, direction, target_shares, executed_shares, target_weight,
            target_budget_cents, tranche_count, tranches_executed, min_days_between, entry_composite_score,
-           conviction_at_creation, status, pause_reason, created_at, last_tranche_at, completed_at)
-         VALUES (?, ?, ?, ?, 0, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, NULL, NULL)`
+           conviction_at_creation, status, pause_reason, creation_notes, created_at, last_tranche_at, completed_at)
+         VALUES (?, ?, ?, ?, 0, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`
       )
       .run(
         plan.id,
@@ -47,6 +48,7 @@ export class StrategicPlansRepo {
         plan.convictionAtCreation,
         plan.status,
         plan.pauseReason,
+        plan.creationNotes,
         plan.createdAt
       );
   }
@@ -59,7 +61,8 @@ export class StrategicPlansRepo {
            tranche_count as trancheCount, tranches_executed as tranchesExecuted,
            min_days_between as minDaysBetween, entry_composite_score as entryCompositeScore,
            conviction_at_creation as convictionAtCreation, status, pause_reason as pauseReason,
-           created_at as createdAt, last_tranche_at as lastTrancheAt, completed_at as completedAt
+           creation_notes as creationNotes, created_at as createdAt, last_tranche_at as lastTrancheAt,
+           completed_at as completedAt
          FROM strategic_plans WHERE id = ?`
       )
       .get(id) as StrategicPlanRow | undefined;
@@ -73,7 +76,8 @@ export class StrategicPlansRepo {
            tranche_count as trancheCount, tranches_executed as tranchesExecuted,
            min_days_between as minDaysBetween, entry_composite_score as entryCompositeScore,
            conviction_at_creation as convictionAtCreation, status, pause_reason as pauseReason,
-           created_at as createdAt, last_tranche_at as lastTrancheAt, completed_at as completedAt
+           creation_notes as creationNotes, created_at as createdAt, last_tranche_at as lastTrancheAt,
+           completed_at as completedAt
          FROM strategic_plans WHERE symbol = ? AND status = 'ACTIVE'`
       )
       .get(symbol) as StrategicPlanRow | undefined;
@@ -87,7 +91,8 @@ export class StrategicPlansRepo {
            tranche_count as trancheCount, tranches_executed as tranchesExecuted,
            min_days_between as minDaysBetween, entry_composite_score as entryCompositeScore,
            conviction_at_creation as convictionAtCreation, status, pause_reason as pauseReason,
-           created_at as createdAt, last_tranche_at as lastTrancheAt, completed_at as completedAt
+           creation_notes as creationNotes, created_at as createdAt, last_tranche_at as lastTrancheAt,
+           completed_at as completedAt
          FROM strategic_plans WHERE status = 'ACTIVE' ORDER BY created_at`
       )
       .all() as StrategicPlanRow[];
@@ -101,7 +106,8 @@ export class StrategicPlansRepo {
            tranche_count as trancheCount, tranches_executed as tranchesExecuted,
            min_days_between as minDaysBetween, entry_composite_score as entryCompositeScore,
            conviction_at_creation as convictionAtCreation, status, pause_reason as pauseReason,
-           created_at as createdAt, last_tranche_at as lastTrancheAt, completed_at as completedAt
+           creation_notes as creationNotes, created_at as createdAt, last_tranche_at as lastTrancheAt,
+           completed_at as completedAt
          FROM strategic_plans WHERE status = 'PAUSED' ORDER BY created_at`
       )
       .all() as StrategicPlanRow[];
@@ -115,7 +121,8 @@ export class StrategicPlansRepo {
            tranche_count as trancheCount, tranches_executed as tranchesExecuted,
            min_days_between as minDaysBetween, entry_composite_score as entryCompositeScore,
            conviction_at_creation as convictionAtCreation, status, pause_reason as pauseReason,
-           created_at as createdAt, last_tranche_at as lastTrancheAt, completed_at as completedAt
+           creation_notes as creationNotes, created_at as createdAt, last_tranche_at as lastTrancheAt,
+           completed_at as completedAt
          FROM strategic_plans WHERE symbol = ? ORDER BY created_at DESC`
       )
       .all(symbol) as StrategicPlanRow[];

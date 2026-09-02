@@ -39,6 +39,7 @@ export interface CreatePlanParams {
   trancheCount?: number;
   entryCompositeScore?: number;
   conviction?: number;
+  creationNotes?: string; // Audit trail: thesis + scores at creation
 }
 
 export interface TrancheResult {
@@ -80,6 +81,7 @@ export function createPlan(deps: StrategicPlanDeps, params: CreatePlanParams): S
     convictionAtCreation: params.conviction ?? null,
     status: 'ACTIVE',
     pauseReason: null,
+    creationNotes: params.creationNotes ?? null,
     createdAt: Date.now(),
   };
 
@@ -93,6 +95,33 @@ export function createPlan(deps: StrategicPlanDeps, params: CreatePlanParams): S
   });
 
   return { ...plan, executedShares: 0, tranchesExecuted: 0, lastTrancheAt: null, completedAt: null };
+}
+
+// ── Conviction-Scaled Tranche Sizing ──────────────────────────────────────────
+
+/**
+ * Compute conviction-scaled tranche size.
+ * Higher conviction = larger tranches, lower conviction = smaller tranches.
+ * Base size is scaled by (currentScore - 0.5) / 0.5, clamped to [0.2, 1.5].
+ */
+export function computeConvictionScaledTranche(
+  plan: StrategicPlanRow,
+  currentScore: number | null
+): number {
+  const remainingShares = plan.targetShares - plan.executedShares;
+  const remainingTranches = plan.trancheCount - plan.tranchesExecuted;
+
+  if (remainingTranches <= 0) return 0;
+
+  const baseSize = remainingShares / remainingTranches;
+
+  // If no current score, use base size
+  if (currentScore === null) return Math.ceil(baseSize);
+
+  // Scale by conviction: score 0.5 = 0x, score 0.75 = 0.5x, score 1.0 = 1.0x
+  const convictionMultiplier = Math.max(0.2, Math.min(1.5, (currentScore - 0.5) / 0.5));
+
+  return Math.max(1, Math.ceil(baseSize * convictionMultiplier));
 }
 
 // ── Plan Status Management ────────────────────────────────────────────────────
@@ -163,13 +192,18 @@ export function shouldExecuteTranche(deps: StrategicPlanDeps, plan: StrategicPla
   return { execute: true };
 }
 
-export function computeTrancheSize(plan: StrategicPlanRow): number {
+export function computeTrancheSize(plan: StrategicPlanRow, currentScore?: number | null, trancheStyle?: string): number {
+  // Use conviction-scaled if specified
+  if (trancheStyle === 'conviction_scaled' && currentScore !== undefined) {
+    return computeConvictionScaledTranche(plan, currentScore);
+  }
+
+  // Default: equal-weight tranches
   const remainingShares = plan.targetShares - plan.executedShares;
   const remainingTranches = plan.trancheCount - plan.tranchesExecuted;
 
   if (remainingTranches <= 0) return 0;
 
-  // Equal-weight tranches for simplicity
   return Math.ceil(remainingShares / remainingTranches);
 }
 
@@ -220,7 +254,12 @@ export function executeTranche(
   availableCashCents?: number,
   orderId?: string
 ): TrancheResult | null {
-  const { strategicPlansRepo, planTranchesRepo, signalSnapshotsRepo, marketRegimeRepo } = deps;
+  const { strategicPlansRepo, planTranchesRepo, signalSnapshotsRepo, marketRegimeRepo, getSettings } = deps;
+  const settings = getSettings();
+
+  // Get current signal for conviction-scaled sizing
+  const signal = signalSnapshotsRepo.getLatest(plan.symbol);
+  const currentScore = signal?.compositeEwma ?? signal?.compositeScore ?? null;
 
   // Compute shares - use budget-aware calculation if cash provided
   let shares: number;
@@ -231,8 +270,14 @@ export function executeTranche(
       return null;
     }
     shares = result.shares;
+
+    // Apply conviction scaling if enabled
+    if (settings.execution.trancheStyle === 'conviction_scaled' && currentScore !== null) {
+      const convictionMultiplier = Math.max(0.2, Math.min(1.5, (currentScore - 0.5) / 0.5));
+      shares = Math.max(1, Math.ceil(shares * convictionMultiplier));
+    }
   } else {
-    shares = computeTrancheSize(plan);
+    shares = computeTrancheSize(plan, currentScore, settings.execution.trancheStyle);
     if (shares === 0) {
       log.warn('tranche skipped', { planId: plan.id, symbol: plan.symbol, reason: 'no shares to execute' });
       return null;
@@ -242,7 +287,6 @@ export function executeTranche(
   const trancheNumber = plan.tranchesExecuted + 1;
 
   // Get current context
-  const signal = signalSnapshotsRepo.getLatest(plan.symbol);
   const regime = getCurrentRegime(marketRegimeRepo);
 
   // Record tranche (status starts as PENDING)
@@ -490,4 +534,181 @@ export function createAutoTrimPlans(deps: StrategicPlanDeps): AutoTrimResult {
   }
 
   return result;
+}
+
+// ── Sector Exposure Check ───────────────────────────────────────────────────
+
+// Simple sector mapping (in production, fetch from fundamentals API)
+const SECTOR_MAP: Record<string, string> = {
+  AAPL: 'Technology', MSFT: 'Technology', GOOGL: 'Technology', AMZN: 'Consumer Cyclical',
+  META: 'Technology', NVDA: 'Technology', TSLA: 'Consumer Cyclical', AMD: 'Technology',
+  JPM: 'Financial', BAC: 'Financial', GS: 'Financial', MS: 'Financial',
+  JNJ: 'Healthcare', UNH: 'Healthcare', PFE: 'Healthcare', MRK: 'Healthcare',
+  XOM: 'Energy', CVX: 'Energy', COP: 'Energy',
+  GLD: 'Commodities', TLT: 'Fixed Income', SHY: 'Fixed Income',
+};
+
+function getSector(symbol: string): string {
+  return SECTOR_MAP[symbol.toUpperCase()] ?? 'Unknown';
+}
+
+export interface SectorExposure {
+  sector: string;
+  valueCents: number;
+  percent: number;
+}
+
+/**
+ * Calculate current sector exposure from positions.
+ */
+export function calculateSectorExposure(
+  deps: StrategicPlanDeps
+): { exposures: SectorExposure[]; totalValueCents: number } {
+  const { positionsRepo, pricesRepo, portfolioRepo } = deps;
+
+  if (!positionsRepo) {
+    return { exposures: [], totalValueCents: 0 };
+  }
+
+  const portfolio = portfolioRepo.read();
+  if (!portfolio) {
+    return { exposures: [], totalValueCents: 0 };
+  }
+
+  const positions = positionsRepo.list();
+  let totalValueCents = portfolio.cashCents;
+  const sectorValues = new Map<string, number>();
+
+  for (const pos of positions) {
+    const price = pricesRepo.getLatest(pos.symbol);
+    if (!price) continue;
+
+    const valueCents = pos.qty * price.adjCloseCents;
+    totalValueCents += valueCents;
+
+    const sector = getSector(pos.symbol);
+    sectorValues.set(sector, (sectorValues.get(sector) ?? 0) + valueCents);
+  }
+
+  const exposures: SectorExposure[] = [];
+  for (const [sector, valueCents] of sectorValues) {
+    exposures.push({
+      sector,
+      valueCents,
+      percent: totalValueCents > 0 ? valueCents / totalValueCents : 0,
+    });
+  }
+
+  return { exposures, totalValueCents };
+}
+
+/**
+ * Check if executing a tranche would exceed sector exposure limit.
+ */
+export function checkSectorExposure(
+  deps: StrategicPlanDeps,
+  symbol: string,
+  trancheValueCents: number
+): { allowed: boolean; reason?: string; currentExposure?: number; newExposure?: number } {
+  const { getSettings } = deps;
+  const settings = getSettings();
+
+  const maxSectorExposure = settings.execution.maxSectorExposure;
+  if (maxSectorExposure >= 1) {
+    return { allowed: true }; // No limit
+  }
+
+  const { exposures, totalValueCents } = calculateSectorExposure(deps);
+  const sector = getSector(symbol);
+  const currentSectorValue = exposures.find(e => e.sector === sector)?.valueCents ?? 0;
+  const currentExposure = totalValueCents > 0 ? currentSectorValue / totalValueCents : 0;
+  const newExposure = totalValueCents > 0 ? (currentSectorValue + trancheValueCents) / (totalValueCents + trancheValueCents) : 0;
+
+  if (newExposure > maxSectorExposure) {
+    return {
+      allowed: false,
+      reason: `sector ${sector} would exceed ${(maxSectorExposure * 100).toFixed(0)}% limit (${(newExposure * 100).toFixed(1)}%)`,
+      currentExposure,
+      newExposure,
+    };
+  }
+
+  return { allowed: true, currentExposure, newExposure };
+}
+
+// ── Auto-Hedge Plan Creation ───────────────────────────────────────────────
+
+export interface AutoHedgeResult {
+  hedgePlanCreated: boolean;
+  symbol?: string;
+  reason?: string;
+}
+
+/**
+ * Auto-create HEDGE plan when RISK_OFF regime is confirmed and cash is sufficient.
+ */
+export function maybeCreateAutoHedgePlan(deps: StrategicPlanDeps): AutoHedgeResult {
+  const { strategicPlansRepo, marketRegimeRepo, portfolioRepo, pricesRepo, getSettings } = deps;
+  const settings = getSettings();
+
+  if (!settings.hedging.autoCreateHedgePlan) {
+    return { hedgePlanCreated: false, reason: 'auto-hedge disabled' };
+  }
+
+  const regime = getCurrentRegime(marketRegimeRepo);
+  if (regime !== 'RISK_OFF') {
+    return { hedgePlanCreated: false, reason: 'not in RISK_OFF regime' };
+  }
+
+  const streak = marketRegimeRepo.getRegimeStreak('RISK_OFF');
+  if (streak < settings.hedging.minRiskOffStreak) {
+    return { hedgePlanCreated: false, reason: `RISK_OFF streak ${streak} < min ${settings.hedging.minRiskOffStreak}` };
+  }
+
+  const portfolio = portfolioRepo.read();
+  if (!portfolio) {
+    return { hedgePlanCreated: false, reason: 'no portfolio' };
+  }
+
+  // Calculate total portfolio value
+  const { totalValueCents } = calculateSectorExposure(deps);
+  const cashPercent = totalValueCents > 0 ? portfolio.cashCents / totalValueCents : 0;
+
+  if (cashPercent < settings.hedging.minCashForHedge) {
+    return { hedgePlanCreated: false, reason: `cash ${(cashPercent * 100).toFixed(1)}% < min ${(settings.hedging.minCashForHedge * 100).toFixed(0)}%` };
+  }
+
+  // Try each hedge asset in order
+  for (const hedgeSymbol of settings.hedging.riskOffAssets) {
+    const existingPlan = strategicPlansRepo.getActiveBySymbol(hedgeSymbol);
+    if (existingPlan) continue;
+
+    const price = pricesRepo.getLatest(hedgeSymbol);
+    if (!price) continue;
+
+    // Target 15% allocation to hedge
+    const targetWeight = 0.15;
+    const targetValueCents = totalValueCents * targetWeight;
+    const targetShares = Math.floor(targetValueCents / price.adjCloseCents);
+
+    if (targetShares < 1) continue;
+
+    try {
+      createPlan(deps, {
+        symbol: hedgeSymbol,
+        direction: 'HEDGE',
+        targetShares,
+        targetWeight,
+        conviction: 1, // High conviction for hedge
+        creationNotes: `Auto-hedge: RISK_OFF streak=${streak}, cash=${(cashPercent * 100).toFixed(1)}%`,
+      });
+
+      log.info('auto-hedge plan created', { symbol: hedgeSymbol, targetShares, streak });
+      return { hedgePlanCreated: true, symbol: hedgeSymbol };
+    } catch (err) {
+      log.warn('failed to create hedge plan', { symbol: hedgeSymbol, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  return { hedgePlanCreated: false, reason: 'all hedge assets have active plans or no price' };
 }

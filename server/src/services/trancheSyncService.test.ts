@@ -44,7 +44,7 @@ describe('TrancheSyncService', () => {
         targetShares: 100, targetWeight: null, targetBudgetCents: null,
         trancheCount: 4, minDaysBetween: 5,
         entryCompositeScore: 0.75, convictionAtCreation: 0.8,
-        status: 'ACTIVE', pauseReason: null, createdAt: Date.now(),
+        status: 'ACTIVE', pauseReason: null, creationNotes: null, createdAt: Date.now(),
       });
 
       // Create order
@@ -83,7 +83,7 @@ describe('TrancheSyncService', () => {
         targetShares: 100, targetWeight: null, targetBudgetCents: null,
         trancheCount: 4, minDaysBetween: 5,
         entryCompositeScore: 0.75, convictionAtCreation: 0.8,
-        status: 'ACTIVE', pauseReason: null, createdAt: Date.now(),
+        status: 'ACTIVE', pauseReason: null, creationNotes: null, createdAt: Date.now(),
       });
 
       const orderId = deps.ordersRepo.create({
@@ -118,7 +118,7 @@ describe('TrancheSyncService', () => {
         targetShares: 100, targetWeight: null, targetBudgetCents: null,
         trancheCount: 4, minDaysBetween: 5,
         entryCompositeScore: 0.75, convictionAtCreation: 0.8,
-        status: 'ACTIVE', pauseReason: null, createdAt: Date.now(),
+        status: 'ACTIVE', pauseReason: null, creationNotes: null, createdAt: Date.now(),
       });
 
       // Create tranche without order (paper trading)
@@ -146,7 +146,7 @@ describe('TrancheSyncService', () => {
         targetShares: 100, targetWeight: null, targetBudgetCents: null,
         trancheCount: 4, minDaysBetween: 5,
         entryCompositeScore: 0.75, convictionAtCreation: 0.8,
-        status: 'ACTIVE', pauseReason: null, createdAt: Date.now(),
+        status: 'ACTIVE', pauseReason: null, creationNotes: null, createdAt: Date.now(),
       });
 
       // Create multiple pending tranches (paper mode, no orders)
@@ -177,7 +177,7 @@ describe('TrancheSyncService', () => {
         targetShares: 100, targetWeight: null, targetBudgetCents: null,
         trancheCount: 4, minDaysBetween: 5,
         entryCompositeScore: 0.75, convictionAtCreation: 0.8,
-        status: 'ACTIVE', pauseReason: null, createdAt: Date.now(),
+        status: 'ACTIVE', pauseReason: null, creationNotes: null, createdAt: Date.now(),
       });
 
       deps.planTranchesRepo.create({
@@ -214,7 +214,7 @@ describe('TrancheSyncService', () => {
         targetShares: 100, targetWeight: null, targetBudgetCents: null,
         trancheCount: 4, minDaysBetween: 5,
         entryCompositeScore: 0.75, convictionAtCreation: 0.8,
-        status: 'ACTIVE', pauseReason: null, createdAt: Date.now(),
+        status: 'ACTIVE', pauseReason: null, creationNotes: null, createdAt: Date.now(),
       });
 
       deps.planTranchesRepo.create({
@@ -239,7 +239,7 @@ describe('TrancheSyncService', () => {
         targetShares: 100, targetWeight: null, targetBudgetCents: null,
         trancheCount: 4, minDaysBetween: 5,
         entryCompositeScore: 0.75, convictionAtCreation: 0.8,
-        status: 'ACTIVE', pauseReason: null, createdAt: Date.now(),
+        status: 'ACTIVE', pauseReason: null, creationNotes: null, createdAt: Date.now(),
       });
 
       deps.planTranchesRepo.create({

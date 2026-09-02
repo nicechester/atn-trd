@@ -181,6 +181,7 @@ export const SettingsSchema = z.object({
     autoCreateHedgePlan: z.boolean().default(false),
     minCashForHedge: z.number().min(0).max(1).default(0.20),
     minRiskOffStreak: z.number().int().min(1).max(10).default(2),
+    notificationWebhookUrl: z.string().default(''), // Discord/Slack webhook
   }).default({}),
 
   incomeGoal: z.object({
@@ -317,6 +318,7 @@ export const DEFAULT_SETTINGS: Settings = {
     autoCreateHedgePlan: false,
     minCashForHedge: 0.20,
     minRiskOffStreak: 2,
+    notificationWebhookUrl: '',
   },
   incomeGoal: {
     enabled: false,
