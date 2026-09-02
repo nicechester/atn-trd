@@ -5,10 +5,15 @@
 .input { padding: var(--spacing-xs) var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: inherit; background: var(--color-surface); color: var(--color-text); width: 100%; max-width: 400px; min-height: var(--touch-target-min); }
 .select { padding: var(--spacing-xs) var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: inherit; background: var(--color-surface); color: var(--color-text); max-width: 400px; min-height: var(--touch-target-min); }
 .textarea { padding: var(--spacing-xs) var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: inherit; background: var(--color-surface); color: var(--color-text); width: 100%; max-width: 400px; resize: vertical; min-height: 100px; font-family: monospace; }
-.actions { margin-top: var(--spacing-xl); }
+.actions { margin-top: var(--spacing-xl); margin-bottom: var(--spacing-xl); }
 .saveBtn { padding: var(--spacing-xs) var(--spacing-md); border-radius: var(--radius-sm); background: var(--color-primary); color: white; border: none; cursor: pointer; font-size: inherit; min-height: var(--touch-target-min); }
 .saveBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 .warning { color: var(--color-error, #f87171); font-size: 0.75rem; margin-top: var(--spacing-xs); }
+
+.helpList { margin: 0; padding: 0; }
+.helpList dt { font-weight: 600; margin-top: var(--spacing-md); }
+.helpList dt:first-child { margin-top: 0; }
+.helpList dd { margin: var(--spacing-xs) 0 0 0; color: var(--color-text-muted); font-size: 0.875rem; line-height: 1.5; }
 
 .grid {
   display: grid;

@@ -7,6 +7,7 @@ import SettingsRisk from './SettingsRisk';
 import SettingsInvestorProfile from './SettingsInvestorProfile';
 import SettingsDataSources from './SettingsDataSources';
 import SettingsLlm from './SettingsLlm';
+import SettingsStrategic from './SettingsStrategic';
 
 export default function SettingsPage(): JSX.Element {
   return (
@@ -20,6 +21,7 @@ export default function SettingsPage(): JSX.Element {
         <NavLink to="investor-profile" className={styles.subLink}>Investor Profile</NavLink>
         <NavLink to="data-sources" className={styles.subLink}>Data Sources</NavLink>
         <NavLink to="llm" className={styles.subLink}>LLM</NavLink>
+        <NavLink to="strategic" className={styles.subLink}>Strategic</NavLink>
       </nav>
       <Routes>
         <Route index element={<Navigate to="general" replace />} />
@@ -30,6 +32,7 @@ export default function SettingsPage(): JSX.Element {
         <Route path="investor-profile" element={<SettingsInvestorProfile />} />
         <Route path="data-sources" element={<SettingsDataSources />} />
         <Route path="llm" element={<SettingsLlm />} />
+        <Route path="strategic" element={<SettingsStrategic />} />
       </Routes>
     </div>
   );
