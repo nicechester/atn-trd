@@ -444,6 +444,21 @@ export const portfolio = {
       body: JSON.stringify({ amountCents, type }),
     });
   },
+  reset(preserveHistory: boolean, newCashCents?: number): Promise<{ ok: boolean; data: { cashCents: number; positionsCleared: number; historyPreserved: boolean } }> {
+    return request('/portfolio/reset', {
+      method: 'POST',
+      body: JSON.stringify({ confirm: true, preserveHistory, newCashCents }),
+    });
+  },
+  order(symbol: string, side: 'buy' | 'sell', qty: number, type: 'market' | 'limit' = 'market', limitPriceCents?: number): Promise<{ ok: boolean; data: { id: string; status: string; rejectReason?: string } }> {
+    return request('/portfolio/order', {
+      method: 'POST',
+      body: JSON.stringify({ symbol, side, qty, type, limitPriceCents }),
+    });
+  },
+  marketStatus(): Promise<{ isOpen: boolean; nextOpen: number; nextClose: number }> {
+    return request('/portfolio/market-status');
+  },
 };
 
 export interface OrderRow {
