@@ -705,7 +705,8 @@ You'll feel like the bot is broken when it doesn't trade. Add notifications:
 **Phase 4: Visibility**
 | Order | Issue | Description |
 |-------|-------|-------------|
-| 8 | [#137](https://github.com/nicechester/atn-trd/issues/137) | Add Strategic Plans UI Components |
+| 8 | [#145](https://github.com/nicechester/atn-trd/issues/145) | Add Portfolio Reset and Manual Trading Capabilities |
+| 9 | [#137](https://github.com/nicechester/atn-trd/issues/137) | Add Strategic Plans UI Components |
 
 **Epic**: [#131](https://github.com/nicechester/atn-trd/issues/131) - Architecture: Strategic Plan-Based Trading System
 
