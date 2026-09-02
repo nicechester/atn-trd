@@ -11,6 +11,37 @@
   margin: 0;
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.btnPrimary {
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.btnPrimary:hover {
+  opacity: 0.9;
+}
+
+.btnDisabled {
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--color-border);
+  color: var(--color-text-muted);
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  cursor: not-allowed;
+  font-size: 0.875rem;
+}
+
 /* Regime Badge */
 .regimeOn, .regimeOff, .regimeNeutral, .regimeUnknown {
   display: flex;

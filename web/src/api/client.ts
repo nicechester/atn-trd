@@ -703,5 +703,18 @@ export const signals = {
   },
 };
 
+// Strategic Jobs
+export const strategicJobs = {
+  collectSignals(): Promise<{ ok: boolean }> {
+    return request('/trigger/signal-collection', { method: 'POST' });
+  },
+  runPlanner(): Promise<{ ok: boolean }> {
+    return request('/trigger/plan-review', { method: 'POST' });
+  },
+  executeTranches(): Promise<{ ok: boolean }> {
+    return request('/trigger/tranche-execution', { method: 'POST' });
+  },
+};
+
 // Unified API object
-export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades, calibration, performance, backtest, plans, regime, signals };
+export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades, calibration, performance, backtest, plans, regime, signals, strategicJobs };

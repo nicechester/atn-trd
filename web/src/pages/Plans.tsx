@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { plans as plansApi, regime as regimeApi, type StrategicPlan, type PlanTranche, type MarketRegime } from '../api/client';
+import { api, type StrategicPlan, type PlanTranche, type MarketRegime } from '../api/client';
 import { Card } from '../components/Card';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import { centsToUSD, formatTimestamp } from '../lib/format';
 import styles from './Plans.module.css';
 
@@ -94,11 +95,11 @@ function PlanDetail({ planId, onBack }: { planId: string; onBack: () => void }) 
   const { addToast } = useToast();
 
   useEffect(() => {
-    plansApi.get(planId)
+    api.plans.get(planId)
       .then(res => setData(res.data))
-      .catch(e => addToast(e instanceof Error ? e.message : 'Failed to load plan', 'error'))
+      .catch((e: Error) => addToast(e.message || 'Failed to load plan', 'error'))
       .finally(() => setLoading(false));
-  }, [planId]);
+  }, [planId, addToast]);
 
   if (loading) return <p>Loading...</p>;
   if (!data) return <p>Plan not found</p>;
@@ -191,22 +192,48 @@ export default function PlansPage() {
   const [pausedPlans, setPausedPlans] = useState<StrategicPlan[]>([]);
   const [regime, setRegime] = useState<MarketRegime | null>(null);
   const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(id || null);
   const { addToast } = useToast();
+  const { canWrite } = useAuth();
+
+  async function loadData() {
+    try {
+      const [plansRes, regimeRes] = await Promise.all([
+        api.plans.list(),
+        api.regime.current(),
+      ]);
+      setActivePlans(plansRes.data.active);
+      setPausedPlans(plansRes.data.paused);
+      setRegime(regimeRes.data);
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Failed to load plans', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    Promise.all([
-      plansApi.list(),
-      regimeApi.current(),
-    ])
-      .then(([plansRes, regimeRes]) => {
-        setActivePlans(plansRes.data.active);
-        setPausedPlans(plansRes.data.paused);
-        setRegime(regimeRes.data);
-      })
-      .catch(e => addToast(e instanceof Error ? e.message : 'Failed to load plans', 'error'))
-      .finally(() => setLoading(false));
+    loadData();
   }, []);
+
+  async function runPlanner() {
+    setRunning(true);
+    try {
+      addToast('Collecting signals...', 'info');
+      await api.strategicJobs.collectSignals();
+      
+      addToast('Running planner...', 'info');
+      await api.strategicJobs.runPlanner();
+      
+      addToast('Planner completed!', 'success');
+      await loadData(); // Refresh
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Planner failed', 'error');
+    } finally {
+      setRunning(false);
+    }
+  }
 
   if (loading) return <p>Loading...</p>;
 
@@ -218,7 +245,18 @@ export default function PlansPage() {
     <div>
       <div className={styles.header}>
         <h1>Strategic Plans</h1>
-        <RegimeBadge regime={regime} />
+        <div className={styles.headerActions}>
+          {canWrite && (
+            <button 
+              className={running ? styles.btnDisabled : styles.btnPrimary}
+              onClick={runPlanner}
+              disabled={running}
+            >
+              {running ? 'Running...' : 'Run Planner'}
+            </button>
+          )}
+          <RegimeBadge regime={regime} />
+        </div>
       </div>
 
       <h2 className={styles.sectionTitle}>Active Plans ({activePlans.length})</h2>

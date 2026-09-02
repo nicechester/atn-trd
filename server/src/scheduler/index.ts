@@ -99,6 +99,13 @@ function registerJobs(): void {
         return;
       }
 
+      // Skip if strategic execution is enabled (use plan-based trading instead)
+      const currentSettings = getSettings();
+      if (currentSettings.execution.enabled) {
+        log.info('trading cycle skipped (strategic execution enabled, use plan-based trading)');
+        return;
+      }
+
       try {
         const db = getDatabase();
         const settings = getSettings();
@@ -445,7 +452,7 @@ export function getJobSchedules(): JobSchedule[] {
       name: 'Trading Cycle',
       cron: settings.schedule.cron,
       nextRun: activeJob.nextRun()?.toISOString() ?? null,
-      enabled: settings.trading.enabled,
+      enabled: settings.trading.enabled && !settings.execution.enabled,
     });
   }
 
