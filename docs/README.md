@@ -33,6 +33,7 @@ Phase 2 starts.
 6. [05 — Implementation Plan](05-implementation-plan.md) — 35-step spec, phase- and role-tagged (`[senior]`/`[junior]`)
 7. [06 — Edge Cases & Out of Scope](06-edge-cases-and-scope.md) — failure handling, explicit non-goals, key reference files
 8. [07 — Future Improvements](07-future-improvements.md) — Phase 3/4 roadmap, embedding stores, multi-agent, backtesting
+9. [08 — Strategic Plan-Based Trading](08-strategic-trading.md) — patient, plan-driven portfolio management with signal accumulation, regime detection, and tranched execution
 
 ## Confirmed decisions (do not re-litigate)
 
