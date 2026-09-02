@@ -28,7 +28,7 @@ import {
   triggerTrancheExecutionHandler,
 } from './routes/trigger.js';
 import { listRunsHandler, getRunHandler, triggerRunHandler, getRunCoverageHandler, cancelRunHandler } from './routes/runs.js';
-import { getPortfolioHandler, getPortfolioHistoryHandler, transferFundsHandler, initPortfolioHandler } from './routes/portfolio.js';
+import { getPortfolioHandler, getPortfolioHistoryHandler, transferFundsHandler, initPortfolioHandler, resetPortfolioHandler, manualOrderHandler, marketStatusHandler } from './routes/portfolio.js';
 import { listTradesHandler, getTradeHandler, listPendingOrdersHandler, cancelPendingOrderHandler, cancelPendingOrdersBulkHandler } from './routes/trades.js';
 import { getCalibrationHandler } from './routes/calibration.js';
 import { getPerformanceHandler } from './routes/performance.js';
@@ -89,6 +89,7 @@ export function createApp(options: AppOptions = {}): Express {
   app.get('/api/runs/:id/coverage', requireAuth, getRunCoverageHandler);
   app.get('/api/portfolio', requireAuth, getPortfolioHandler);
   app.get('/api/portfolio/history', requireAuth, getPortfolioHistoryHandler);
+  app.get('/api/portfolio/market-status', requireAuth, marketStatusHandler);
   app.get('/api/trades', requireAuth, listTradesHandler);
   app.get('/api/trades/pending', requireAuth, listPendingOrdersHandler);
   app.get('/api/trades/:id', requireAuth, getTradeHandler);
@@ -110,6 +111,8 @@ export function createApp(options: AppOptions = {}): Express {
   app.post('/api/runs/:id/cancel', requireAuth, requireWrite, cancelRunHandler);
   app.post('/api/portfolio/init', requireAuth, requireWrite, initPortfolioHandler);
   app.post('/api/portfolio/transfer', requireAuth, requireWrite, transferFundsHandler);
+  app.post('/api/portfolio/reset', requireAuth, requireWrite, resetPortfolioHandler);
+  app.post('/api/portfolio/order', requireAuth, requireWrite, manualOrderHandler);
   app.post('/api/trades/pending/cancel-bulk', requireAuth, requireWrite, cancelPendingOrdersBulkHandler);
   app.post('/api/trades/pending/:id/cancel', requireAuth, requireWrite, cancelPendingOrderHandler);
   app.post('/api/prices/backfill', requireAuth, requireWrite, triggerBackfillHandler);
