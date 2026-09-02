@@ -12,15 +12,18 @@ import { PlanTranchesRepo } from '../../repos/planTranchesRepo.js';
 import { MarketRegimeRepo } from '../../repos/marketRegimeRepo.js';
 import { PortfolioRepo } from '../../repos/portfolioRepo.js';
 import { PricesRepo } from '../../repos/pricesRepo.js';
+import { PositionsRepo } from '../../repos/positionsRepo.js';
 import {
   shouldExecuteTranche,
   executeTranche,
   checkAndPausePlansForRegime,
   checkAndResumePlansForRegime,
   checkAndCancelPlansForSignal,
+  createAutoTrimPlans,
   cancelPlan,
   type StrategicPlanDeps,
 } from '../../services/strategicPlanService.js';
+import { getCurrentRegime } from '../../services/regimeDetectionService.js';
 import { getSettings } from '../../config/settingsService.js';
 
 const log = logger.child({ component: 'tranche-executor-job' });
@@ -46,6 +49,7 @@ export async function runTrancheExecutorJob(db: Database.Database): Promise<void
     const marketRegimeRepo = new MarketRegimeRepo(db);
     const portfolioRepo = new PortfolioRepo(db);
     const pricesRepo = new PricesRepo(db);
+    const positionsRepo = new PositionsRepo(db);
 
     const deps: StrategicPlanDeps = {
       strategicPlansRepo,
@@ -54,6 +58,7 @@ export async function runTrancheExecutorJob(db: Database.Database): Promise<void
       marketRegimeRepo,
       portfolioRepo,
       pricesRepo,
+      positionsRepo,
       getSettings,
     };
 
@@ -61,11 +66,21 @@ export async function runTrancheExecutorJob(db: Database.Database): Promise<void
     checkAndPausePlansForRegime(deps);
     checkAndResumePlansForRegime(deps);
 
-    // 2. Check signals and cancel degraded plans
+    // 2. If RISK_OFF, create auto-trim plans for hedging liquidity
+    const regime = getCurrentRegime(marketRegimeRepo);
+    if (regime === 'RISK_OFF' && settings.hedging.autoTrimForCash) {
+      const streak = marketRegimeRepo.getRegimeStreak('RISK_OFF');
+      if (streak >= settings.hedging.minRiskOffStreak) {
+        createAutoTrimPlans(deps);
+      }
+    }
+
+    // 3. Check signals and cancel degraded plans
     checkAndCancelPlansForSignal(deps);
 
-    // 3. Execute tranches for active plans
+    // 4. Execute tranches for active plans
     const activePlans = strategicPlansRepo.listActive();
+    const portfolio = portfolioRepo.read();
     let tranchesExecuted = 0;
     let tranchesSkipped = 0;
 
@@ -92,10 +107,19 @@ export async function runTrancheExecutorJob(db: Database.Database): Promise<void
         continue;
       }
 
-      // Execute tranche (paper mode - no actual order)
-      // In a real implementation, this would create an order via the broker
-      executeTranche(deps, plan, price.adjCloseCents);
-      tranchesExecuted++;
+      // Execute tranche with budget awareness (handles chunky stocks)
+      const result = executeTranche(
+        deps,
+        plan,
+        price.adjCloseCents,
+        portfolio?.cashCents // Pass available cash for budget-aware calculation
+      );
+
+      if (result) {
+        tranchesExecuted++;
+      } else {
+        tranchesSkipped++;
+      }
     }
 
     log.info('tranche executor job complete', {

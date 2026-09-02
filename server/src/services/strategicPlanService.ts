@@ -9,11 +9,12 @@ import { randomUUID } from 'crypto';
 import type { Settings } from '@atn-trd/shared';
 import { logger } from '../lib/logger.js';
 import type { StrategicPlansRepo, StrategicPlanRow, PlanDirection } from '../repos/strategicPlansRepo.js';
-import type { PlanTranchesRepo, PlanTrancheRow } from '../repos/planTranchesRepo.js';
+import type { PlanTranchesRepo } from '../repos/planTranchesRepo.js';
 import type { SignalSnapshotsRepo } from '../repos/signalSnapshotsRepo.js';
 import type { MarketRegimeRepo } from '../repos/marketRegimeRepo.js';
 import type { PortfolioRepo } from '../repos/portfolioRepo.js';
 import type { PricesRepo } from '../repos/pricesRepo.js';
+import type { PositionsRepo } from '../repos/positionsRepo.js';
 import { getCurrentRegime } from './regimeDetectionService.js';
 
 const log = logger.child({ component: 'strategic-plan' });
@@ -25,13 +26,15 @@ export interface StrategicPlanDeps {
   marketRegimeRepo: MarketRegimeRepo;
   portfolioRepo: PortfolioRepo;
   pricesRepo: PricesRepo;
+  positionsRepo?: PositionsRepo; // Optional, needed for auto-trim
   getSettings: () => Settings;
 }
 
 export interface CreatePlanParams {
   symbol: string;
   direction: PlanDirection;
-  targetShares: number;
+  targetShares?: number;
+  targetBudgetCents?: number; // Alternative to targetShares for chunky stocks
   targetWeight?: number;
   trancheCount?: number;
   entryCompositeScore?: number;
@@ -53,6 +56,11 @@ export function createPlan(deps: StrategicPlanDeps, params: CreatePlanParams): S
   const { strategicPlansRepo, getSettings } = deps;
   const settings = getSettings();
 
+  // Validate: need either targetShares or targetBudgetCents
+  if (!params.targetShares && !params.targetBudgetCents) {
+    throw new Error('Either targetShares or targetBudgetCents must be provided');
+  }
+
   // Check for existing active plan
   const existing = strategicPlansRepo.getActiveBySymbol(params.symbol);
   if (existing) {
@@ -63,8 +71,9 @@ export function createPlan(deps: StrategicPlanDeps, params: CreatePlanParams): S
     id: randomUUID(),
     symbol: params.symbol,
     direction: params.direction,
-    targetShares: params.targetShares,
+    targetShares: params.targetShares ?? 0,
     targetWeight: params.targetWeight ?? null,
+    targetBudgetCents: params.targetBudgetCents ?? null,
     trancheCount: params.trancheCount ?? settings.execution.defaultTrancheCount,
     minDaysBetween: settings.execution.minDaysBetweenTranches,
     entryCompositeScore: params.entryCompositeScore ?? null,
@@ -75,7 +84,13 @@ export function createPlan(deps: StrategicPlanDeps, params: CreatePlanParams): S
   };
 
   strategicPlansRepo.create(plan);
-  log.info('plan created', { id: plan.id, symbol: params.symbol, direction: params.direction, targetShares: params.targetShares });
+  log.info('plan created', {
+    id: plan.id,
+    symbol: params.symbol,
+    direction: params.direction,
+    targetShares: params.targetShares,
+    targetBudgetCents: params.targetBudgetCents,
+  });
 
   return { ...plan, executedShares: 0, tranchesExecuted: 0, lastTrancheAt: null, completedAt: null };
 }
@@ -158,24 +173,82 @@ export function computeTrancheSize(plan: StrategicPlanRow): number {
   return Math.ceil(remainingShares / remainingTranches);
 }
 
+/**
+ * Compute tranche shares for budget-based plans (chunky stock handling).
+ * Returns null if can't afford even 1 share.
+ */
+export function computeTrancheSizeWithBudget(
+  plan: StrategicPlanRow,
+  priceCents: number,
+  availableCashCents: number
+): { shares: number; reason?: string } {
+  const remainingTranches = plan.trancheCount - plan.tranchesExecuted;
+  if (remainingTranches <= 0) return { shares: 0, reason: 'all tranches executed' };
+
+  let trancheBudget: number;
+
+  if (plan.targetBudgetCents) {
+    // Budget-based: divide remaining budget by remaining tranches
+    const executedBudget = plan.executedShares * priceCents; // Approximate
+    const remainingBudget = plan.targetBudgetCents - executedBudget;
+    trancheBudget = Math.max(0, remainingBudget / remainingTranches);
+  } else {
+    // Share-based: compute budget from remaining shares
+    const remainingShares = plan.targetShares - plan.executedShares;
+    trancheBudget = (remainingShares / remainingTranches) * priceCents;
+  }
+
+  const maxAffordable = Math.floor(availableCashCents / priceCents);
+  const desired = Math.floor(trancheBudget / priceCents);
+
+  if (maxAffordable < 1) {
+    return { shares: 0, reason: 'insufficient cash for 1 whole share' };
+  }
+
+  const shares = Math.min(desired, maxAffordable);
+  if (shares < 1) {
+    return { shares: 0, reason: 'tranche budget insufficient for 1 share' };
+  }
+
+  return { shares };
+}
+
 export function executeTranche(
   deps: StrategicPlanDeps,
   plan: StrategicPlanRow,
   priceCents: number,
+  availableCashCents?: number,
   orderId?: string
-): TrancheResult {
+): TrancheResult | null {
   const { strategicPlansRepo, planTranchesRepo, signalSnapshotsRepo, marketRegimeRepo } = deps;
 
-  const shares = computeTrancheSize(plan);
+  // Compute shares - use budget-aware calculation if cash provided
+  let shares: number;
+  if (availableCashCents !== undefined) {
+    const result = computeTrancheSizeWithBudget(plan, priceCents, availableCashCents);
+    if (result.shares === 0) {
+      log.warn('tranche skipped', { planId: plan.id, symbol: plan.symbol, reason: result.reason });
+      return null;
+    }
+    shares = result.shares;
+  } else {
+    shares = computeTrancheSize(plan);
+    if (shares === 0) {
+      log.warn('tranche skipped', { planId: plan.id, symbol: plan.symbol, reason: 'no shares to execute' });
+      return null;
+    }
+  }
+
   const trancheNumber = plan.tranchesExecuted + 1;
 
   // Get current context
   const signal = signalSnapshotsRepo.getLatest(plan.symbol);
   const regime = getCurrentRegime(marketRegimeRepo);
 
-  // Record tranche
-  const tranche: PlanTrancheRow = {
-    id: randomUUID(),
+  // Record tranche (status starts as PENDING)
+  const trancheId = randomUUID();
+  planTranchesRepo.create({
+    id: trancheId,
     planId: plan.id,
     trancheNumber,
     shares,
@@ -184,9 +257,11 @@ export function executeTranche(
     compositeScore: signal?.compositeEwma ?? signal?.compositeScore ?? null,
     regime,
     executedAt: Date.now(),
-  };
+  });
 
-  planTranchesRepo.create(tranche);
+  // For paper trading, immediately mark as filled and update plan
+  // In live trading, this would wait for order confirmation
+  planTranchesRepo.updateStatus(trancheId, 'FILLED', shares * priceCents, Date.now());
   strategicPlansRepo.recordTrancheExecution(plan.id, shares);
 
   // Check if plan is now complete
@@ -297,4 +372,122 @@ export function checkAndCancelPlansForSignal(deps: StrategicPlanDeps): number {
   }
 
   return cancelledCount;
+}
+
+// ── Auto-Trim for Hedging Liquidity ───────────────────────────────────────────
+
+export interface AutoTrimResult {
+  trimPlansCreated: number;
+  targetCashPercent: number;
+  currentCashPercent: number;
+  symbols: string[];
+}
+
+/**
+ * Create TRIM plans for low-conviction positions to free cash for hedging.
+ * Called when regime shifts to RISK_OFF and cash is below target.
+ */
+export function createAutoTrimPlans(deps: StrategicPlanDeps): AutoTrimResult {
+  const { strategicPlansRepo, signalSnapshotsRepo, portfolioRepo, positionsRepo, pricesRepo, getSettings } = deps;
+  const settings = getSettings();
+
+  const result: AutoTrimResult = {
+    trimPlansCreated: 0,
+    targetCashPercent: settings.hedging.cashReserveInRiskOff,
+    currentCashPercent: 0,
+    symbols: [],
+  };
+
+  if (!settings.hedging.autoTrimForCash) {
+    log.debug('auto-trim disabled');
+    return result;
+  }
+
+  if (!positionsRepo) {
+    log.warn('positionsRepo not provided, cannot auto-trim');
+    return result;
+  }
+
+  const portfolio = portfolioRepo.read();
+  if (!portfolio) {
+    log.warn('no portfolio found');
+    return result;
+  }
+
+  // Calculate current cash percentage
+  const positions = positionsRepo.list();
+  let totalValueCents = portfolio.cashCents;
+
+  const positionValues: Array<{ symbol: string; valueCents: number; score: number | null }> = [];
+
+  for (const pos of positions) {
+    const price = pricesRepo.getLatest(pos.symbol);
+    if (!price) continue;
+
+    const valueCents = pos.qty * price.adjCloseCents;
+    totalValueCents += valueCents;
+
+    const signal = signalSnapshotsRepo.getLatest(pos.symbol);
+    const score = signal?.compositeEwma ?? signal?.compositeScore ?? null;
+
+    positionValues.push({ symbol: pos.symbol, valueCents, score });
+  }
+
+  result.currentCashPercent = totalValueCents > 0 ? portfolio.cashCents / totalValueCents : 1;
+
+  if (result.currentCashPercent >= result.targetCashPercent) {
+    log.debug('cash already at target', { current: result.currentCashPercent, target: result.targetCashPercent });
+    return result;
+  }
+
+  // Sort by score ascending (lowest conviction first)
+  positionValues.sort((a, b) => (a.score ?? -1) - (b.score ?? -1));
+
+  // Calculate how much cash we need
+  const targetCashCents = totalValueCents * result.targetCashPercent;
+  let cashNeededCents = targetCashCents - portfolio.cashCents;
+
+  for (const pos of positionValues) {
+    if (cashNeededCents <= 0) break;
+
+    // Skip if already has an active plan
+    const existingPlan = strategicPlansRepo.getActiveBySymbol(pos.symbol);
+    if (existingPlan) {
+      // If it's an ACCUMULATE plan, pause it first
+      if (existingPlan.direction === 'ACCUMULATE') {
+        pausePlan(deps, existingPlan.id, 'auto_trim_for_hedge');
+      }
+      continue;
+    }
+
+    // Create TRIM plan for 50% of position
+    const trimValueCents = Math.min(pos.valueCents * 0.5, cashNeededCents);
+    const price = pricesRepo.getLatest(pos.symbol);
+    if (!price) continue;
+
+    const trimShares = Math.floor(trimValueCents / price.adjCloseCents);
+    if (trimShares < 1) continue;
+
+    try {
+      createPlan(deps, {
+        symbol: pos.symbol,
+        direction: 'TRIM',
+        targetShares: trimShares,
+        entryCompositeScore: pos.score ?? undefined,
+        conviction: 0, // Low conviction trim
+      });
+
+      cashNeededCents -= trimShares * price.adjCloseCents;
+      result.trimPlansCreated++;
+      result.symbols.push(pos.symbol);
+    } catch (err) {
+      log.warn('failed to create trim plan', { symbol: pos.symbol, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  if (result.trimPlansCreated > 0) {
+    log.info('auto-trim plans created for hedging', { ...result });
+  }
+
+  return result;
 }
