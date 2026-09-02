@@ -17,7 +17,7 @@ import {
   removeWatchlistHandler,
   patchWatchlistHandler,
 } from './routes/watchlist.js';
-import { nextRunsHandler } from './routes/scheduler.js';
+import { nextRunsHandler, jobSchedulesHandler } from './routes/scheduler.js';
 import {
   verifySchedulerAuth,
   triggerTradingCycleHandler,
@@ -74,6 +74,7 @@ export function createApp(options: AppOptions = {}): Express {
   app.get('/api/watchlist', requireAuth, listWatchlistHandler);
   app.get('/api/datasources', requireAuth, listDataSourcesHandler);
   app.get('/api/scheduler/next-runs', requireAuth, nextRunsHandler);
+  app.get('/api/scheduler/jobs', requireAuth, jobSchedulesHandler);
   app.get('/api/runs', requireAuth, listRunsHandler);
   app.get('/api/runs/progress/stream', requireAuth, runProgressStreamHandler);
   app.get('/api/runs/:id', requireAuth, getRunHandler);
