@@ -4,6 +4,13 @@ import { Card } from '../components/Card';
 import { useToast } from '../context/ToastContext';
 import styles from './SettingsForm.module.css';
 
+interface JobSchedule {
+  name: string;
+  cron: string;
+  nextRun: string | null;
+  enabled: boolean;
+}
+
 type FormState = {
   // Signals
   signalsEnabled: boolean;
@@ -42,6 +49,7 @@ export default function SettingsStrategic(): JSX.Element {
   const { addToast } = useToast();
   const [form, setForm] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [jobSchedules, setJobSchedules] = useState<JobSchedule[]>([]);
 
   useEffect(() => {
     api.settings.get()
@@ -77,6 +85,12 @@ export default function SettingsStrategic(): JSX.Element {
         });
       })
       .catch(err => addToast(err instanceof Error ? err.message : 'Failed to load settings', 'error'));
+
+    // Fetch job schedules
+    fetch('/api/scheduler/jobs', { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => setJobSchedules(data.jobs || []))
+      .catch(() => {});
   }, []);
 
   function validate(): string | null {
@@ -157,6 +171,14 @@ export default function SettingsStrategic(): JSX.Element {
   const weightSum = form.weightSentiment + form.weightSentimentTrend + form.weightPriceMomentum;
   const weightError = Math.abs(weightSum - 1) > 0.01;
 
+  const formatNextRun = (jobName: string) => {
+    const job = jobSchedules.find(j => j.name === jobName);
+    if (!job?.nextRun) return null;
+    const date = new Date(job.nextRun);
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop()?.replace('_', ' ') || 'Local';
+    return date.toLocaleString() + ` (${tz})`;
+  };
+
   return (
     <form onSubmit={handleSubmit}>
       {/* Signals */}
@@ -165,6 +187,11 @@ export default function SettingsStrategic(): JSX.Element {
           <input type="checkbox" checked={form.signalsEnabled}
             onChange={e => setForm({ ...form, signalsEnabled: e.target.checked })} />
           <label className={styles.label}>Enable signal-based trading</label>
+          <span className={styles.hint} style={{ marginLeft: 'auto' }}>
+            {form.signalsEnabled && formatNextRun('Signal Collection')
+              ? `Next: ${formatNextRun('Signal Collection')}`
+              : '(Daily 4:00 PM ET)'}
+          </span>
         </div>
         <div className={styles.grid}>
           <div className={styles.field}>
@@ -224,6 +251,11 @@ export default function SettingsStrategic(): JSX.Element {
           <input type="checkbox" checked={form.regimeEnabled}
             onChange={e => setForm({ ...form, regimeEnabled: e.target.checked })} />
           <label className={styles.label}>Enable regime detection</label>
+          <span className={styles.hint} style={{ marginLeft: 'auto' }}>
+            {form.regimeEnabled && formatNextRun('Regime Detection')
+              ? `Next: ${formatNextRun('Regime Detection')}`
+              : '(Daily 4:05 PM ET)'}
+          </span>
         </div>
         <div className={styles.grid}>
           <div className={styles.field}>

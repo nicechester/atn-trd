@@ -11,7 +11,7 @@ import styles from './Dashboard.module.css';
 
 type DashState = {
   trading: { enabled: boolean; mode: 'paper' | 'live' };
-  nextRuns: string[];
+  jobs: Array<{ name: string; cron: string; nextRun: string | null; enabled: boolean }>;
   dataSources: Array<{ id: string; name: string; enabled: boolean; configured: boolean }>;
   lastRun: AgentRunRow | null;
 };
@@ -34,9 +34,9 @@ export default function DashboardPage(): JSX.Element {
 
   useEffect(() => {
     async function load() {
-      const [settingsRes, schedulerRes, dsRes, runsRes] = await Promise.allSettled([
+      const [settingsRes, jobsRes, dsRes, runsRes] = await Promise.allSettled([
         api.settings.get(),
-        api.scheduler.nextRuns(3),
+        fetch('/api/scheduler/jobs', { credentials: 'include' }).then(r => r.json()),
         api.datasources.list(),
         api.runs.list(1, 0),
       ]);
@@ -45,8 +45,8 @@ export default function DashboardPage(): JSX.Element {
         ? { enabled: settingsRes.value.data.trading.enabled, mode: settingsRes.value.data.trading.mode }
         : (() => { addToast('Failed to load trading settings', 'error'); return { enabled: false, mode: 'paper' as const }; })();
 
-      const nextRuns = schedulerRes.status === 'fulfilled'
-        ? schedulerRes.value.nextRuns
+      const jobs = jobsRes.status === 'fulfilled'
+        ? jobsRes.value.jobs || []
         : (() => { addToast('Failed to load scheduler', 'error'); return []; })();
 
       const dataSources = dsRes.status === 'fulfilled'
@@ -57,7 +57,7 @@ export default function DashboardPage(): JSX.Element {
         ? runsRes.value.data[0]
         : null;
 
-      setState({ trading, nextRuns, dataSources, lastRun });
+      setState({ trading, jobs, dataSources, lastRun });
     }
     load();
   }, []);
@@ -139,14 +139,22 @@ export default function DashboardPage(): JSX.Element {
           </div>
         </Card>
 
-        <Card title="Next Scheduled Runs">
-          {state.nextRuns.length === 0
-            ? <p className={styles.muted}>No scheduled runs configured</p>
-            : <ul style={{ margin: 0, paddingLeft: 'var(--spacing-md)' }}>
-                {state.nextRuns.map(run => (
-                  <li key={run}>{new Date(run).toLocaleString()}</li>
-                ))}
-              </ul>
+        <Card title="Scheduled Jobs">
+          {state.jobs.length === 0
+            ? <p className={styles.muted}>No scheduled jobs configured</p>
+            : (() => {
+                const tz = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop()?.replace('_', ' ') || 'Local';
+                return <ul style={{ margin: 0, paddingLeft: 'var(--spacing-md)' }}>
+                  {state.jobs.filter(j => j.enabled).map(job => (
+                    <li key={job.name}>
+                      <strong>{job.name}</strong>: {job.nextRun ? `${new Date(job.nextRun).toLocaleString()} (${tz})` : 'N/A'}
+                    </li>
+                  ))}
+                  {state.jobs.filter(j => j.enabled).length === 0 && (
+                    <li className={styles.muted}>No jobs enabled</li>
+                  )}
+                </ul>;
+              })()
           }
         </Card>
 

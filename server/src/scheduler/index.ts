@@ -20,6 +20,7 @@ import { runSnapshotJob } from './jobs/snapshot.js';
 import { isTradingDay } from './marketCalendar.js';
 import { runMarketOpenFillJob } from './jobs/marketOpenFill.js';
 import { runSignalCollectionJob } from './jobs/signalCollection.js';
+import { runRegimeDetectionJob } from './jobs/regimeDetection.js';
 import { getDatabase } from '../db/index.js';
 import { RunsRepo } from '../repos/runsRepo.js';
 import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
@@ -64,6 +65,9 @@ let marketOpenFillJob: Cron | null = null;
 
 // Signal collection job; runs daily at 16:00 ET on trading days (before snapshot).
 let signalCollectionJob: Cron | null = null;
+
+// Regime detection job; runs daily at 16:05 ET on trading days.
+let regimeDetectionJob: Cron | null = null;
 
 // ── job handlers ──────────────────────────────────────────────────────────────
 
@@ -263,6 +267,22 @@ export function startScheduler(): void {
     signalCollectionJob = null;
   }
 
+  // Register regime detection job (16:05 ET on trading days, after signal collection)
+  try {
+    const db = getDatabase();
+    regimeDetectionJob = new Cron(
+      '5 16 * * 1-5',
+      { timezone: 'America/New_York', protect: true },
+      async () => {
+        await runRegimeDetectionJob(db);
+      }
+    );
+    log.info('regime-detection job registered', { cron: '5 16 * * 1-5', timezone: 'America/New_York' });
+  } catch (err) {
+    log.error('failed to register regime-detection job', { error: err instanceof Error ? err.message : String(err) });
+    regimeDetectionJob = null;
+  }
+
   settingsEvents.on('change', () => {
     log.info('settings changed, re-registering scheduler jobs');
     registerJobs();
@@ -291,6 +311,11 @@ export function stopScheduler(): void {
     signalCollectionJob = null;
   }
 
+  if (regimeDetectionJob) {
+    regimeDetectionJob.stop();
+    regimeDetectionJob = null;
+  }
+
   log.info('scheduler stopped');
 }
 
@@ -306,4 +331,55 @@ export function getNextRuns(n: number): string[] {
   } catch {
     return [];
   }
+}
+
+export interface JobSchedule {
+  name: string;
+  cron: string;
+  nextRun: string | null;
+  enabled: boolean;
+}
+
+/** Return schedule info for all registered jobs. */
+export function getJobSchedules(): JobSchedule[] {
+  const settings = getSettings();
+  const jobs: JobSchedule[] = [];
+
+  if (signalCollectionJob) {
+    jobs.push({
+      name: 'Signal Collection',
+      cron: '0 16 * * 1-5',
+      nextRun: signalCollectionJob.nextRun()?.toISOString() ?? null,
+      enabled: settings.signals.enabled,
+    });
+  }
+
+  if (regimeDetectionJob) {
+    jobs.push({
+      name: 'Regime Detection',
+      cron: '5 16 * * 1-5',
+      nextRun: regimeDetectionJob.nextRun()?.toISOString() ?? null,
+      enabled: settings.regime.enabled,
+    });
+  }
+
+  if (snapshotCronJob) {
+    jobs.push({
+      name: 'Snapshot',
+      cron: '30 16 * * 1-5',
+      nextRun: snapshotCronJob.nextRun()?.toISOString() ?? null,
+      enabled: true, // Always enabled
+    });
+  }
+
+  if (activeJob) {
+    jobs.push({
+      name: 'Trading Cycle',
+      cron: settings.schedule.cron,
+      nextRun: activeJob.nextRun()?.toISOString() ?? null,
+      enabled: settings.trading.enabled,
+    });
+  }
+
+  return jobs;
 }
