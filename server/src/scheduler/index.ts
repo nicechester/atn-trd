@@ -21,6 +21,8 @@ import { isTradingDay } from './marketCalendar.js';
 import { runMarketOpenFillJob } from './jobs/marketOpenFill.js';
 import { runSignalCollectionJob } from './jobs/signalCollection.js';
 import { runRegimeDetectionJob } from './jobs/regimeDetection.js';
+import { runWeeklyPlannerJob } from './jobs/weeklyPlanner.js';
+import { runTrancheExecutorJob } from './jobs/trancheExecutor.js';
 import { getDatabase } from '../db/index.js';
 import { RunsRepo } from '../repos/runsRepo.js';
 import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
@@ -68,6 +70,12 @@ let signalCollectionJob: Cron | null = null;
 
 // Regime detection job; runs daily at 16:05 ET on trading days.
 let regimeDetectionJob: Cron | null = null;
+
+// Weekly planner job; runs Mondays at 16:10 ET.
+let weeklyPlannerJob: Cron | null = null;
+
+// Tranche executor job; runs daily at 16:15 ET on trading days.
+let trancheExecutorJob: Cron | null = null;
 
 // ── job handlers ──────────────────────────────────────────────────────────────
 
@@ -283,6 +291,38 @@ export function startScheduler(): void {
     regimeDetectionJob = null;
   }
 
+  // Register weekly planner job (Mondays at 16:10 ET)
+  try {
+    const db = getDatabase();
+    weeklyPlannerJob = new Cron(
+      '10 16 * * 1',
+      { timezone: 'America/New_York', protect: true },
+      async () => {
+        await runWeeklyPlannerJob(db);
+      }
+    );
+    log.info('weekly-planner job registered', { cron: '10 16 * * 1', timezone: 'America/New_York' });
+  } catch (err) {
+    log.error('failed to register weekly-planner job', { error: err instanceof Error ? err.message : String(err) });
+    weeklyPlannerJob = null;
+  }
+
+  // Register tranche executor job (16:15 ET on trading days)
+  try {
+    const db = getDatabase();
+    trancheExecutorJob = new Cron(
+      '15 16 * * 1-5',
+      { timezone: 'America/New_York', protect: true },
+      async () => {
+        await runTrancheExecutorJob(db);
+      }
+    );
+    log.info('tranche-executor job registered', { cron: '15 16 * * 1-5', timezone: 'America/New_York' });
+  } catch (err) {
+    log.error('failed to register tranche-executor job', { error: err instanceof Error ? err.message : String(err) });
+    trancheExecutorJob = null;
+  }
+
   settingsEvents.on('change', () => {
     log.info('settings changed, re-registering scheduler jobs');
     registerJobs();
@@ -314,6 +354,16 @@ export function stopScheduler(): void {
   if (regimeDetectionJob) {
     regimeDetectionJob.stop();
     regimeDetectionJob = null;
+  }
+
+  if (weeklyPlannerJob) {
+    weeklyPlannerJob.stop();
+    weeklyPlannerJob = null;
+  }
+
+  if (trancheExecutorJob) {
+    trancheExecutorJob.stop();
+    trancheExecutorJob = null;
   }
 
   log.info('scheduler stopped');
@@ -360,6 +410,24 @@ export function getJobSchedules(): JobSchedule[] {
       cron: '5 16 * * 1-5',
       nextRun: regimeDetectionJob.nextRun()?.toISOString() ?? null,
       enabled: settings.regime.enabled,
+    });
+  }
+
+  if (weeklyPlannerJob) {
+    jobs.push({
+      name: 'Weekly Planner',
+      cron: '10 16 * * 1',
+      nextRun: weeklyPlannerJob.nextRun()?.toISOString() ?? null,
+      enabled: settings.execution.enabled,
+    });
+  }
+
+  if (trancheExecutorJob) {
+    jobs.push({
+      name: 'Tranche Executor',
+      cron: '15 16 * * 1-5',
+      nextRun: trancheExecutorJob.nextRun()?.toISOString() ?? null,
+      enabled: settings.execution.enabled,
     });
   }
 
