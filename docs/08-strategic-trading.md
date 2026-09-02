@@ -184,6 +184,32 @@ Long-term accumulation/trim campaigns with tranched execution.
 | **TRIM** | Reduce position gradually | "Sell 50% of NVDA over 3 weeks" |
 | **HEDGE** | Rotate to defensive assets | "Allocate 20% to GLD/TLT" |
 
+#### Plan Targets
+
+Plans can have multiple target types beyond just share count:
+
+```typescript
+strategic_plans {
+  target_shares: 100,              // "accumulate 100 shares"
+  target_budget_cents: 1000000,    // "invest $10k total"
+  target_dividend_cents: 50000,    // "add $500/yr dividend income"
+  target_total_return: 0.15,       // "aim for 15% CAGR"
+}
+```
+
+This enables **income-oriented planning** without chasing yield:
+- Don't buy high-yield junk
+- Buy dividend growers that will **grow into** your income target
+- A portfolio of 3% yielders growing 10%/yr becomes 6% yield in 7 years
+
+#### Plan Categories (by Investment Style)
+
+| Category | Focus | Regime Behavior |
+|----------|-------|----------------|
+| **Growth Core** | Capital appreciation | RISK_ON: full tranches, RISK_OFF: pause |
+| **Dividend Growth** | Growing dividends | RISK_ON: full, NEUTRAL: buy dips only |
+| **Income Booster** | Current yield | RISK_OFF: rotate here for cash flow |
+
 #### Plan Lifecycle
 ```
 CREATED → ACTIVE → PAUSED (optional) → COMPLETED
@@ -219,6 +245,31 @@ For each active plan:
   │
   └─ All checks pass?
       └─ YES → Execute tranche, update plan
+```
+
+#### Regime-Based Category Behavior
+
+| Regime | Growth Core | Dividend Growth | Income Booster |
+|--------|-------------|-----------------|----------------|
+| **RISK_ON** | Full tranches | Full tranches | Normal |
+| **NEUTRAL** | Reduce size 50% | Buy dips only | Normal |
+| **RISK_OFF** | Pause all | Pause new, hold existing | Rotate here for cash flow |
+
+```typescript
+function getTrancheMultiplier(plan: Plan, regime: Regime): number {
+  if (regime === 'RISK_ON') return 1.0;
+  
+  if (regime === 'NEUTRAL') {
+    if (plan.category === 'GROWTH_CORE') return 0.5;
+    if (plan.category === 'DIVIDEND_GROWTH') return 0; // dip-buy only
+    return 1.0; // INCOME_BOOSTER unchanged
+  }
+  
+  if (regime === 'RISK_OFF') {
+    if (plan.category === 'INCOME_BOOSTER') return 1.0; // keep buying
+    return 0; // pause growth/dividend
+  }
+}
 ```
 
 ---
@@ -285,11 +336,16 @@ CREATE TABLE strategic_plans (
   symbol TEXT NOT NULL,
   direction TEXT NOT NULL,      -- ACCUMULATE | TRIM | HEDGE
   
-  -- Targets (shares OR budget, not both)
+  -- Targets (multiple target types supported)
   target_shares REAL,
-  target_budget_cents INTEGER,  -- Alternative: dollar-based targeting
+  target_budget_cents INTEGER,    -- Dollar-based targeting
+  target_dividend_cents INTEGER,  -- Annual dividend income target
+  target_total_return REAL,       -- Target CAGR (e.g., 0.15 = 15%)
   executed_shares REAL DEFAULT 0,
   target_weight REAL,
+  
+  -- Plan category
+  category TEXT DEFAULT 'GROWTH_CORE',  -- GROWTH_CORE | DIVIDEND_GROWTH | INCOME_BOOSTER
   
   -- Tranching
   tranche_count INTEGER DEFAULT 4,
