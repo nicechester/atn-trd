@@ -121,4 +121,131 @@ describe('Settings schema backwards-compat', () => {
       assert.strictEqual(result.data.llm.agents.portfolioManager.model, '');
     }
   });
+
+  it('should populate strategic trading defaults when not provided', () => {
+    const result = SettingsSchema.safeParse({});
+    assert.strictEqual(result.success, true);
+    if (result.success) {
+      // Signals defaults
+      assert.strictEqual(result.data.signals.enabled, false);
+      assert.strictEqual(result.data.signals.buyThreshold, 0.70);
+      assert.strictEqual(result.data.signals.pauseThreshold, 0.60);
+      assert.strictEqual(result.data.signals.ewmaAlpha, 0.10);
+      assert.strictEqual(result.data.signals.weights.sentiment, 0.4);
+      
+      // Regime defaults
+      assert.strictEqual(result.data.regime.enabled, false);
+      assert.strictEqual(result.data.regime.vixRiskOffThreshold, 25);
+      assert.strictEqual(result.data.regime.confirmationDays, 3);
+      
+      // Execution defaults
+      assert.strictEqual(result.data.execution.enabled, false);
+      assert.strictEqual(result.data.execution.trancheStyle, 'conviction_scaled');
+      assert.strictEqual(result.data.execution.defaultTrancheCount, 4);
+      assert.strictEqual(result.data.execution.maxSectorExposure, 0.30);
+      
+      // Hedging defaults
+      assert.strictEqual(result.data.hedging.enabled, false);
+      assert.deepStrictEqual(result.data.hedging.riskOffAssets, ['GLD', 'TLT', 'SHY']);
+      assert.strictEqual(result.data.hedging.cashReserveInRiskOff, 0.40);
+      
+      // Income goal defaults
+      assert.strictEqual(result.data.incomeGoal.enabled, false);
+      assert.strictEqual(result.data.incomeGoal.targetYear, 2040);
+    }
+  });
+});
+
+describe('Strategic trading settings validation', () => {
+  it('should accept valid signal weights that sum to 1', () => {
+    const settings = {
+      signals: {
+        weights: {
+          sentiment: 0.5,
+          sentimentTrend: 0.3,
+          priceMomentum: 0.2,
+        },
+      },
+    };
+    const result = SettingsSchema.safeParse(settings);
+    assert.strictEqual(result.success, true);
+  });
+
+  it('should reject signal weights that do not sum to 1', () => {
+    const settings = {
+      signals: {
+        weights: {
+          sentiment: 0.5,
+          sentimentTrend: 0.3,
+          priceMomentum: 0.3, // Sum = 1.1
+        },
+      },
+    };
+    const result = SettingsSchema.safeParse(settings);
+    assert.strictEqual(result.success, false);
+    if (!result.success) {
+      assert(result.error.message.includes('must sum to 1'));
+    }
+  });
+
+  it('should accept valid regime thresholds', () => {
+    const settings = {
+      regime: {
+        enabled: true,
+        vixRiskOffThreshold: 28,
+        vixExtremeThreshold: 40,
+        confirmationDays: 5,
+      },
+    };
+    const result = SettingsSchema.safeParse(settings);
+    assert.strictEqual(result.success, true);
+  });
+
+  it('should accept valid execution settings', () => {
+    const settings = {
+      execution: {
+        enabled: true,
+        trancheStyle: 'dip_buying' as const,
+        defaultTrancheCount: 6,
+        minDaysBetweenTranches: 7,
+        maxSectorExposure: 0.25,
+      },
+    };
+    const result = SettingsSchema.safeParse(settings);
+    assert.strictEqual(result.success, true);
+    if (result.success) {
+      assert.strictEqual(result.data.execution.trancheStyle, 'dip_buying');
+    }
+  });
+
+  it('should accept valid hedging settings', () => {
+    const settings = {
+      hedging: {
+        enabled: true,
+        riskOffAssets: ['GLD', 'BND'],
+        autoCreateHedgePlan: true,
+        minRiskOffStreak: 4,
+      },
+    };
+    const result = SettingsSchema.safeParse(settings);
+    assert.strictEqual(result.success, true);
+    if (result.success) {
+      assert.deepStrictEqual(result.data.hedging.riskOffAssets, ['GLD', 'BND']);
+    }
+  });
+
+  it('should accept valid income goal settings', () => {
+    const settings = {
+      incomeGoal: {
+        enabled: true,
+        targetAnnualDividendCents: 15000000, // $150k
+        targetYear: 2035,
+      },
+    };
+    const result = SettingsSchema.safeParse(settings);
+    assert.strictEqual(result.success, true);
+    if (result.success) {
+      assert.strictEqual(result.data.incomeGoal.targetAnnualDividendCents, 15000000);
+    }
+  });
 });

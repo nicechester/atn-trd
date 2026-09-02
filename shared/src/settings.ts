@@ -133,6 +133,62 @@ export const SettingsSchema = z.object({
     enabled: z.boolean().default(false),
   }).default({}),
 
+  // Strategic trading settings (plan-based execution)
+  signals: z.object({
+    enabled: z.boolean().default(false),
+    buyThreshold: z.number().min(0).max(1).default(0.70),
+    sellThreshold: z.number().min(-1).max(0).default(-0.50),
+    pauseThreshold: z.number().min(0).max(1).default(0.60),
+    cancelThreshold: z.number().min(0).max(1).default(0.45),
+    rollingWindowDays: z.number().int().min(7).max(30).default(14),
+    ewmaAlpha: z.number().min(0.01).max(0.5).default(0.10),
+    weights: z.object({
+      sentiment: z.number().min(0).max(1).default(0.4),
+      sentimentTrend: z.number().min(0).max(1).default(0.3),
+      priceMomentum: z.number().min(0).max(1).default(0.3),
+    }).refine((w) => {
+      const sum = w.sentiment + w.sentimentTrend + w.priceMomentum;
+      return Math.abs(sum - 1) <= 0.01;
+    }, {
+      message: 'Signal weights must sum to 1',
+      path: ['sentiment'],
+    }).default({}),
+  }).default({}),
+
+  regime: z.object({
+    enabled: z.boolean().default(false),
+    vixRiskOffThreshold: z.number().min(15).max(50).default(25),
+    vixExtremeThreshold: z.number().min(25).max(80).default(35),
+    yieldCurveEnabled: z.boolean().default(true),
+    breadthThreshold: z.number().min(0).max(1).default(0.40),
+    confirmationDays: z.number().int().min(1).max(10).default(3),
+  }).default({}),
+
+  execution: z.object({
+    enabled: z.boolean().default(false),
+    trancheStyle: z.enum(['fixed', 'conviction_scaled', 'dip_buying']).default('conviction_scaled'),
+    defaultTrancheCount: z.number().int().min(1).max(10).default(4),
+    minDaysBetweenTranches: z.number().int().min(1).max(30).default(5),
+    requireRegimeCheck: z.boolean().default(true),
+    maxSectorExposure: z.number().min(0).max(1).default(0.30),
+  }).default({}),
+
+  hedging: z.object({
+    enabled: z.boolean().default(false),
+    riskOffAssets: z.array(z.string()).default(['GLD', 'TLT', 'SHY']),
+    cashReserveInRiskOff: z.number().min(0).max(1).default(0.40),
+    autoTrimForCash: z.boolean().default(false),
+    autoCreateHedgePlan: z.boolean().default(false),
+    minCashForHedge: z.number().min(0).max(1).default(0.20),
+    minRiskOffStreak: z.number().int().min(1).max(10).default(2),
+  }).default({}),
+
+  incomeGoal: z.object({
+    enabled: z.boolean().default(false),
+    targetAnnualDividendCents: z.number().int().min(0).default(0),
+    targetYear: z.number().int().min(2024).max(2100).default(2040),
+  }).default({}),
+
   updatedAt: z.number().int().optional(),
 });
 
@@ -222,6 +278,50 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   screener: {
     enabled: false,
+  },
+  signals: {
+    enabled: false,
+    buyThreshold: 0.70,
+    sellThreshold: -0.50,
+    pauseThreshold: 0.60,
+    cancelThreshold: 0.45,
+    rollingWindowDays: 14,
+    ewmaAlpha: 0.10,
+    weights: {
+      sentiment: 0.4,
+      sentimentTrend: 0.3,
+      priceMomentum: 0.3,
+    },
+  },
+  regime: {
+    enabled: false,
+    vixRiskOffThreshold: 25,
+    vixExtremeThreshold: 35,
+    yieldCurveEnabled: true,
+    breadthThreshold: 0.40,
+    confirmationDays: 3,
+  },
+  execution: {
+    enabled: false,
+    trancheStyle: 'conviction_scaled',
+    defaultTrancheCount: 4,
+    minDaysBetweenTranches: 5,
+    requireRegimeCheck: true,
+    maxSectorExposure: 0.30,
+  },
+  hedging: {
+    enabled: false,
+    riskOffAssets: ['GLD', 'TLT', 'SHY'],
+    cashReserveInRiskOff: 0.40,
+    autoTrimForCash: false,
+    autoCreateHedgePlan: false,
+    minCashForHedge: 0.20,
+    minRiskOffStreak: 2,
+  },
+  incomeGoal: {
+    enabled: false,
+    targetAnnualDividendCents: 0,
+    targetYear: 2040,
   },
 };
 
