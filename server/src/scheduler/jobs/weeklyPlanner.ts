@@ -20,22 +20,33 @@ import { getSettings } from '../../config/settingsService.js';
 
 const log = logger.child({ component: 'weekly-planner-job' });
 
+// Threshold for "chunky" stocks - use budget-based plans above this price
+const CHUNKY_STOCK_THRESHOLD_CENTS = 50000; // $500
+
 /**
- * Compute target shares based on portfolio value and conviction.
+ * Compute target allocation for a symbol.
+ * Returns either targetShares or targetBudgetCents based on stock price.
  */
-function computeTargetShares(
-  portfolioCashCents: number,
+function computeTargetAllocation(
+  portfolioValueCents: number,
   priceCents: number,
   conviction: number,
   maxPositionWeight: number
-): number {
+): { targetShares?: number; targetBudgetCents?: number } {
   // Base allocation: 5% of portfolio, scaled by conviction (0.5-1.5x)
   const baseWeight = 0.05;
   const convictionMultiplier = 0.5 + conviction; // conviction 0-1 maps to 0.5-1.5x
   const targetWeight = Math.min(baseWeight * convictionMultiplier, maxPositionWeight / 100);
+  const targetValueCents = portfolioValueCents * targetWeight;
 
-  const targetValueCents = portfolioCashCents * targetWeight;
-  return Math.floor(targetValueCents / priceCents);
+  // For expensive stocks, use budget-based targeting
+  if (priceCents >= CHUNKY_STOCK_THRESHOLD_CENTS) {
+    return { targetBudgetCents: Math.round(targetValueCents) };
+  }
+
+  // For normal stocks, use share-based targeting
+  const targetShares = Math.floor(targetValueCents / priceCents);
+  return { targetShares };
 }
 
 export async function runWeeklyPlannerJob(db: Database.Database): Promise<void> {
@@ -105,19 +116,22 @@ export async function runWeeklyPlannerJob(db: Database.Database): Promise<void> 
         if (!price) continue;
 
         const conviction = Math.min(1, (score - settings.signals.buyThreshold) / (1 - settings.signals.buyThreshold));
-        const targetShares = computeTargetShares(
+        const allocation = computeTargetAllocation(
           portfolio.cashCents,
           price.adjCloseCents,
           conviction,
           settings.risk.maxPositionWeightPercent
         );
 
-        if (targetShares < 1) continue;
+        // Skip if allocation too small
+        if (allocation.targetShares !== undefined && allocation.targetShares < 1) continue;
+        if (allocation.targetBudgetCents !== undefined && allocation.targetBudgetCents < price.adjCloseCents) continue;
 
         createPlan(deps, {
           symbol: item.symbol,
           direction: 'ACCUMULATE',
-          targetShares,
+          targetShares: allocation.targetShares,
+          targetBudgetCents: allocation.targetBudgetCents,
           entryCompositeScore: score,
           conviction,
         });

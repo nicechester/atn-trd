@@ -10,6 +10,7 @@ export interface StrategicPlanRow {
   targetShares: number;
   executedShares: number;
   targetWeight: number | null;
+  targetBudgetCents: number | null; // Alternative to targetShares for chunky stocks
   trancheCount: number;
   tranchesExecuted: number;
   minDaysBetween: number;
@@ -29,9 +30,9 @@ export class StrategicPlansRepo {
     this.db
       .prepare(
         `INSERT INTO strategic_plans (id, symbol, direction, target_shares, executed_shares, target_weight,
-           tranche_count, tranches_executed, min_days_between, entry_composite_score, conviction_at_creation,
-           status, pause_reason, created_at, last_tranche_at, completed_at)
-         VALUES (?, ?, ?, ?, 0, ?, ?, 0, ?, ?, ?, ?, ?, ?, NULL, NULL)`
+           target_budget_cents, tranche_count, tranches_executed, min_days_between, entry_composite_score,
+           conviction_at_creation, status, pause_reason, created_at, last_tranche_at, completed_at)
+         VALUES (?, ?, ?, ?, 0, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, NULL, NULL)`
       )
       .run(
         plan.id,
@@ -39,6 +40,7 @@ export class StrategicPlansRepo {
         plan.direction,
         plan.targetShares,
         plan.targetWeight,
+        plan.targetBudgetCents,
         plan.trancheCount,
         plan.minDaysBetween,
         plan.entryCompositeScore,
@@ -53,7 +55,8 @@ export class StrategicPlansRepo {
     return this.db
       .prepare(
         `SELECT id, symbol, direction, target_shares as targetShares, executed_shares as executedShares,
-           target_weight as targetWeight, tranche_count as trancheCount, tranches_executed as tranchesExecuted,
+           target_weight as targetWeight, target_budget_cents as targetBudgetCents,
+           tranche_count as trancheCount, tranches_executed as tranchesExecuted,
            min_days_between as minDaysBetween, entry_composite_score as entryCompositeScore,
            conviction_at_creation as convictionAtCreation, status, pause_reason as pauseReason,
            created_at as createdAt, last_tranche_at as lastTrancheAt, completed_at as completedAt
@@ -66,7 +69,8 @@ export class StrategicPlansRepo {
     return this.db
       .prepare(
         `SELECT id, symbol, direction, target_shares as targetShares, executed_shares as executedShares,
-           target_weight as targetWeight, tranche_count as trancheCount, tranches_executed as tranchesExecuted,
+           target_weight as targetWeight, target_budget_cents as targetBudgetCents,
+           tranche_count as trancheCount, tranches_executed as tranchesExecuted,
            min_days_between as minDaysBetween, entry_composite_score as entryCompositeScore,
            conviction_at_creation as convictionAtCreation, status, pause_reason as pauseReason,
            created_at as createdAt, last_tranche_at as lastTrancheAt, completed_at as completedAt
@@ -79,7 +83,8 @@ export class StrategicPlansRepo {
     return this.db
       .prepare(
         `SELECT id, symbol, direction, target_shares as targetShares, executed_shares as executedShares,
-           target_weight as targetWeight, tranche_count as trancheCount, tranches_executed as tranchesExecuted,
+           target_weight as targetWeight, target_budget_cents as targetBudgetCents,
+           tranche_count as trancheCount, tranches_executed as tranchesExecuted,
            min_days_between as minDaysBetween, entry_composite_score as entryCompositeScore,
            conviction_at_creation as convictionAtCreation, status, pause_reason as pauseReason,
            created_at as createdAt, last_tranche_at as lastTrancheAt, completed_at as completedAt
@@ -92,7 +97,8 @@ export class StrategicPlansRepo {
     return this.db
       .prepare(
         `SELECT id, symbol, direction, target_shares as targetShares, executed_shares as executedShares,
-           target_weight as targetWeight, tranche_count as trancheCount, tranches_executed as tranchesExecuted,
+           target_weight as targetWeight, target_budget_cents as targetBudgetCents,
+           tranche_count as trancheCount, tranches_executed as tranchesExecuted,
            min_days_between as minDaysBetween, entry_composite_score as entryCompositeScore,
            conviction_at_creation as convictionAtCreation, status, pause_reason as pauseReason,
            created_at as createdAt, last_tranche_at as lastTrancheAt, completed_at as completedAt
@@ -105,7 +111,8 @@ export class StrategicPlansRepo {
     return this.db
       .prepare(
         `SELECT id, symbol, direction, target_shares as targetShares, executed_shares as executedShares,
-           target_weight as targetWeight, tranche_count as trancheCount, tranches_executed as tranchesExecuted,
+           target_weight as targetWeight, target_budget_cents as targetBudgetCents,
+           tranche_count as trancheCount, tranches_executed as tranchesExecuted,
            min_days_between as minDaysBetween, entry_composite_score as entryCompositeScore,
            conviction_at_creation as convictionAtCreation, status, pause_reason as pauseReason,
            created_at as createdAt, last_tranche_at as lastTrancheAt, completed_at as completedAt
