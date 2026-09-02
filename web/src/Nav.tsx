@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { ThemeToggle } from './components/ThemeToggle';
 import styles from './Nav.module.css';
@@ -7,7 +7,6 @@ import styles from './Nav.module.css';
 export default function Nav(): JSX.Element {
   const { user, logout, canWrite } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const location = useLocation();
 
   const closeMobileMenu = () => setMobileMenuOpen(false);
 

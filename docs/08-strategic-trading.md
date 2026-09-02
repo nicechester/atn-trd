@@ -681,15 +681,33 @@ You'll feel like the bot is broken when it doesn't trade. Add notifications:
 
 ## Related Issues
 
-- [#131](https://github.com/nicechester/atn-trd/issues/131) - Architecture: Strategic Plan-Based Trading System
-- [#132](https://github.com/nicechester/atn-trd/issues/132) - Implement Signal Accumulation Layer
-- [#133](https://github.com/nicechester/atn-trd/issues/133) - Implement Market Regime Detection
-- [#134](https://github.com/nicechester/atn-trd/issues/134) - Implement Strategic Plans & Tranched Execution
-- [#135](https://github.com/nicechester/atn-trd/issues/135) - Refactor Trading Cycle to Plan-Driven Execution
-- [#136](https://github.com/nicechester/atn-trd/issues/136) - Add Strategic Trading Settings
-- [#137](https://github.com/nicechester/atn-trd/issues/137) - Add Strategic Plans UI Components
-- [#138](https://github.com/nicechester/atn-trd/issues/138) - Handle Edge Cases: Chunky Stocks, Hysteresis, Partial Fills
-- [#139](https://github.com/nicechester/atn-trd/issues/139) - Refinements: Signal Decay, Regime Delay, Sector Caps, Notifications
+### Implementation Order
+
+**Phase 1: Foundation** (no trading changes, collect data)
+| Order | Issue | Description |
+|-------|-------|-------------|
+| 1 | [#136](https://github.com/nicechester/atn-trd/issues/136) | Add Strategic Trading Settings |
+| 2 | [#132](https://github.com/nicechester/atn-trd/issues/132) | Implement Signal Accumulation Layer |
+| 3 | [#133](https://github.com/nicechester/atn-trd/issues/133) | Implement Market Regime Detection |
+
+**Phase 2: Plan Infrastructure**
+| Order | Issue | Description |
+|-------|-------|-------------|
+| 4 | [#134](https://github.com/nicechester/atn-trd/issues/134) | Implement Strategic Plans & Tranched Execution |
+| 5 | [#138](https://github.com/nicechester/atn-trd/issues/138) | Handle Edge Cases: Chunky Stocks, Hysteresis, Partial Fills |
+
+**Phase 3: Cut Over** (replace reactive cycle)
+| Order | Issue | Description |
+|-------|-------|-------------|
+| 6 | [#135](https://github.com/nicechester/atn-trd/issues/135) | Refactor Trading Cycle to Plan-Driven Execution |
+| 7 | [#139](https://github.com/nicechester/atn-trd/issues/139) | Refinements: Signal Decay, Regime Delay, Sector Caps, Notifications |
+
+**Phase 4: Visibility**
+| Order | Issue | Description |
+|-------|-------|-------------|
+| 8 | [#137](https://github.com/nicechester/atn-trd/issues/137) | Add Strategic Plans UI Components |
+
+**Epic**: [#131](https://github.com/nicechester/atn-trd/issues/131) - Architecture: Strategic Plan-Based Trading System
 
 ---
 [← Future Improvements](07-future-improvements.md) · [back to index](README.md)
