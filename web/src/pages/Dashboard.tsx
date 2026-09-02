@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import type { AgentRunRow, Portfolio } from '../api/client';
 import { Card } from '../components/Card';
 import LlmUsagePane from '../components/LlmUsagePane';
+import { DailyActivityLog } from '../components/DailyActivityLog';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import { centsToUSD, formatTimestamp } from '../lib/format';
@@ -234,6 +235,10 @@ export default function DashboardPage(): JSX.Element {
             <p className={styles.muted}>Read-only access</p>
           )}
         </Card>
+
+        <div className={styles.fullWidth}>
+          <DailyActivityLog />
+        </div>
       </div>
     </div>
   );

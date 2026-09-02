@@ -1,0 +1,36 @@
+.indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.riskOn {
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
+}
+
+.riskOff {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+.neutral {
+  background: rgba(250, 204, 21, 0.15);
+  color: #facc15;
+}
+
+.icon {
+  font-size: 0.625rem;
+}
+
+.label {
+  font-weight: 600;
+}
+
+.streak {
+  opacity: 0.8;
+}

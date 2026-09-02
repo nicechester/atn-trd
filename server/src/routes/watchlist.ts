@@ -1,12 +1,22 @@
 import { Request, Response, NextFunction } from 'express';
 import { getDatabase } from '../db/index.js';
 import { WatchlistRepo } from '../repos/watchlistRepo.js';
+import { SymbolCategoriesRepo } from '../repos/symbolCategoriesRepo.js';
+import { StrategicPlansRepo } from '../repos/strategicPlansRepo.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import { normalizeSymbol, validateSymbol } from '../services/symbolService.js';
 import { queueWatchlistBacktest } from '../services/autoBacktestService.js';
 
 function getRepo(): WatchlistRepo {
   return new WatchlistRepo(getDatabase());
+}
+
+function getCategoriesRepo(): SymbolCategoriesRepo {
+  return new SymbolCategoriesRepo(getDatabase());
+}
+
+function getPlansRepo(): StrategicPlansRepo {
+  return new StrategicPlansRepo(getDatabase());
 }
 
 function bodyOf(req: Request): Record<string, unknown> {
@@ -36,6 +46,44 @@ export async function validateSymbolHandler(
 export function listWatchlistHandler(_req: Request, res: Response, next: NextFunction): void {
   try {
     res.json({ ok: true, data: getRepo().list() });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** GET /api/watchlist/enhanced - includes category, yield, dividend growth, plan status */
+export function listEnhancedWatchlistHandler(_req: Request, res: Response, next: NextFunction): void {
+  try {
+    const watchlist = getRepo().list();
+    const symbols = watchlist.map(w => w.symbol);
+    const categories = getCategoriesRepo().getBySymbols(symbols);
+    const categoryMap = new Map(categories.map(c => [c.symbol, c]));
+    
+    const plansRepo = getPlansRepo();
+    const activePlans = plansRepo.listActive();
+    const pausedPlans = plansRepo.listPaused();
+    const planMap = new Map<string, { status: string; progress: string }>(
+      [...activePlans, ...pausedPlans].map(p => [
+        p.symbol,
+        { status: p.status, progress: `${p.tranchesExecuted}/${p.trancheCount}` }
+      ])
+    );
+
+    const enhanced = watchlist.map(w => {
+      const cat = categoryMap.get(w.symbol);
+      const plan = planMap.get(w.symbol);
+      return {
+        ...w,
+        category: cat?.category ?? null,
+        yieldPercent: cat?.yieldPercent ?? null,
+        dividendGrowthPercent: cat?.dividendGrowthPercent ?? null,
+        estCagrPercent: cat?.estCagrPercent ?? null,
+        lastScreenedAt: cat?.lastScreenedAt ?? null,
+        planStatus: plan ? `Plan: ${plan.progress}` : 'Watching',
+      };
+    });
+
+    res.json({ ok: true, data: enhanced });
   } catch (err) {
     next(err);
   }

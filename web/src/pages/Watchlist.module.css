@@ -1,0 +1,95 @@
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.lastScreened {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.legend {
+  display: flex;
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-md);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: var(--spacing-sm) var(--spacing-md);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table th {
+  font-weight: 600;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.symbol {
+  font-weight: 600;
+}
+
+.disabled {
+  opacity: 0.5;
+}
+
+.empty {
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: var(--spacing-xl) !important;
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.categoryBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.growth_core {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.dividend_growth {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.income_booster {
+  background: rgba(234, 179, 8, 0.15);
+  color: #eab308;
+}
+
+.hedge {
+  background: rgba(156, 163, 175, 0.15);
+  color: #9ca3af;
+}
+
+.planActive {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.watching {
+  color: var(--color-text-muted);
+}

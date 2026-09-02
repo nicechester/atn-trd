@@ -13,6 +13,7 @@ import { listDataSourcesHandler, testDataSourceHandler } from './routes/datasour
 import {
   validateSymbolHandler,
   listWatchlistHandler,
+  listEnhancedWatchlistHandler,
   addWatchlistHandler,
   removeWatchlistHandler,
   patchWatchlistHandler,
@@ -35,6 +36,7 @@ import { getPerformanceHandler } from './routes/performance.js';
 import { runProgressStreamHandler } from './routes/runProgress.js';
 import { triggerBackfillHandler, listTrackedSymbolsHandler } from './routes/prices.js';
 import { createBacktestRoutes } from './routes/backtest.js';
+import { listPlansHandler, getPlanHandler, getCurrentRegimeHandler, getSignalHistoryHandler } from './routes/plans.js';
 import { getDatabase } from './db/index.js';
 
 interface AppOptions {
@@ -80,6 +82,7 @@ export function createApp(options: AppOptions = {}): Express {
   app.get('/api/settings', requireAuth, getSettingsHandler);
   app.get('/api/secrets', requireAuth, getSecretsHandler);
   app.get('/api/watchlist', requireAuth, listWatchlistHandler);
+  app.get('/api/watchlist/enhanced', requireAuth, listEnhancedWatchlistHandler);
   app.get('/api/datasources', requireAuth, listDataSourcesHandler);
   app.get('/api/scheduler/next-runs', requireAuth, nextRunsHandler);
   app.get('/api/scheduler/jobs', requireAuth, jobSchedulesHandler);
@@ -96,6 +99,10 @@ export function createApp(options: AppOptions = {}): Express {
   app.get('/api/calibration', requireAuth, getCalibrationHandler);
   app.get('/api/performance', requireAuth, getPerformanceHandler);
   app.get('/api/prices/symbols', requireAuth, listTrackedSymbolsHandler);
+  app.get('/api/plans', requireAuth, listPlansHandler);
+  app.get('/api/plans/:id', requireAuth, getPlanHandler);
+  app.get('/api/regime/current', requireAuth, getCurrentRegimeHandler);
+  app.get('/api/signals/:symbol', requireAuth, getSignalHistoryHandler);
 
   // Write routes (chester only)
   app.patch('/api/settings', requireAuth, requireWrite, patchSettingsHandler);
