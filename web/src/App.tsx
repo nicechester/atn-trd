@@ -15,6 +15,8 @@ import CalibrationPage from './pages/Calibration';
 import PerformancePage from './pages/Performance';
 import BacktestPage from './pages/Backtest';
 import PlansPage from './pages/Plans';
+import WatchlistPage from './pages/Watchlist';
+import IncomePage from './pages/Income';
 import styles from './App.module.css';
 
 function AppContent(): JSX.Element {
@@ -44,6 +46,8 @@ function AppContent(): JSX.Element {
           <Route path="/backtest/:id" element={<BacktestPage />} />
           <Route path="/plans" element={<PlansPage />} />
           <Route path="/plans/:id" element={<PlansPage />} />
+          <Route path="/watchlist" element={<WatchlistPage />} />
+          <Route path="/income" element={<IncomePage />} />
           <Route path="/settings/*" element={<SettingsPage />} />
           <Route path="/secrets" element={<SecretsPage />} />
         </Routes>

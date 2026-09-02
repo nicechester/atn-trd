@@ -120,9 +120,23 @@ interface WatchlistAddRow extends WatchlistRow {
   currency: string;
 }
 
+export type SymbolCategory = 'GROWTH_CORE' | 'DIVIDEND_GROWTH' | 'INCOME_BOOSTER' | 'HEDGE';
+
+export interface EnhancedWatchlistRow extends WatchlistRow {
+  category: SymbolCategory | null;
+  yieldPercent: number | null;
+  dividendGrowthPercent: number | null;
+  estCagrPercent: number | null;
+  lastScreenedAt: number | null;
+  planStatus: string;
+}
+
 export const watchlist = {
   list(): Promise<{ ok: boolean; data: WatchlistRow[] }> {
     return request<{ ok: boolean; data: WatchlistRow[] }>('/watchlist');
+  },
+  listEnhanced(): Promise<{ ok: boolean; data: EnhancedWatchlistRow[] }> {
+    return request<{ ok: boolean; data: EnhancedWatchlistRow[] }>('/watchlist/enhanced');
   },
   add(symbol: string, note?: string): Promise<{ ok: boolean; data: WatchlistAddRow }> {
     const body: { symbol: string; note?: string } = { symbol };

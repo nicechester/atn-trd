@@ -79,6 +79,20 @@ export default function Nav(): JSX.Element {
             Plans
           </NavLink>
           <NavLink
+            to="/watchlist"
+            className={({ isActive }) => isActive ? styles.activeLink : styles.link}
+            onClick={closeMobileMenu}
+          >
+            Watchlist
+          </NavLink>
+          <NavLink
+            to="/income"
+            className={({ isActive }) => isActive ? styles.activeLink : styles.link}
+            onClick={closeMobileMenu}
+          >
+            Income
+          </NavLink>
+          <NavLink
             to="/backtest"
             className={({ isActive }) => isActive ? styles.activeLink : styles.link}
             onClick={closeMobileMenu}

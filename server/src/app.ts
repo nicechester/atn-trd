@@ -13,6 +13,7 @@ import { listDataSourcesHandler, testDataSourceHandler } from './routes/datasour
 import {
   validateSymbolHandler,
   listWatchlistHandler,
+  listEnhancedWatchlistHandler,
   addWatchlistHandler,
   removeWatchlistHandler,
   patchWatchlistHandler,
@@ -81,6 +82,7 @@ export function createApp(options: AppOptions = {}): Express {
   app.get('/api/settings', requireAuth, getSettingsHandler);
   app.get('/api/secrets', requireAuth, getSecretsHandler);
   app.get('/api/watchlist', requireAuth, listWatchlistHandler);
+  app.get('/api/watchlist/enhanced', requireAuth, listEnhancedWatchlistHandler);
   app.get('/api/datasources', requireAuth, listDataSourcesHandler);
   app.get('/api/scheduler/next-runs', requireAuth, nextRunsHandler);
   app.get('/api/scheduler/jobs', requireAuth, jobSchedulesHandler);
