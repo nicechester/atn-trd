@@ -758,5 +758,31 @@ export const strategicJobs = {
   },
 };
 
+// Reports
+export interface ReportSummary {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  title: string;
+  tokensUsed: number | null;
+  createdAt: number;
+}
+
+export interface Report extends ReportSummary {
+  content: string;
+}
+
+export const reports = {
+  list(limit = 20): Promise<{ ok: boolean; data: ReportSummary[] }> {
+    return request(`/reports?limit=${limit}`);
+  },
+  get(id: string): Promise<{ ok: boolean; data: Report }> {
+    return request(`/reports/${encodeURIComponent(id)}`);
+  },
+  generate(periodDays: number): Promise<{ ok: boolean; data: Report }> {
+    return request('/reports/generate', { method: 'POST', body: JSON.stringify({ periodDays }) });
+  },
+};
+
 // Unified API object
-export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades, calibration, performance, backtest, plans, regime, signals, strategicJobs };
+export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades, calibration, performance, backtest, plans, regime, signals, strategicJobs, reports };
