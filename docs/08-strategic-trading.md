@@ -88,9 +88,16 @@ Most days, the correct answer is: **"No action — waiting."**
 
 Collects market data daily **without making trading decisions**. This is the "eyes and ears" of the system.
 
+#### Symbol Sources
+Signal collection runs for the **union of watchlist + positions**:
+- Watchlist symbols (from screener or manual adds)
+- Position symbols (ensures existing holdings are monitored)
+
+This ensures positions from manual trades or the old trading cycle are tracked for potential TRIM signals.
+
 #### Data Collected
 - **Price data**: Close, volume, vs moving averages
-- **Sentiment**: FinBERT scores on news headlines
+- **Sentiment**: FinBERT scores on news headlines (future: LLM + FinBERT, see #155)
 - **Macro**: VIX, yields, Fed funds rate
 - **Sector**: Relative performance
 
@@ -207,11 +214,13 @@ Long-term accumulation/trim campaigns with tranched execution.
 
 #### Plan Types
 
-| Type | Purpose | Example |
-|------|---------|---------|
-| **ACCUMULATE** | Build position over time | "Buy 100 AAPL shares in 4 tranches" |
-| **TRIM** | Reduce position gradually | "Sell 50% of NVDA over 3 weeks" |
-| **HEDGE** | Rotate to defensive assets | "Allocate 20% to GLD/TLT" |
+| Type | Purpose | Trigger | Example |
+|------|---------|---------|--------|
+| **ACCUMULATE** | Build position over time | Score ≥ buyThreshold (0.70) | "Buy 100 AAPL shares in 4 tranches" |
+| **TRIM** | Reduce position gradually | Score ≤ sellThreshold (-0.50) | "Sell 50% of NVDA over 3 weeks" |
+| **HEDGE** | Rotate to defensive assets | RISK_OFF regime | "Allocate 20% to GLD/TLT" |
+
+**TRIM plans are auto-created** when positions have bearish signals (score below sellThreshold). This ensures the system can exit positions, not just accumulate.
 
 #### Plan Targets
 
@@ -644,18 +653,22 @@ async function maybeCreateHedgePlan(): Promise<void> {
 
 The existing daily cycle continues to work during migration. New components are additive until Phase 4.
 
+**Note**: When `execution.enabled` is true, the old trading cycle is automatically skipped. The scheduler shows "Trading Cycle: disabled (strategic plans active)".
+
 ---
 
 ## Success Criteria
 
-- [ ] System can go weeks without trading (correct behavior)
-- [ ] Trades only execute when conviction + regime align
-- [ ] Clear audit trail: "why did/didn't we trade today?"
-- [ ] Automatic hedging when regime = RISK_OFF
-- [ ] Watchlist changes are rare and intentional
-- [ ] Historical signal data enables backtesting
-- [ ] No sector exceeds 30% exposure
-- [ ] Signal decay (EWMA) prevents whipsaw reactions
+- [x] System can go weeks without trading (correct behavior)
+- [x] Trades only execute when conviction + regime align
+- [x] Clear audit trail: "why did/didn't we trade today?"
+- [x] Automatic hedging when regime = RISK_OFF
+- [x] Watchlist changes are rare and intentional
+- [x] Historical signal data enables backtesting
+- [x] No sector exceeds 30% exposure
+- [x] Signal decay (EWMA) prevents whipsaw reactions
+- [x] Positions monitored for TRIM signals (not just watchlist)
+- [x] Dashboard shows execution mode (Strategic Plans vs Trading Cycle)
 
 ---
 
@@ -709,6 +722,39 @@ You'll feel like the bot is broken when it doesn't trade. Add notifications:
 | 9 | [#137](https://github.com/nicechester/atn-trd/issues/137) | Add Strategic Plans UI Components |
 
 **Epic**: [#131](https://github.com/nicechester/atn-trd/issues/131) - Architecture: Strategic Plan-Based Trading System
+
+---
+
+## UI Components
+
+### Dashboard
+Shows execution mode context:
+- **Strategic Plans mode**: Shows FinBERT for signals, LLM for screener (on-demand)
+- **Trading Cycle mode**: Shows LLM model for analyst/PM
+- Daily LLM costs (from screener runs in strategic mode)
+
+### Plans Page
+- Active/Paused plan cards with progress bars
+- "Run Planner" button triggers signal collection + plan review
+- Shows planner results: regime, watchlist count, positions count, plans created/skipped
+
+### Watchlist Page
+- "Run Screener" button (dynamic mode only) populates watchlist
+- Shows symbol categories (GROWTH_CORE, DIVIDEND_GROWTH, INCOME_BOOSTER)
+- Plan status per symbol
+
+### Job History (Runs)
+- Different layout for strategic jobs vs trading cycle runs
+- Strategic jobs show summaryJson (regime, counts, skip reasons)
+- Trading cycle runs show assessments, decisions, orders, transcript
+
+---
+
+## Future Enhancements
+
+- **Issue #155**: Enhanced signal collection with LLM + FinBERT (better signal quality)
+- **Issue #152**: Rename Runs to Job History with job type filter
+- **Issue #153**: On-demand LLM-powered Reports (synthesized insights)
 
 ---
 [← Future Improvements](07-future-improvements.md) · [back to index](README.md)
