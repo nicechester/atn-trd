@@ -32,6 +32,7 @@ export interface PortfolioContext {
   cashPercent: number;
   currentPositions: string[];
   positionCount: number;
+  positionWeights: Record<string, number>; // symbol → weight (0-1)
 }
 
 export interface PortfolioConstraints {
@@ -64,15 +65,24 @@ function buildHumanMessage(
   ctx: PortfolioContext,
   constraints: PortfolioConstraints
 ): string {
-  const positionsStr =
-    ctx.currentPositions.length === 0 ? 'none' : ctx.currentPositions.join(', ');
-
   const blocklist = constraints.symbolBlocklist.length === 0 ? 'none' : constraints.symbolBlocklist.join(', ');
 
   const parts: string[] = [
     'PORTFOLIO CONTEXT',
     '=================',
-    `Current positions (${ctx.positionCount}): ${positionsStr}`,
+    `Current positions (${ctx.positionCount}):`,
+  ];
+
+  if (ctx.currentPositions.length === 0) {
+    parts.push('  (none)');
+  } else {
+    for (const symbol of ctx.currentPositions) {
+      const weight = ctx.positionWeights[symbol] ?? 0;
+      parts.push(`  ${symbol}: ${(weight * 100).toFixed(1)}%`);
+    }
+  }
+
+  parts.push(
     `Cash available: ${ctx.cashPercent.toFixed(1)}%`,
     '',
     'PORTFOLIO CONSTRAINTS',
@@ -83,8 +93,8 @@ function buildHumanMessage(
     `Min cash reserve: ${constraints.minCashReservePercent}%`,
     `Min confidence threshold: ${constraints.minConfidenceThreshold.toFixed(2)}`,
     `Blocked symbols: ${blocklist}`,
-    '',
-  ];
+    ''
+  );
 
   parts.push(
     `ANALYST ASSESSMENTS (${assessments.length} symbols)`,
