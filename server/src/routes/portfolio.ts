@@ -8,6 +8,7 @@ import { SnapshotsRepo } from '../repos/snapshotsRepo.js';
 import { OrdersRepo } from '../repos/ordersRepo.js';
 import { FillsRepo } from '../repos/fillsRepo.js';
 import { AuditLogRepo } from '../repos/auditLogRepo.js';
+import { CashFlowsRepo } from '../repos/cashFlowsRepo.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
 import { PaperBroker } from '../brokers/paperBroker.js';
@@ -75,6 +76,7 @@ export function initPortfolioHandler(req: Request, res: Response, next: NextFunc
     const { seedCents } = parsed.data;
     const db = getDatabase();
     const portfolioRepo = new PortfolioRepo(db);
+    const cashFlowsRepo = new CashFlowsRepo(db);
     const existing = portfolioRepo.read();
 
     if (existing) {
@@ -89,6 +91,9 @@ export function initPortfolioHandler(req: Request, res: Response, next: NextFunc
       resetAt: null,
       baseCurrency: 'USD',
     });
+
+    // Record the initial deposit
+    cashFlowsRepo.insertFlow('deposit', seedCents, now, 'Initial seed deposit');
 
     res.json({ ok: true, data: { cashCents: seedCents } });
   } catch (err) {
@@ -111,6 +116,7 @@ export function transferFundsHandler(req: Request, res: Response, next: NextFunc
 
     const db = getDatabase();
     const portfolioRepo = new PortfolioRepo(db);
+    const cashFlowsRepo = new CashFlowsRepo(db);
     const portfolio = portfolioRepo.read();
 
     if (!portfolio) {
@@ -129,6 +135,10 @@ export function transferFundsHandler(req: Request, res: Response, next: NextFunc
       ...portfolio,
       cashCents: newCashCents,
     });
+
+    // Record the cash flow
+    const now = Date.now();
+    cashFlowsRepo.insertFlow(type, amountCents, now);
 
     res.json({ ok: true, data: { cashCents: newCashCents } });
   } catch (err) {
@@ -154,6 +164,7 @@ export function resetPortfolioHandler(req: Request, res: Response, next: NextFun
     const db = getDatabase();
     const portfolioRepo = new PortfolioRepo(db);
     const positionsRepo = new PositionsRepo(db);
+    const cashFlowsRepo = new CashFlowsRepo(db);
     const auditLogRepo = new AuditLogRepo(db);
 
     const portfolio = portfolioRepo.read();
@@ -185,6 +196,7 @@ export function resetPortfolioHandler(req: Request, res: Response, next: NextFun
         db.prepare('DELETE FROM orders').run();
         db.prepare('DELETE FROM fills').run();
         db.prepare('DELETE FROM portfolio_snapshots').run();
+        cashFlowsRepo.deleteAll();
       }
 
       // Audit log

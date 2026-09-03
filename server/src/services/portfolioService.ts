@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import type { PriceFeed } from './priceService.js';
 import type { PositionsRepo } from '../repos/positionsRepo.js';
 import type { PortfolioRepo } from '../repos/portfolioRepo.js';
+import { CashFlowsRepo } from '../repos/cashFlowsRepo.js';
 import { notionalCents } from '../lib/money.js';
 import { toETDateStr } from '../scheduler/marketCalendar.js';
 import { logger } from '../lib/logger.js';
@@ -59,15 +60,27 @@ export interface PortfolioService {
    * Clear all positions and restore cash to starting amount.
    */
   resetPaperAccount(): Promise<void>;
+
+  /**
+   * Get the cost base (sum of deposits minus sum of withdrawals).
+   * Used for performance calculation.
+   * @param asOfDate - Optional historical date (YYYY-MM-DD)
+   * @returns Cost base in cents
+   */
+  getCostBase(asOfDate?: string): number;
 }
 
 export class PortfolioServiceImpl implements PortfolioService {
+  private readonly cashFlowsRepo: CashFlowsRepo;
+
   constructor(
     private readonly db: Database.Database,
     private readonly priceFeed: PriceFeed,
     private readonly positionsRepo: PositionsRepo,
     private readonly portfolioRepo: PortfolioRepo
-  ) {}
+  ) {
+    this.cashFlowsRepo = new CashFlowsRepo(db);
+  }
 
   async getPortfolio(opts?: GetPortfolioOptions): Promise<Portfolio> {
     const portfolio = this.portfolioRepo.read();
@@ -155,6 +168,29 @@ export class PortfolioServiceImpl implements PortfolioService {
         baseCurrency: portfolio.baseCurrency,
       });
     })();
+  }
+
+  /**
+   * Get the cost base (sum of deposits minus sum of withdrawals).
+   * Used for performance calculation.
+   * Falls back to starting_cash_cents for backward compatibility with old portfolios.
+   * @param asOfDate - Optional historical date (YYYY-MM-DD)
+   * @returns Cost base in cents
+   */
+  getCostBase(asOfDate?: string): number {
+    const deposits = this.cashFlowsRepo.sumByType('deposit', asOfDate);
+    const withdrawals = this.cashFlowsRepo.sumByType('withdrawal', asOfDate);
+    const costBase = Math.max(0, deposits - withdrawals);
+
+    // Backward compatibility: if no flows recorded, use starting_cash_cents
+    if (costBase === 0 && deposits === 0 && withdrawals === 0) {
+      const portfolio = this.portfolioRepo.read();
+      if (portfolio) {
+        return portfolio.startingCashCents;
+      }
+    }
+
+    return costBase;
   }
 
   /**
