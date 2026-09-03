@@ -1,6 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
 import { getDatabase } from '../db/index.js';
 import { SnapshotsRepo } from '../repos/snapshotsRepo.js';
+import { PositionsRepo } from '../repos/positionsRepo.js';
+import { PortfolioRepo } from '../repos/portfolioRepo.js';
+import { PricesRepo } from '../repos/pricesRepo.js';
+import { PriceService } from '../services/priceService.js';
+import { PortfolioServiceImpl } from '../services/portfolioService.js';
 import { logger } from '../lib/logger.js';
 
 const log = logger.child({ component: 'performance-route' });
@@ -55,6 +60,11 @@ export async function getPerformanceHandler(
   try {
     const db = getDatabase();
     const snapshotsRepo = new SnapshotsRepo(db);
+    const pricesRepo = new PricesRepo(db);
+    const priceService = new PriceService(pricesRepo);
+    const positionsRepo = new PositionsRepo(db);
+    const portfolioRepo = new PortfolioRepo(db);
+    const portfolioService = new PortfolioServiceImpl(db, priceService, positionsRepo, portfolioRepo);
 
     const fromDate = (req.query.fromDate as string) || '';
     const toDate = (req.query.toDate as string) || '';
@@ -85,7 +95,9 @@ export async function getPerformanceHandler(
     const benchmarkValues: number[] = [];
     const dailyStrategyReturns: number[] = [];
 
-    let initialStrategyValue: number | null = null;
+    // Get cost base for performance calculation
+    const costBaseCents = portfolioService.getCostBase();
+    let initialStrategyValue: number | null = costBaseCents > 0 ? costBaseCents : null;
     let initialBenchmarkValue: number | null = null;
 
     for (const pSnapshot of portfolioSnapshots) {
@@ -95,13 +107,16 @@ export async function getPerformanceHandler(
         continue;
       }
 
-      if (initialStrategyValue === null) {
-        initialStrategyValue = pSnapshot.totalValueCents;
+      if (initialBenchmarkValue === null) {
         initialBenchmarkValue = bSnapshot.adjCloseCents;
-        log.debug('initialized values', { strategy: initialStrategyValue, benchmark: initialBenchmarkValue });
+        log.debug('initialized values', { costBase: initialStrategyValue, benchmark: initialBenchmarkValue });
       }
 
-      const strategyReturn = (pSnapshot.totalValueCents - initialStrategyValue!) / initialStrategyValue!;
+      // Use cost base for strategy return calculation
+      let strategyReturn = 0;
+      if (initialStrategyValue !== null && initialStrategyValue > 0) {
+        strategyReturn = (pSnapshot.totalValueCents - initialStrategyValue) / initialStrategyValue;
+      }
       const benchmarkReturn = (bSnapshot.adjCloseCents - initialBenchmarkValue!) / initialBenchmarkValue!;
 
       series.push({
