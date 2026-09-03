@@ -1,6 +1,8 @@
 -- Add watchlist_curation to agent_runs trigger constraint
 -- SQLite doesn't support ALTER CONSTRAINT, so we recreate the table
 
+PRAGMA foreign_keys = OFF;
+
 DROP TABLE IF EXISTS agent_runs_new;
 
 CREATE TABLE agent_runs_new (
@@ -23,3 +25,5 @@ ALTER TABLE agent_runs_new RENAME TO agent_runs;
 
 CREATE INDEX idx_agent_runs_started_at ON agent_runs(started_at DESC);
 CREATE INDEX idx_agent_runs_trigger ON agent_runs(trigger);
+
+PRAGMA foreign_keys = ON;
