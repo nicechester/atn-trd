@@ -549,6 +549,13 @@ class TradingCycleServiceImpl implements TradingCycleService {
       }
 
       // -- Step H: Build portfolio context and constraints -----------
+      const positionWeights: Record<string, number> = {};
+      for (const position of portfolio.positions) {
+        positionWeights[position.symbol] = portfolio.totalValueCents > 0
+          ? position.marketValueCents / portfolio.totalValueCents
+          : 0;
+      }
+
       const portfolioContext = {
         cashPercent:
           portfolio.totalValueCents > 0
@@ -556,6 +563,7 @@ class TradingCycleServiceImpl implements TradingCycleService {
             : 100,
         currentPositions: portfolio.positions.map(p => p.symbol),
         positionCount: portfolio.positions.length,
+        positionWeights,
       };
 
       const portfolioConstraints: PortfolioConstraints = {
