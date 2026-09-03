@@ -14,6 +14,7 @@ import { MarketRegimeRepo } from '../../repos/marketRegimeRepo.js';
 import { PortfolioRepo } from '../../repos/portfolioRepo.js';
 import { PricesRepo } from '../../repos/pricesRepo.js';
 import { WatchlistRepo } from '../../repos/watchlistRepo.js';
+import { PositionsRepo } from '../../repos/positionsRepo.js';
 import { RunsRepo, type RunTrigger } from '../../repos/runsRepo.js';
 import { createPlan, type StrategicPlanDeps } from '../../services/strategicPlanService.js';
 import { getCurrentRegime } from '../../services/regimeDetectionService.js';
@@ -27,7 +28,9 @@ const CHUNKY_STOCK_THRESHOLD_CENTS = 50000; // $500
 export interface PlanReviewSummary {
   regime: string;
   watchlistCount: number;
+  positionsCount: number;
   plansCreated: number;
+  trimPlansCreated: number;
   plansSkipped: Array<{ symbol: string; reason: string }>;
   existingActivePlans: number;
 }
@@ -62,7 +65,9 @@ export async function runPlanReviewJob(
   const summary: PlanReviewSummary = {
     regime: 'UNKNOWN',
     watchlistCount: 0,
+    positionsCount: 0,
     plansCreated: 0,
+    trimPlansCreated: 0,
     plansSkipped: [],
     existingActivePlans: 0,
   };
@@ -99,6 +104,7 @@ export async function runPlanReviewJob(
     const portfolioRepo = new PortfolioRepo(db);
     const pricesRepo = new PricesRepo(db);
     const watchlistRepo = new WatchlistRepo(db);
+    const positionsRepo = new PositionsRepo(db);
 
     const deps: StrategicPlanDeps = {
       strategicPlansRepo,
@@ -127,9 +133,12 @@ export async function runPlanReviewJob(
     }
 
     const watchlist = watchlistRepo.list().filter(w => w.enabled);
+    const positions = positionsRepo.list();
     summary.watchlistCount = watchlist.length;
+    summary.positionsCount = positions.length;
     summary.existingActivePlans = strategicPlansRepo.listActive().length;
 
+    // --- ACCUMULATE plans from watchlist ---
     for (const item of watchlist) {
       // Skip if active plan exists
       const existingPlan = strategicPlansRepo.getActiveBySymbol(item.symbol);
@@ -194,6 +203,57 @@ export async function runPlanReviewJob(
       });
 
       summary.plansCreated++;
+    }
+
+    // --- TRIM plans from positions with bearish signals ---
+    for (const position of positions) {
+      // Skip if active plan exists (ACCUMULATE or TRIM)
+      const existingPlan = strategicPlansRepo.getActiveBySymbol(position.symbol);
+      if (existingPlan) {
+        // Don't add to skipped - already counted above if in watchlist
+        continue;
+      }
+
+      // Get latest signal
+      const signal = signalSnapshotsRepo.getLatest(position.symbol);
+      if (!signal) {
+        summary.plansSkipped.push({ symbol: position.symbol, reason: 'position: no signal data' });
+        continue;
+      }
+
+      const score = signal.compositeEwma ?? signal.compositeScore;
+      if (score === null) {
+        summary.plansSkipped.push({ symbol: position.symbol, reason: 'position: no composite score' });
+        continue;
+      }
+
+      // Check sell threshold (negative score = bearish)
+      if (score > settings.signals.sellThreshold) {
+        summary.plansSkipped.push({
+          symbol: position.symbol,
+          reason: `position: score ${score.toFixed(2)} > sell threshold ${settings.signals.sellThreshold}`,
+        });
+        continue;
+      }
+
+      const price = pricesRepo.getLatest(position.symbol);
+      if (!price) {
+        summary.plansSkipped.push({ symbol: position.symbol, reason: 'position: no price data' });
+        continue;
+      }
+
+      // Create TRIM plan for full position
+      const conviction = Math.min(1, Math.abs(score - settings.signals.sellThreshold) / Math.abs(settings.signals.sellThreshold));
+
+      createPlan(deps, {
+        symbol: position.symbol,
+        direction: 'TRIM',
+        targetShares: position.qty,
+        entryCompositeScore: score,
+        conviction,
+      });
+
+      summary.trimPlansCreated++;
     }
 
     runsRepo.updateStatus(runId, 'succeeded');

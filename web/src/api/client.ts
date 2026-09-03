@@ -710,7 +710,9 @@ export const signals = {
 export interface PlanReviewSummary {
   regime: string;
   watchlistCount: number;
+  positionsCount: number;
   plansCreated: number;
+  trimPlansCreated: number;
   plansSkipped: Array<{ symbol: string; reason: string }>;
   existingActivePlans: number;
 }

@@ -272,7 +272,9 @@ export default function PlansPage() {
           <h3>Last Planner Run</h3>
           <p>Regime: <strong>{lastResult.regime}</strong></p>
           <p>Watchlist symbols: {lastResult.watchlistCount}</p>
-          <p>Plans created: <strong>{lastResult.plansCreated}</strong></p>
+          <p>Positions monitored: {lastResult.positionsCount}</p>
+          <p>Accumulate plans created: <strong>{lastResult.plansCreated}</strong></p>
+          <p>Trim plans created: <strong>{lastResult.trimPlansCreated}</strong></p>
           <p>Existing active plans: {lastResult.existingActivePlans}</p>
           {lastResult.plansSkipped.length > 0 && (
             <details>

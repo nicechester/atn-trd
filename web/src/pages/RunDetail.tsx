@@ -36,7 +36,9 @@ function renderPlanReviewSummary(s: PlanReviewSummary) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-md)' }}>
         <div><div className={styles.fieldLabel}>Regime</div><div className={styles.fieldValue}>{s.regime}</div></div>
         <div><div className={styles.fieldLabel}>Watchlist</div><div className={styles.fieldValue}>{s.watchlistCount} symbols</div></div>
-        <div><div className={styles.fieldLabel}>Plans Created</div><div className={styles.fieldValue}>{s.plansCreated}</div></div>
+        <div><div className={styles.fieldLabel}>Positions</div><div className={styles.fieldValue}>{s.positionsCount} monitored</div></div>
+        <div><div className={styles.fieldLabel}>Accumulate Plans</div><div className={styles.fieldValue}>{s.plansCreated}</div></div>
+        <div><div className={styles.fieldLabel}>Trim Plans</div><div className={styles.fieldValue}>{s.trimPlansCreated}</div></div>
         <div><div className={styles.fieldLabel}>Existing Active</div><div className={styles.fieldValue}>{s.existingActivePlans}</div></div>
       </div>
       {s.plansSkipped.length > 0 && (
