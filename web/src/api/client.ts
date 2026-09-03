@@ -731,6 +731,18 @@ export interface WatchlistCurationSummary {
   screenerSelections: number;
 }
 
+export interface TrancheExecutionSummary {
+  regime: string;
+  activePlans: number;
+  tranchesExecuted: number;
+  tranchesSkipped: Array<{ planId: string; symbol: string; reason: string }>;
+  plansPaused: number;
+  plansResumed: number;
+  plansCancelled: number;
+  autoTrimPlans: number;
+  autoHedgePlan: { symbol: string; shares: number } | null;
+}
+
 export const strategicJobs = {
   collectSignals(): Promise<{ ok: boolean; summary: SignalCollectionSummary }> {
     return request('/trigger/signal-collection', { method: 'POST' });

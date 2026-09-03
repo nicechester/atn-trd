@@ -14,8 +14,34 @@ const JOB_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'tranche_execution', label: 'Tranche Execution' },
 ];
 
-function isTradingCycleTrigger(trigger: RunTrigger): boolean {
-  return trigger === 'scheduled' || trigger === 'manual';
+type JobType = 'trading_cycle' | 'signal_collection' | 'plan_review' | 'tranche_execution' | 'watchlist_curation';
+
+const JOB_TYPE_LABELS: Record<JobType, string> = {
+  trading_cycle: 'Trading Cycle',
+  signal_collection: 'Signal Collection',
+  plan_review: 'Plan Review',
+  tranche_execution: 'Tranche Execution',
+  watchlist_curation: 'Watchlist Curation',
+};
+
+function inferJobType(run: AgentRunRow): JobType {
+  // Explicit trigger types
+  if (run.trigger === 'signal_collection') return 'signal_collection';
+  if (run.trigger === 'plan_review') return 'plan_review';
+  if (run.trigger === 'tranche_execution') return 'tranche_execution';
+  if (run.trigger === 'watchlist_curation') return 'watchlist_curation';
+  
+  // For manual/scheduled, infer from summaryJson
+  if (run.summaryJson) {
+    try {
+      const summary = JSON.parse(run.summaryJson);
+      if ('symbolsUpdated' in summary && 'symbols' in summary && !('regime' in summary)) return 'signal_collection';
+      if ('plansCreated' in summary || 'watchlistCount' in summary) return 'plan_review';
+      if ('tranchesExecuted' in summary) return 'tranche_execution';
+      if ('symbolsAdded' in summary) return 'watchlist_curation';
+    } catch {}
+  }
+  return 'trading_cycle';
 }
 
 export default function RunsListPage() {
@@ -68,8 +94,7 @@ export default function RunsListPage() {
     if (statusFilter !== 'all' && r.status !== statusFilter) return false;
     // Job type filter
     if (jobTypeFilter === 'all') return true;
-    if (jobTypeFilter === 'trading_cycle') return isTradingCycleTrigger(r.trigger);
-    return r.trigger === jobTypeFilter;
+    return inferJobType(r) === jobTypeFilter;
   });
 
   function badgeClass(status: AgentRunRow['status']) {
@@ -108,6 +133,7 @@ export default function RunsListPage() {
             <thead>
               <tr>
                 <th className={styles.th}>Status</th>
+                <th className={styles.th}>Job Type</th>
                 <th className={styles.th}>Trigger</th>
                 <th className={styles.th}>Started</th>
                 <th className={styles.th}>Duration</th>
@@ -120,6 +146,7 @@ export default function RunsListPage() {
               {filtered.map(run => (
                 <tr key={run.id} className={styles.row} onClick={() => navigate(`/job-history/${run.id}`)}>
                   <td className={styles.td}><span className={badgeClass(run.status)}>{run.status}</span></td>
+                  <td className={styles.td}>{JOB_TYPE_LABELS[inferJobType(run)]}</td>
                   <td className={styles.td}>{run.trigger}</td>
                   <td className={styles.td}>{formatTimestamp(run.startedAt)}</td>
                   <td className={styles.td}>{formatDuration(run.startedAt, run.finishedAt)}</td>
