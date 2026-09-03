@@ -20,6 +20,7 @@ interface DailyCost {
 
 export default function LlmUsagePane(): JSX.Element | null {
   const [strategicMode, setStrategicMode] = useState<boolean | null>(null);
+  const [signalsUseLlm, setSignalsUseLlm] = useState<boolean>(true);
   const [llmModel, setLlmModel] = useState<string | null>(null);
   const [dailyCosts, setDailyCosts] = useState<DailyCost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,8 +33,10 @@ export default function LlmUsagePane(): JSX.Element | null {
         const settingsRes = await api.settings.get();
         const isStrategic = settingsRes.data.execution?.enabled ?? false;
         const model = settingsRes.data.llm?.model ?? null;
+        const useLlm = settingsRes.data.signals?.useLlm ?? true;
         setStrategicMode(isStrategic);
         setLlmModel(model);
+        setSignalsUseLlm(useLlm);
 
         // Fetch last 100 runs to get telemetry data
         const res = await api.runs.list(100, 0);
@@ -115,7 +118,7 @@ export default function LlmUsagePane(): JSX.Element | null {
             <div>
               <strong>Signals:</strong>{' '}
               <span style={{ fontFamily: 'monospace', color: 'var(--color-text-muted)' }}>
-                FinBERT (no cost)
+                {signalsUseLlm ? `${llmModel || 'LLM'} + FinBERT` : 'FinBERT only'}
               </span>
             </div>
             <div>
@@ -146,7 +149,7 @@ export default function LlmUsagePane(): JSX.Element | null {
                   </div>
                 ))}
                 <p style={{ color: 'var(--color-text-muted)', marginTop: 'var(--spacing-sm)', fontSize: '0.75rem' }}>
-                  From screener runs only
+                  From screener{signalsUseLlm ? ' + signal collection' : ''} runs
                 </p>
               </div>
             )}

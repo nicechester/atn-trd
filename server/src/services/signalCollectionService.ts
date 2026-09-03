@@ -12,6 +12,7 @@ import type { SignalSnapshotsRepo, SignalSnapshotRow } from '../repos/signalSnap
 import type { PricesRepo, PriceBarRow } from '../repos/pricesRepo.js';
 import type { WatchlistRepo } from '../repos/watchlistRepo.js';
 import { scoreFinBERT } from './finbertService.js';
+import { synthesizeSentiment } from './signalSynthesisService.js';
 import type { NewsDataSource, NewsArticle } from '../datasources/news/index.js';
 
 const log = logger.child({ component: 'signal-collection' });
@@ -29,6 +30,7 @@ export interface CollectionResult {
   symbol: string;
   status: 'ok' | 'skipped' | 'error';
   reason?: string;
+  tokensUsed?: number;
 }
 
 /**
@@ -120,6 +122,7 @@ async function collectSymbolSignals(
 ): Promise<CollectionResult> {
   const { signalSnapshotsRepo, pricesRepo, newsSource, getSettings } = deps;
   const settings = getSettings();
+  let tokensUsed = 0;
 
   try {
     // 1. Get current price
@@ -135,9 +138,22 @@ async function collectSymbolSignals(
       const toDate = new Date().toISOString().slice(0, 10);
       const result = await newsSource.fetch({ symbol, from: fromDate, to: toDate, limit: 10 });
       const articles: NewsArticle[] = result.data.articles;
+      
       if (articles.length > 0) {
-        const headlines = articles.map(a => a.headline).join('. ');
-        const finbertResult = await scoreFinBERT(headlines);
+        let textToScore: string;
+
+        if (settings.signals.useLlm) {
+          // LLM-enhanced: synthesize headlines into sentiment summary
+          const headlines = articles.map(a => a.headline);
+          const synthesis = await synthesizeSentiment({ symbol, headlines });
+          textToScore = synthesis.sentimentSummary || headlines.join('. ');
+          tokensUsed = synthesis.tokensUsed;
+        } else {
+          // Direct FinBERT on raw headlines
+          textToScore = articles.map(a => a.headline).join('. ');
+        }
+
+        const finbertResult = await scoreFinBERT(textToScore);
         sentimentScore = finbertResult.normalizedScore;
         sentimentConfidence = finbertResult.score;
       }
@@ -196,7 +212,7 @@ async function collectSymbolSignals(
       compositeEwma,
     });
 
-    return { symbol, status: 'ok' };
+    return { symbol, status: 'ok', tokensUsed };
   } catch (err) {
     log.error('failed to collect signals', { symbol, error: err instanceof Error ? err.message : String(err) });
     return { symbol, status: 'error', reason: err instanceof Error ? err.message : String(err) };

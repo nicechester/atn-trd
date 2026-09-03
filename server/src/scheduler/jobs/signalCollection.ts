@@ -23,6 +23,7 @@ export interface SignalCollectionSummary {
   symbolsUpdated: number;
   errors: number;
   symbols: string[];
+  tokensUsed: number;
 }
 
 export async function runSignalCollectionJob(
@@ -37,6 +38,7 @@ export async function runSignalCollectionJob(
     symbolsUpdated: 0,
     errors: 0,
     symbols: [],
+    tokensUsed: 0,
   };
 
   // Create run record
@@ -85,9 +87,19 @@ export async function runSignalCollectionJob(
     summary.symbolsUpdated = results.filter(r => r.status === 'ok').length;
     summary.errors = results.filter(r => r.status === 'error').length;
     summary.symbols = results.filter(r => r.status === 'ok').map(r => r.symbol);
+    summary.tokensUsed = results.reduce((sum, r) => sum + (r.tokensUsed ?? 0), 0);
 
     runsRepo.updateStatus(runId, 'succeeded');
     runsRepo.updateSummary(runId, JSON.stringify(summary));
+
+    // Track token usage if LLM was used
+    if (summary.tokensUsed > 0) {
+      runsRepo.updateTokenUsage(runId, JSON.stringify({
+        total_tokens: summary.tokensUsed,
+        prompt_tokens: Math.round(summary.tokensUsed * 0.8),
+        completion_tokens: Math.round(summary.tokensUsed * 0.2),
+      }));
+    }
 
     log.info('signal collection job complete', { ok: summary.symbolsUpdated, errors: summary.errors });
     return summary;
