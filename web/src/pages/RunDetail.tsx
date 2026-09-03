@@ -1,14 +1,38 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { runs as runsApi, type RunDetailData, type AgentRunRow, type DecisionRow, type AgentMessageRow, type ResearchArtifactRow, type RunCoverageData, type PlanReviewSummary, type SignalCollectionSummary, type WatchlistCurationSummary } from '../api/client';
+import { runs as runsApi, type RunDetailData, type AgentRunRow, type DecisionRow, type AgentMessageRow, type ResearchArtifactRow, type RunCoverageData, type PlanReviewSummary, type SignalCollectionSummary, type WatchlistCurationSummary, type TrancheExecutionSummary } from '../api/client';
 import { centsToUSD, formatTimestamp, formatDuration, formatQty } from '../lib/format';
 import { useToast } from '../context/ToastContext';
 import CoverageHeatmap from '../components/CoverageHeatmap';
 import { RejectedDecisions } from '../components/RejectedDecisions';
 import styles from './RunDetail.module.css';
 
-// Strategic job triggers that use summaryJson instead of assessments/decisions
-const STRATEGIC_TRIGGERS = ['plan_review', 'signal_collection', 'watchlist_curation', 'tranche_execution'];
+type JobType = 'trading_cycle' | 'signal_collection' | 'plan_review' | 'tranche_execution' | 'watchlist_curation';
+
+const JOB_TYPE_LABELS: Record<JobType, string> = {
+  trading_cycle: 'Trading Cycle',
+  signal_collection: 'Signal Collection',
+  plan_review: 'Plan Review',
+  tranche_execution: 'Tranche Execution',
+  watchlist_curation: 'Watchlist Curation',
+};
+
+function inferJobType(run: AgentRunRow): JobType {
+  if (run.trigger === 'signal_collection') return 'signal_collection';
+  if (run.trigger === 'plan_review') return 'plan_review';
+  if (run.trigger === 'tranche_execution') return 'tranche_execution';
+  if (run.trigger === 'watchlist_curation') return 'watchlist_curation';
+  if (run.summaryJson) {
+    try {
+      const summary = JSON.parse(run.summaryJson);
+      if ('symbolsUpdated' in summary && 'symbols' in summary && !('regime' in summary)) return 'signal_collection';
+      if ('plansCreated' in summary || 'watchlistCount' in summary) return 'plan_review';
+      if ('tranchesExecuted' in summary) return 'tranche_execution';
+      if ('symbolsAdded' in summary) return 'watchlist_curation';
+    } catch {}
+  }
+  return 'trading_cycle';
+}
 
 function badgeClass(status: AgentRunRow['status'], s: Record<string, string>) {
   if (status === 'succeeded') return s.badgeGreen;
@@ -59,6 +83,7 @@ function renderSignalCollectionSummary(s: SignalCollectionSummary) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-md)' }}>
         <div><div className={styles.fieldLabel}>Symbols Updated</div><div className={styles.fieldValue}>{s.symbolsUpdated}</div></div>
         <div><div className={styles.fieldLabel}>Errors</div><div className={styles.fieldValue}>{s.errors}</div></div>
+        {s.tokensUsed > 0 && <div><div className={styles.fieldLabel}>Tokens Used</div><div className={styles.fieldValue}>{s.tokensUsed.toLocaleString()}</div></div>}
       </div>
       {s.symbols.length > 0 && (
         <div><div className={styles.fieldLabel}>Symbols</div><div className={styles.fieldValue}>{s.symbols.join(', ')}</div></div>
@@ -79,6 +104,32 @@ function renderWatchlistCurationSummary(s: WatchlistCurationSummary) {
       )}
       {s.symbolsUpdated.length > 0 && (
         <div><div className={styles.fieldLabel}>Updated</div><div className={styles.fieldValue}>{s.symbolsUpdated.join(', ')}</div></div>
+      )}
+    </div>
+  );
+}
+
+function renderTrancheExecutionSummary(s: TrancheExecutionSummary) {
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-md)' }}>
+        <div><div className={styles.fieldLabel}>Regime</div><div className={styles.fieldValue}>{s.regime}</div></div>
+        <div><div className={styles.fieldLabel}>Active Plans</div><div className={styles.fieldValue}>{s.activePlans}</div></div>
+        <div><div className={styles.fieldLabel}>Tranches Executed</div><div className={styles.fieldValue}>{s.tranchesExecuted}</div></div>
+        <div><div className={styles.fieldLabel}>Plans Paused</div><div className={styles.fieldValue}>{s.plansPaused}</div></div>
+        <div><div className={styles.fieldLabel}>Plans Resumed</div><div className={styles.fieldValue}>{s.plansResumed}</div></div>
+        <div><div className={styles.fieldLabel}>Auto Trim Plans</div><div className={styles.fieldValue}>{s.autoTrimPlans}</div></div>
+      </div>
+      {s.autoHedgePlan && (
+        <div><div className={styles.fieldLabel}>Auto Hedge</div><div className={styles.fieldValue}>{s.autoHedgePlan.symbol}: {s.autoHedgePlan.shares} shares</div></div>
+      )}
+      {s.tranchesSkipped.length > 0 && (
+        <details>
+          <summary style={{ cursor: 'pointer', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Skipped ({s.tranchesSkipped.length})</summary>
+          <ul style={{ margin: 'var(--spacing-sm) 0 0 var(--spacing-md)', fontSize: '0.875rem' }}>
+            {s.tranchesSkipped.map((sk, i) => <li key={i}><strong>{sk.symbol}</strong>: {sk.reason}</li>)}
+          </ul>
+        </details>
       )}
     </div>
   );
@@ -118,12 +169,13 @@ export default function RunDetailPage() {
   if (!detail) return <p>Run not found.</p>;
 
   const { run, assessments, decisions, orders, messages, artifacts } = detail;
-  const isStrategicRun = STRATEGIC_TRIGGERS.includes(run.trigger);
+  const jobType = inferJobType(run);
+  const isStrategicRun = jobType !== 'trading_cycle';
 
   let tokenUsage: Record<string, unknown> | null = null;
   try { if (run.tokenUsageJson) tokenUsage = JSON.parse(run.tokenUsageJson); } catch {}
 
-  let summary: PlanReviewSummary | SignalCollectionSummary | WatchlistCurationSummary | null = null;
+  let summary: PlanReviewSummary | SignalCollectionSummary | WatchlistCurationSummary | TrancheExecutionSummary | null = null;
   try { if (run.summaryJson) summary = JSON.parse(run.summaryJson); } catch {}
 
   // Group messages by symbol
@@ -144,14 +196,15 @@ export default function RunDetailPage() {
 
   return (
     <div>
-      <Link to="/runs" className={styles.backLink}>← Back to Runs</Link>
+      <Link to="/job-history" className={styles.backLink}>← Back to Job History</Link>
       <h1>Run Detail</h1>
 
       {/* Summary */}
       <div className={styles.symbolCard} style={{ marginBottom: 'var(--spacing-lg)' }}>
         <div className={styles.symbolHeader}>
           <span className={badgeClass(run.status, styles)}>{run.status}</span>
-          <span className={styles.badgeGray}>{run.trigger}</span>
+          <span className={styles.badgeGray}>{JOB_TYPE_LABELS[jobType]}</span>
+          <span className={styles.muted}>{run.trigger}</span>
           {!isStrategicRun && coverage && coverage.belowThreshold && <span className={styles.badgeRed}>Coverage below {coverage.thresholdPercent}%</span>}
         </div>
         <div className={styles.fieldLabel}>Run ID</div>
@@ -160,49 +213,62 @@ export default function RunDetailPage() {
         <div className={styles.fieldValue}>{formatTimestamp(run.startedAt)}</div>
         <div className={styles.fieldLabel}>Duration</div>
         <div className={styles.fieldValue}>{formatDuration(run.startedAt, run.finishedAt)}</div>
-        {tokenUsage && (
-          <>
-            <div className={styles.fieldLabel}>LLM Telemetry</div>
-            <div className={styles.fieldValue}>
-              {(() => {
-                const models = (tokenUsage as any)?.models;
-                const tokens = (tokenUsage as any)?.tokens;
-                const cost = (tokenUsage as any)?.cost;
-                const latency = (tokenUsage as any)?.latency_ms;
-                return (
-                  <div style={{ fontSize: '0.85rem', lineHeight: '1.5' }}>
-                    {models && (
-                      <div>
-                        <strong>Models:</strong><br/>
-                        Analyst: {models.analyst}, Portfolio Manager: {models.portfolioManager}
-                      </div>
-                    )}
-                    {tokens && (
-                      <div style={{ marginTop: '0.5rem' }}>
-                        <strong>Tokens:</strong><br/>
-                        Analyst: {tokens.analyst?.input} in / {tokens.analyst?.output} out
-                        <br/>
-                        Portfolio Manager: {tokens.portfolioManager?.input} in / {tokens.portfolioManager?.output} out
-                      </div>
-                    )}
-                    {cost && (
-                      <div style={{ marginTop: '0.5rem' }}>
-                        <strong>Cost:</strong><br/>
-                        Analyst: ${cost.analyst?.toFixed(4)}, Portfolio Manager: ${cost.portfolioManager?.toFixed(4)}, Total: ${cost.total?.toFixed(4)}
-                      </div>
-                    )}
-                    {latency && (
-                      <div style={{ marginTop: '0.5rem' }}>
-                        <strong>Latency:</strong><br/>
-                        Analyst: {latency.analyst}ms, Portfolio Manager: {latency.portfolioManager}ms, Total: {latency.total}ms
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-          </>
-        )}
+        {tokenUsage && (() => {
+          const models = (tokenUsage as any)?.models;
+          const tokens = (tokenUsage as any)?.tokens;
+          const cost = (tokenUsage as any)?.cost;
+          const latency = (tokenUsage as any)?.latency_ms;
+          // Simple format: { total_tokens, prompt_tokens, completion_tokens }
+          const totalTokens = (tokenUsage as any)?.total_tokens;
+          const promptTokens = (tokenUsage as any)?.prompt_tokens;
+          const completionTokens = (tokenUsage as any)?.completion_tokens;
+          
+          const hasDetailedFormat = models || tokens || cost || latency;
+          const hasSimpleFormat = totalTokens !== undefined;
+          
+          if (!hasDetailedFormat && !hasSimpleFormat) return null;
+          
+          return (
+            <>
+              <div className={styles.fieldLabel}>LLM Telemetry</div>
+              <div className={styles.fieldValue}>
+                <div style={{ fontSize: '0.85rem', lineHeight: '1.5' }}>
+                  {hasSimpleFormat && !hasDetailedFormat && (
+                    <div>
+                      <strong>Tokens:</strong> {promptTokens?.toLocaleString()} in / {completionTokens?.toLocaleString()} out ({totalTokens?.toLocaleString()} total)
+                    </div>
+                  )}
+                  {models && (
+                    <div>
+                      <strong>Models:</strong><br/>
+                      Analyst: {models.analyst}, Portfolio Manager: {models.portfolioManager}
+                    </div>
+                  )}
+                  {tokens && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <strong>Tokens:</strong><br/>
+                      Analyst: {tokens.analyst?.input} in / {tokens.analyst?.output} out
+                      <br/>
+                      Portfolio Manager: {tokens.portfolioManager?.input} in / {tokens.portfolioManager?.output} out
+                    </div>
+                  )}
+                  {cost && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <strong>Cost:</strong><br/>
+                      Analyst: ${cost.analyst?.toFixed(4)}, Portfolio Manager: ${cost.portfolioManager?.toFixed(4)}, Total: ${cost.total?.toFixed(4)}
+                    </div>
+                  )}
+                  {latency && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <strong>Latency:</strong><br/>
+                      Analyst: {latency.analyst}ms, Portfolio Manager: {latency.portfolioManager}ms, Total: {latency.total}ms
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          );
+        })()}
         {run.error && <><div className={styles.fieldLabel}>Error</div><div className={styles.fieldValue} style={{ color: 'var(--color-error)' }}>{run.error}</div></>}
         {run.skipReason && <><div className={styles.fieldLabel}>Skip Reason</div><div className={styles.fieldValue}>{run.skipReason}</div></>}
       </div>
@@ -211,9 +277,10 @@ export default function RunDetailPage() {
       {isStrategicRun && summary && (
         <div className={styles.symbolCard} style={{ marginBottom: 'var(--spacing-lg)' }}>
           <div className={styles.fieldLabel}>Job Summary</div>
-          {run.trigger === 'plan_review' && renderPlanReviewSummary(summary as PlanReviewSummary)}
-          {run.trigger === 'signal_collection' && renderSignalCollectionSummary(summary as SignalCollectionSummary)}
-          {run.trigger === 'watchlist_curation' && renderWatchlistCurationSummary(summary as WatchlistCurationSummary)}
+          {jobType === 'plan_review' && renderPlanReviewSummary(summary as PlanReviewSummary)}
+          {jobType === 'signal_collection' && renderSignalCollectionSummary(summary as SignalCollectionSummary)}
+          {jobType === 'watchlist_curation' && renderWatchlistCurationSummary(summary as WatchlistCurationSummary)}
+          {jobType === 'tranche_execution' && renderTrancheExecutionSummary(summary as TrancheExecutionSummary)}
         </div>
       )}
 
