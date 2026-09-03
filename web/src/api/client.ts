@@ -721,6 +721,7 @@ export interface SignalCollectionSummary {
   symbolsUpdated: number;
   errors: number;
   symbols: string[];
+  tokensUsed: number;
 }
 
 export interface WatchlistCurationSummary {

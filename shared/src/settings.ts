@@ -136,6 +136,7 @@ export const SettingsSchema = z.object({
   // Strategic trading settings (plan-based execution)
   signals: z.object({
     enabled: z.boolean().default(false),
+    useLlm: z.boolean().default(true), // Use LLM to synthesize news before FinBERT scoring
     buyThreshold: z.number().min(0).max(1).default(0.70),
     sellThreshold: z.number().min(-1).max(0).default(-0.50),
     pauseThreshold: z.number().min(0).max(1).default(0.60),
@@ -282,6 +283,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   signals: {
     enabled: false,
+    useLlm: true,
     buyThreshold: 0.70,
     sellThreshold: -0.50,
     pauseThreshold: 0.60,

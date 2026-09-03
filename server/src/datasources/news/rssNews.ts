@@ -51,6 +51,8 @@ export interface RssNewsOptions {
   now?: () => number;
 }
 
+const USER_AGENT = 'atn-trd/1.0 (Chester Kim almightyespanol@gmail.com)';
+
 const defaultParser = new Parser({
   customFields: {
     item: [
@@ -58,6 +60,9 @@ const defaultParser = new Parser({
       ['description', 'summary'],
       ['media:content', 'media'],
     ],
+  },
+  headers: {
+    'User-Agent': USER_AGENT,
   },
 });
 
