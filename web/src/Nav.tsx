@@ -37,11 +37,11 @@ export default function Nav(): JSX.Element {
             Dashboard
           </NavLink>
           <NavLink
-            to="/runs"
+            to="/job-history"
             className={({ isActive }) => isActive ? styles.activeLink : styles.link}
             onClick={closeMobileMenu}
           >
-            Runs
+            Job History
           </NavLink>
           <NavLink
             to="/portfolio"

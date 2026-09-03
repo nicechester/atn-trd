@@ -1,17 +1,33 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { runs as runsApi, type AgentRunRow } from '../api/client';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { runs as runsApi, type AgentRunRow, type RunTrigger } from '../api/client';
 import { formatTimestamp, formatDuration } from '../lib/format';
 import { useToast } from '../context/ToastContext';
 import styles from './RunsList.module.css';
 
+const JOB_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'all', label: 'All Jobs' },
+  { value: 'trading_cycle', label: 'Trading Cycle' },
+  { value: 'signal_collection', label: 'Signal Collection' },
+  { value: 'plan_review', label: 'Plan Review' },
+  { value: 'watchlist_curation', label: 'Watchlist Curation' },
+  { value: 'tranche_execution', label: 'Tranche Execution' },
+];
+
+function isTradingCycleTrigger(trigger: RunTrigger): boolean {
+  return trigger === 'scheduled' || trigger === 'manual';
+}
+
 export default function RunsListPage() {
   const [runList, setRunList] = useState<AgentRunRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [statusFilter, setStatusFilter] = useState('all');
   const [cancelling, setCancelling] = useState<string | null>(null);
   const navigate = useNavigate();
   const { addToast } = useToast();
+
+  const jobTypeFilter = searchParams.get('type') || 'all';
 
   useEffect(() => {
     loadRuns();
@@ -38,7 +54,23 @@ export default function RunsListPage() {
     }
   }
 
-  const filtered = statusFilter === 'all' ? runList : runList.filter(r => r.status === statusFilter);
+  function handleJobTypeChange(value: string) {
+    if (value === 'all') {
+      searchParams.delete('type');
+    } else {
+      searchParams.set('type', value);
+    }
+    setSearchParams(searchParams);
+  }
+
+  const filtered = runList.filter(r => {
+    // Status filter
+    if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+    // Job type filter
+    if (jobTypeFilter === 'all') return true;
+    if (jobTypeFilter === 'trading_cycle') return isTradingCycleTrigger(r.trigger);
+    return r.trigger === jobTypeFilter;
+  });
 
   function badgeClass(status: AgentRunRow['status']) {
     if (status === 'succeeded') return styles.badgeGreen;
@@ -51,8 +83,14 @@ export default function RunsListPage() {
 
   return (
     <div>
-      <h1>Runs</h1>
+      <h1>Job History</h1>
       <div className={styles.filterBar}>
+        <label>Job Type:</label>
+        <select value={jobTypeFilter} onChange={e => handleJobTypeChange(e.target.value)}>
+          {JOB_TYPE_OPTIONS.map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
         <label>Status:</label>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           <option value="all">All</option>
@@ -80,7 +118,7 @@ export default function RunsListPage() {
             </thead>
             <tbody>
               {filtered.map(run => (
-                <tr key={run.id} className={styles.row} onClick={() => navigate(`/runs/${run.id}`)}>
+                <tr key={run.id} className={styles.row} onClick={() => navigate(`/job-history/${run.id}`)}>
                   <td className={styles.td}><span className={badgeClass(run.status)}>{run.status}</span></td>
                   <td className={styles.td}>{run.trigger}</td>
                   <td className={styles.td}>{formatTimestamp(run.startedAt)}</td>

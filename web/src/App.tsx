@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -19,6 +19,11 @@ import WatchlistPage from './pages/Watchlist';
 import IncomePage from './pages/Income';
 import styles from './App.module.css';
 
+function RunDetailRedirect(): JSX.Element {
+  const { id } = useParams();
+  return <Navigate to={`/job-history/${id}`} replace />;
+}
+
 function AppContent(): JSX.Element {
   const { user, loading } = useAuth();
 
@@ -36,8 +41,10 @@ function AppContent(): JSX.Element {
       <main className={styles.main}>
         <Routes>
           <Route path="/" element={<DashboardPage />} />
-          <Route path="/runs" element={<RunsListPage />} />
-          <Route path="/runs/:id" element={<RunDetailPage />} />
+          <Route path="/job-history" element={<RunsListPage />} />
+          <Route path="/job-history/:id" element={<RunDetailPage />} />
+          <Route path="/runs" element={<Navigate to="/job-history" replace />} />
+          <Route path="/runs/:id" element={<RunDetailRedirect />} />
           <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/performance" element={<PerformancePage />} />
           <Route path="/trades" element={<TradesPage />} />
