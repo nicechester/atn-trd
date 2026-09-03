@@ -1,6 +1,8 @@
 -- Add watchlist_curation to agent_runs trigger constraint
 -- SQLite doesn't support ALTER CONSTRAINT, so we recreate the table
 
+DROP TABLE IF EXISTS agent_runs_new;
+
 CREATE TABLE agent_runs_new (
   id TEXT PRIMARY KEY,
   trigger TEXT NOT NULL CHECK(trigger IN ('scheduled', 'manual', 'signal_collection', 'plan_review', 'tranche_execution', 'watchlist_curation')),
