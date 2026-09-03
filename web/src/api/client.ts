@@ -231,9 +231,11 @@ export const scheduler = {
 };
 
 // Runs
+export type RunTrigger = 'scheduled' | 'manual' | 'signal_collection' | 'plan_review' | 'tranche_execution' | 'watchlist_curation';
+
 export interface AgentRunRow {
   id: string;
-  trigger: 'scheduled' | 'manual';
+  trigger: RunTrigger;
   status: 'running' | 'succeeded' | 'failed' | 'skipped';
   startedAt: number;
   finishedAt: number | null;
@@ -242,6 +244,7 @@ export interface AgentRunRow {
   error: string | null;
   tokenUsageJson: string | null;
   skipReason: string | null;
+  summaryJson: string | null;
 }
 
 export interface AssessmentRow {
