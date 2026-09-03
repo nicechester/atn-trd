@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { Card } from '../components/Card';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import styles from './SettingsForm.module.css';
 
 type WatchlistRow = { symbol: string; enabled: boolean; addedAt: number | null; note: string | null };
@@ -24,10 +25,12 @@ type WatchlistSettings = {
 
 export default function SettingsWatchlist(): JSX.Element {
   const { addToast } = useToast();
+  const { canWrite } = useAuth();
   const [symbols, setSymbols] = useState<WatchlistRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [input, setInput] = useState('');
   const [adding, setAdding] = useState(false);
+  const [runningScreener, setRunningScreener] = useState(false);
   const [toggling, setToggling] = useState<Set<string>>(new Set());
   const [watchlistSettings, setWatchlistSettings] = useState<WatchlistSettings>({
     autoBacktest: true,
@@ -305,6 +308,39 @@ export default function SettingsWatchlist(): JSX.Element {
             <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginTop: 'var(--spacing-md)', marginBottom: 0 }}>
               The screener will filter the universe using these quantitative criteria, then use AI analysis to identify the most promising candidates.
             </p>
+
+            {canWrite && (
+              <div style={{ marginTop: 'var(--spacing-md)', paddingTop: 'var(--spacing-md)', borderTop: '1px solid var(--color-border)' }}>
+                <button
+                  className={runningScreener ? styles.disabledBtn : styles.saveBtn}
+                  onClick={async () => {
+                    setRunningScreener(true);
+                    try {
+                      addToast('Running screener...', 'info');
+                      const res = await api.strategicJobs.runScreener();
+                      const { symbolsAdded, symbolsUpdated, totalInWatchlist } = res.summary;
+                      addToast(
+                        `Screener complete: ${symbolsAdded.length} added, ${symbolsUpdated.length} updated. Total: ${totalInWatchlist}`,
+                        'success'
+                      );
+                      // Refresh watchlist
+                      const watchlistRes = await api.watchlist.list();
+                      setSymbols(watchlistRes.data);
+                    } catch (err) {
+                      addToast(err instanceof Error ? err.message : 'Screener failed', 'error');
+                    } finally {
+                      setRunningScreener(false);
+                    }
+                  }}
+                  disabled={runningScreener}
+                >
+                  {runningScreener ? 'Running Screener...' : 'Run Screener'}
+                </button>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', marginTop: 'var(--spacing-sm)', marginBottom: 0 }}>
+                  Runs the AI screener to pick symbols from the universe and add them to your watchlist with categories.
+                </p>
+              </div>
+            )}
           </Card>
         </div>
       )}

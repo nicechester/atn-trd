@@ -704,15 +704,39 @@ export const signals = {
 };
 
 // Strategic Jobs
+export interface PlanReviewSummary {
+  regime: string;
+  watchlistCount: number;
+  plansCreated: number;
+  plansSkipped: Array<{ symbol: string; reason: string }>;
+  existingActivePlans: number;
+}
+
+export interface SignalCollectionSummary {
+  symbolsUpdated: number;
+  errors: number;
+  symbols: string[];
+}
+
+export interface WatchlistCurationSummary {
+  symbolsAdded: string[];
+  symbolsUpdated: string[];
+  totalInWatchlist: number;
+  screenerSelections: number;
+}
+
 export const strategicJobs = {
-  collectSignals(): Promise<{ ok: boolean }> {
+  collectSignals(): Promise<{ ok: boolean; summary: SignalCollectionSummary }> {
     return request('/trigger/signal-collection', { method: 'POST' });
   },
-  runPlanner(): Promise<{ ok: boolean }> {
+  runPlanner(): Promise<{ ok: boolean; summary: PlanReviewSummary }> {
     return request('/trigger/plan-review', { method: 'POST' });
   },
   executeTranches(): Promise<{ ok: boolean }> {
     return request('/trigger/tranche-execution', { method: 'POST' });
+  },
+  runScreener(): Promise<{ ok: boolean; summary: WatchlistCurationSummary }> {
+    return request('/trigger/watchlist-curation', { method: 'POST' });
   },
 };
 
