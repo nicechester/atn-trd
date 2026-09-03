@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { api, type StrategicPlan, type PlanTranche, type MarketRegime } from '../api/client';
+import { api, type StrategicPlan, type PlanTranche, type MarketRegime, type PlanReviewSummary } from '../api/client';
 import { Card } from '../components/Card';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
@@ -193,6 +193,7 @@ export default function PlansPage() {
   const [regime, setRegime] = useState<MarketRegime | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [lastResult, setLastResult] = useState<PlanReviewSummary | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(id || null);
   const { addToast } = useToast();
   const { canWrite } = useAuth();
@@ -219,15 +220,22 @@ export default function PlansPage() {
 
   async function runPlanner() {
     setRunning(true);
+    setLastResult(null);
     try {
       addToast('Collecting signals...', 'info');
-      await api.strategicJobs.collectSignals();
+      const signalRes = await api.strategicJobs.collectSignals();
+      addToast(`Signals collected for ${signalRes.summary.symbolsUpdated} symbols`, 'info');
       
       addToast('Running planner...', 'info');
-      await api.strategicJobs.runPlanner();
+      const planRes = await api.strategicJobs.runPlanner();
+      setLastResult(planRes.summary);
       
-      addToast('Planner completed!', 'success');
-      await loadData(); // Refresh
+      if (planRes.summary.plansCreated > 0) {
+        addToast(`Created ${planRes.summary.plansCreated} plans!`, 'success');
+      } else {
+        addToast('No new plans created (see details below)', 'info');
+      }
+      await loadData();
     } catch (e) {
       addToast(e instanceof Error ? e.message : 'Planner failed', 'error');
     } finally {
@@ -258,6 +266,28 @@ export default function PlansPage() {
           <RegimeBadge regime={regime} />
         </div>
       </div>
+
+      {lastResult && (
+        <div className={styles.resultCard}>
+          <h3>Last Planner Run</h3>
+          <p>Regime: <strong>{lastResult.regime}</strong></p>
+          <p>Watchlist symbols: {lastResult.watchlistCount}</p>
+          <p>Positions monitored: {lastResult.positionsCount}</p>
+          <p>Accumulate plans created: <strong>{lastResult.plansCreated}</strong></p>
+          <p>Trim plans created: <strong>{lastResult.trimPlansCreated}</strong></p>
+          <p>Existing active plans: {lastResult.existingActivePlans}</p>
+          {lastResult.plansSkipped.length > 0 && (
+            <details>
+              <summary>Skipped ({lastResult.plansSkipped.length})</summary>
+              <ul className={styles.skipList}>
+                {lastResult.plansSkipped.map((s, i) => (
+                  <li key={i}><strong>{s.symbol}</strong>: {s.reason}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
 
       <h2 className={styles.sectionTitle}>Active Plans ({activePlans.length})</h2>
       {activePlans.length === 0 ? (

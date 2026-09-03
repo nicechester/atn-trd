@@ -231,9 +231,11 @@ export const scheduler = {
 };
 
 // Runs
+export type RunTrigger = 'scheduled' | 'manual' | 'signal_collection' | 'plan_review' | 'tranche_execution' | 'watchlist_curation';
+
 export interface AgentRunRow {
   id: string;
-  trigger: 'scheduled' | 'manual';
+  trigger: RunTrigger;
   status: 'running' | 'succeeded' | 'failed' | 'skipped';
   startedAt: number;
   finishedAt: number | null;
@@ -242,6 +244,7 @@ export interface AgentRunRow {
   error: string | null;
   tokenUsageJson: string | null;
   skipReason: string | null;
+  summaryJson: string | null;
 }
 
 export interface AssessmentRow {
@@ -704,15 +707,41 @@ export const signals = {
 };
 
 // Strategic Jobs
+export interface PlanReviewSummary {
+  regime: string;
+  watchlistCount: number;
+  positionsCount: number;
+  plansCreated: number;
+  trimPlansCreated: number;
+  plansSkipped: Array<{ symbol: string; reason: string }>;
+  existingActivePlans: number;
+}
+
+export interface SignalCollectionSummary {
+  symbolsUpdated: number;
+  errors: number;
+  symbols: string[];
+}
+
+export interface WatchlistCurationSummary {
+  symbolsAdded: string[];
+  symbolsUpdated: string[];
+  totalInWatchlist: number;
+  screenerSelections: number;
+}
+
 export const strategicJobs = {
-  collectSignals(): Promise<{ ok: boolean }> {
+  collectSignals(): Promise<{ ok: boolean; summary: SignalCollectionSummary }> {
     return request('/trigger/signal-collection', { method: 'POST' });
   },
-  runPlanner(): Promise<{ ok: boolean }> {
+  runPlanner(): Promise<{ ok: boolean; summary: PlanReviewSummary }> {
     return request('/trigger/plan-review', { method: 'POST' });
   },
   executeTranches(): Promise<{ ok: boolean }> {
     return request('/trigger/tranche-execution', { method: 'POST' });
+  },
+  runScreener(): Promise<{ ok: boolean; summary: WatchlistCurationSummary }> {
+    return request('/trigger/watchlist-curation', { method: 'POST' });
   },
 };
 

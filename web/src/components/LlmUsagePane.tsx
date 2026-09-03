@@ -18,12 +18,9 @@ interface DailyCost {
   total: number;
 }
 
-interface CurrentModels {
-  analyst: string | null;
-}
-
 export default function LlmUsagePane(): JSX.Element | null {
-  const [currentModels, setCurrentModels] = useState<CurrentModels>({ analyst: null });
+  const [strategicMode, setStrategicMode] = useState<boolean | null>(null);
+  const [llmModel, setLlmModel] = useState<string | null>(null);
   const [dailyCosts, setDailyCosts] = useState<DailyCost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,11 +28,17 @@ export default function LlmUsagePane(): JSX.Element | null {
   useEffect(() => {
     async function load() {
       try {
+        // Check if strategic execution is enabled and get LLM model
+        const settingsRes = await api.settings.get();
+        const isStrategic = settingsRes.data.execution?.enabled ?? false;
+        const model = settingsRes.data.llm?.model ?? null;
+        setStrategicMode(isStrategic);
+        setLlmModel(model);
+
         // Fetch last 100 runs to get telemetry data
         const res = await api.runs.list(100, 0);
         const runs = res.data;
 
-        let latestAnalystModel: string | null = null;
         const costByDate: Record<string, { total: number }> = {};
 
         for (const run of runs) {
@@ -50,11 +53,6 @@ export default function LlmUsagePane(): JSX.Element | null {
 
           if (!telemetry) continue;
 
-          // Get latest models from most recent run (first iteration)
-          if (!latestAnalystModel && telemetry.models?.analyst) {
-            latestAnalystModel = telemetry.models.analyst;
-          }
-
           // Aggregate costs by date
           if (telemetry.cost && run.finishedAt) {
             const date = new Date(run.finishedAt).toISOString().split('T')[0];
@@ -65,22 +63,19 @@ export default function LlmUsagePane(): JSX.Element | null {
           }
         }
 
-        setCurrentModels({
-          analyst: latestAnalystModel,
-        });
-
-        // Convert costByDate to sorted array
+        // Convert costByDate to sorted array (last 7 days)
         const sorted = Object.entries(costByDate)
           .map(([date, costs]) => ({
             date,
             total: costs.total,
           }))
-          .sort((a, b) => a.date.localeCompare(b.date));
+          .sort((a, b) => a.date.localeCompare(b.date))
+          .slice(-7);
 
         setDailyCosts(sorted);
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load LLM usage data');
+        setError(err instanceof Error ? err.message : 'Failed to load data');
       } finally {
         setLoading(false);
       }
@@ -90,10 +85,7 @@ export default function LlmUsagePane(): JSX.Element | null {
   }, []);
 
   if (loading) return null;
-  if (error) return <Card title="LLM Usage"><p style={{ color: 'var(--color-error)' }}>{error}</p></Card>;
-  if (!currentModels.analyst && dailyCosts.length === 0) {
-    return <Card title="LLM Usage"><p style={{ color: 'var(--color-text-muted)' }}>No telemetry data available yet.</p></Card>;
-  }
+  if (error) return <Card title="System Mode"><p style={{ color: 'var(--color-error)' }}>{error}</p></Card>;
 
   const gridStyle: React.CSSProperties = {
     display: 'grid',
@@ -102,32 +94,107 @@ export default function LlmUsagePane(): JSX.Element | null {
     marginBottom: 'var(--spacing-lg)',
   };
 
+  // Strategic mode
+  if (strategicMode) {
+    return (
+      <div style={gridStyle}>
+        <Card title="Execution Mode">
+          <div style={{ fontSize: '0.875rem', lineHeight: '1.8' }}>
+            <div style={{ marginBottom: 'var(--spacing-sm)' }}>
+              <span style={{ 
+                background: 'var(--color-success)', 
+                color: '#052e16', 
+                padding: '2px 8px', 
+                borderRadius: '9999px', 
+                fontSize: '0.75rem',
+                fontWeight: 600 
+              }}>
+                Strategic Plans
+              </span>
+            </div>
+            <div>
+              <strong>Signals:</strong>{' '}
+              <span style={{ fontFamily: 'monospace', color: 'var(--color-text-muted)' }}>
+                FinBERT (no cost)
+              </span>
+            </div>
+            <div>
+              <strong>Plans:</strong>{' '}
+              <span style={{ fontFamily: 'monospace', color: 'var(--color-text-muted)' }}>
+                Rule-based tranches
+              </span>
+            </div>
+            <div>
+              <strong>Screener:</strong>{' '}
+              <span style={{ fontFamily: 'monospace', color: 'var(--color-text-muted)' }}>
+                {llmModel || 'LLM'} (on-demand)
+              </span>
+            </div>
+          </div>
+        </Card>
+
+        <Card title="Daily LLM Cost">
+          <div style={{ fontSize: '0.875rem' }}>
+            {dailyCosts.length === 0 ? (
+              <p style={{ color: 'var(--color-text-muted)' }}>No LLM costs recorded</p>
+            ) : (
+              <div>
+                {dailyCosts.map(day => (
+                  <div key={day.date} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>{day.date}</span>
+                    <span>${day.total.toFixed(4)}</span>
+                  </div>
+                ))}
+                <p style={{ color: 'var(--color-text-muted)', marginTop: 'var(--spacing-sm)', fontSize: '0.75rem' }}>
+                  From screener runs only
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // Trading cycle mode
   return (
     <div style={gridStyle}>
-      <Card title="Current Models">
-        <div style={{ fontSize: '0.875rem', lineHeight: '1.6' }}>
+      <Card title="Execution Mode">
+        <div style={{ fontSize: '0.875rem', lineHeight: '1.8' }}>
+          <div style={{ marginBottom: 'var(--spacing-sm)' }}>
+            <span style={{ 
+              background: 'var(--color-info)', 
+              color: '#0c1a3e', 
+              padding: '2px 8px', 
+              borderRadius: '9999px', 
+              fontSize: '0.75rem',
+              fontWeight: 600 
+            }}>
+              Trading Cycle
+            </span>
+          </div>
           <div>
-            <strong>Screener:</strong>{' '}
+            <strong>Model:</strong>{' '}
             <span style={{ fontFamily: 'monospace', color: 'var(--color-text-muted)' }}>
-              {currentModels.analyst || 'Not configured'}
+              {llmModel || 'Not configured'}
             </span>
           </div>
           <div>
             <strong>Analyst:</strong>{' '}
             <span style={{ fontFamily: 'monospace', color: 'var(--color-text-muted)' }}>
-              {currentModels.analyst || 'Not configured'}
+              LLM research
             </span>
           </div>
           <div>
-            <strong>Portfolio Manager:</strong>{' '}
+            <strong>Portfolio Mgr:</strong>{' '}
             <span style={{ fontFamily: 'monospace', color: 'var(--color-text-muted)' }}>
-              FinBERT (rule-based)
+              LLM decisions
             </span>
           </div>
         </div>
       </Card>
 
-      <Card title="Daily Cost Trends">
+      <Card title="Daily LLM Cost">
         <div style={{ fontSize: '0.875rem' }}>
           {dailyCosts.length === 0 ? (
             <p style={{ color: 'var(--color-text-muted)' }}>No cost data</p>
@@ -142,23 +209,17 @@ export default function LlmUsagePane(): JSX.Element | null {
                         <span>{day.date}</span>
                         <span>${day.total.toFixed(4)}</span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', fontSize: '0.75rem' }}>
-                        <div
-                          style={{
-                            width: `${(day.total / maxCost) * 100}%`,
-                            background: 'var(--color-info)',
-                            height: '16px',
-                            borderRadius: '2px',
-                            minWidth: '4px',
-                          }}
-                          title={`LLM Cost: $${day.total.toFixed(4)}`}
-                        />
-                      </div>
+                      <div
+                        style={{
+                          width: `${(day.total / maxCost) * 100}%`,
+                          background: 'var(--color-info)',
+                          height: '12px',
+                          borderRadius: '2px',
+                          minWidth: '4px',
+                        }}
+                      />
                     </div>
                   ))}
-                  <div style={{ marginTop: '12px', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                    <span style={{ display: 'inline-block', width: '12px', height: '12px', background: 'var(--color-info)', borderRadius: '2px', marginRight: '4px' }} /> LLM (Screener + Analyst)
-                  </div>
                 </div>
               );
             })()

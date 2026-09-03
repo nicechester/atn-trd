@@ -8,6 +8,7 @@
 .actions { margin-top: var(--spacing-xl); margin-bottom: var(--spacing-xl); }
 .saveBtn { padding: var(--spacing-xs) var(--spacing-md); border-radius: var(--radius-sm); background: var(--color-primary); color: white; border: none; cursor: pointer; font-size: inherit; min-height: var(--touch-target-min); }
 .saveBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+.disabledBtn { padding: var(--spacing-xs) var(--spacing-md); border-radius: var(--radius-sm); background: var(--color-border); color: var(--color-text-muted); border: none; cursor: not-allowed; font-size: inherit; min-height: var(--touch-target-min); }
 .warning { color: var(--color-error, #f87171); font-size: 0.75rem; margin-top: var(--spacing-xs); }
 
 .helpList { margin: 0; padding: 0; }

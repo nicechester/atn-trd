@@ -42,6 +42,7 @@ import { runMarketOpenFillJob } from '../scheduler/jobs/marketOpenFill.js';
 import { runSignalCollectionJob } from '../scheduler/jobs/signalCollection.js';
 import { runPlanReviewJob } from '../scheduler/jobs/planReviewJob.js';
 import { runTrancheExecutorJob } from '../scheduler/jobs/trancheExecutor.js';
+import { runWatchlistCuration } from '../services/watchlistCurationService.js';
 
 const log = logger.child({ component: 'trigger-route' });
 
@@ -264,6 +265,23 @@ export async function triggerTrancheExecutionHandler(
     res.json({ ok: true, summary });
   } catch (err) {
     log.error('tranche execution failed', { error: err instanceof Error ? err.message : String(err) });
+    next(err);
+  }
+}
+
+/** POST /api/trigger/watchlist-curation - Manual trigger to run screener and populate watchlist */
+export async function triggerWatchlistCurationHandler(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  log.info('watchlist curation triggered manually');
+  try {
+    const db = getDatabase();
+    const summary = await runWatchlistCuration(db);
+    res.json({ ok: true, summary });
+  } catch (err) {
+    log.error('watchlist curation failed', { error: err instanceof Error ? err.message : String(err) });
     next(err);
   }
 }

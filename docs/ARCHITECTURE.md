@@ -163,6 +163,14 @@ erDiagram
 
 ## Key Design Decisions
 
+### Two Execution Modes
+The system supports two mutually exclusive execution modes:
+
+1. **Trading Cycle (LLM-driven)**: Daily LLM analyst research → decisions → orders
+2. **Strategic Plans (rule-based)**: FinBERT signals → plan review → tranched execution
+
+When `settings.execution.enabled` is true, the trading cycle is skipped and strategic plans take over. The dashboard shows the current mode.
+
 ### Singleton settings document
 `app_settings` holds a single JSON document (`id = 1`). Reads deserialize + validate with Zod; writes deep-merge the patch over the existing document. This avoids per-field schema migrations as settings evolve.
 
@@ -177,3 +185,38 @@ DB values take precedence; env vars (`LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`) 
 
 ### Single Node process
 Express routes and the croner scheduler run in the same process. Both are I/O-bound; no worker threads needed in Phase 1.
+
+## Strategic Trading Architecture
+
+See [08-strategic-trading.md](08-strategic-trading.md) for detailed design.
+
+```mermaid
+graph TD
+    subgraph Daily Jobs
+        SC[Signal Collection] -->|FinBERT| SS[(signal_snapshots)]
+        RD[Regime Detection] -->|VIX/breadth| MR[(market_regime)]
+    end
+    
+    subgraph Weekly Jobs
+        PR[Plan Review] -->|threshold check| SP[(strategic_plans)]
+    end
+    
+    subgraph Daily Execution
+        TE[Tranche Executor] -->|regime + timing| PT[(plan_tranches)]
+        PT --> Orders
+    end
+    
+    SS --> PR
+    MR --> PR
+    MR --> TE
+    SP --> TE
+```
+
+### Job Types
+| Job | Trigger | Uses LLM? | Output |
+|-----|---------|-----------|--------|
+| Signal Collection | Daily | No (FinBERT) | signal_snapshots |
+| Regime Detection | Daily | No | market_regime |
+| Plan Review | Weekly/Manual | No | strategic_plans |
+| Tranche Execution | Daily | No | plan_tranches, orders |
+| Watchlist Curation | Manual | **Yes** (Screener) | watchlist, symbol_categories |

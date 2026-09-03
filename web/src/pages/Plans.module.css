@@ -42,6 +42,46 @@
   font-size: 0.875rem;
 }
 
+.resultCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.resultCard h3 {
+  margin: 0 0 var(--spacing-sm);
+  font-size: 1rem;
+}
+
+.resultCard p {
+  margin: var(--spacing-xs) 0;
+  font-size: 0.875rem;
+}
+
+.resultCard details {
+  margin-top: var(--spacing-sm);
+}
+
+.resultCard summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--color-primary);
+}
+
+.skipList {
+  margin: var(--spacing-sm) 0 0;
+  padding-left: var(--spacing-md);
+  font-size: 0.75rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.skipList li {
+  margin: var(--spacing-xs) 0;
+}
+
 /* Regime Badge */
 .regimeOn, .regimeOff, .regimeNeutral, .regimeUnknown {
   display: flex;
