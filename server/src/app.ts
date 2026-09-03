@@ -38,6 +38,7 @@ import { runProgressStreamHandler } from './routes/runProgress.js';
 import { triggerBackfillHandler, listTrackedSymbolsHandler } from './routes/prices.js';
 import { createBacktestRoutes } from './routes/backtest.js';
 import { listPlansHandler, getPlanHandler, getCurrentRegimeHandler, getSignalHistoryHandler } from './routes/plans.js';
+import { listReportsHandler, getReportHandler, generateReportHandler } from './routes/reports.js';
 import { getDatabase } from './db/index.js';
 
 interface AppOptions {
@@ -105,6 +106,8 @@ export function createApp(options: AppOptions = {}): Express {
   app.get('/api/plans/:id', requireAuth, getPlanHandler);
   app.get('/api/regime/current', requireAuth, getCurrentRegimeHandler);
   app.get('/api/signals/:symbol', requireAuth, getSignalHistoryHandler);
+  app.get('/api/reports', requireAuth, listReportsHandler);
+  app.get('/api/reports/:id', requireAuth, getReportHandler);
 
   // Write routes (chester only)
   app.patch('/api/settings', requireAuth, requireWrite, patchSettingsHandler);
@@ -125,6 +128,7 @@ export function createApp(options: AppOptions = {}): Express {
   app.post('/api/trades/pending/cancel-bulk', requireAuth, requireWrite, cancelPendingOrdersBulkHandler);
   app.post('/api/trades/pending/:id/cancel', requireAuth, requireWrite, cancelPendingOrderHandler);
   app.post('/api/prices/backfill', requireAuth, requireWrite, triggerBackfillHandler);
+  app.post('/api/reports/generate', requireAuth, requireWrite, generateReportHandler);
 
   // Backtest routes (require auth, write operations need write permission)
   app.use('/api/backtest', requireAuth, createBacktestRoutes(getDatabase()));
