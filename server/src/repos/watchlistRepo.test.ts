@@ -238,4 +238,71 @@ describe("WatchlistRepo", () => {
       assert.equal(result.symbol, sym);
     });
   });
+
+  it("removeSymbol() records tombstone: after add + remove, addSymbolIfNotRemoved() returns null", () => {
+    repo.addSymbol("AAPL");
+    repo.removeSymbol("AAPL");
+
+    // Symbol should be deleted from watchlist
+    assert.equal(repo.get("AAPL"), undefined);
+
+    // Trying to auto-add should return null (user explicitly removed it)
+    const result = repo.addSymbolIfNotRemoved("AAPL", "Auto-added from position");
+    assert.equal(result, null);
+
+    // Symbol should still not exist in watchlist
+    assert.equal(repo.get("AAPL"), undefined);
+  });
+
+  it("addSymbol() clears tombstone: after remove, calling addSymbol() directly clears tombstone", () => {
+    repo.addSymbol("AAPL", "Original");
+    repo.removeSymbol("AAPL");
+
+    // Manually re-add via addSymbol()
+    const reAdded = repo.addSymbol("AAPL", "Manually re-added");
+    assert.ok(reAdded);
+    assert.equal(reAdded.symbol, "AAPL");
+
+    // Now auto-add should work (tombstone was cleared)
+    const autoAdd = repo.addSymbolIfNotRemoved("AAPL", "Auto-added");
+    assert.ok(autoAdd);
+    assert.equal(autoAdd.symbol, "AAPL");
+  });
+
+  it("addSymbolIfNotRemoved() inserts new symbol when nothing exists and not tombstoned", () => {
+    const result = repo.addSymbolIfNotRemoved("GOOGL", "Auto-added from position");
+
+    assert.ok(result);
+    assert.equal(result.symbol, "GOOGL");
+    assert.equal(result.note, "Auto-added from position");
+    assert.equal(result.enabled, true);
+    assert.ok(repo.get("GOOGL"));
+  });
+
+  it("addSymbolIfNotRemoved() respects existing rows without mutation", () => {
+    repo.addSymbol("MSFT", "Original note");
+    repo.disableSymbol("MSFT");
+
+    const first = repo.get("MSFT");
+    assert.ok(first);
+    assert.equal(first.enabled, false);
+    assert.equal(first.note, "Original note");
+
+    // Try to auto-add with different note
+    const result = repo.addSymbolIfNotRemoved("MSFT", "Different note");
+
+    assert.ok(result);
+    assert.deepEqual(result, first, "should return existing row without changes");
+    assert.equal(result.enabled, false, "enabled should not change");
+    assert.equal(result.note, "Original note", "note should not change");
+  });
+
+  it("addSymbolIfNotRemoved() normalizes symbols", () => {
+    const result = repo.addSymbolIfNotRemoved("  tsla  ", "Auto-added from position");
+
+    assert.ok(result);
+    assert.equal(result.symbol, "TSLA");
+    assert.ok(repo.get("TSLA"));
+    assert.equal(repo.get("tsla"), undefined, "lowercase lookup should not find it");
+  });
 });

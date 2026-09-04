@@ -5,6 +5,7 @@ import { OrdersRepo, type OrderRow } from '../repos/ordersRepo.js';
 import { FillsRepo } from '../repos/fillsRepo.js';
 import { PositionsRepo, type PositionRow } from '../repos/positionsRepo.js';
 import { PortfolioRepo, type PortfolioRow } from '../repos/portfolioRepo.js';
+import { WatchlistRepo } from '../repos/watchlistRepo.js';
 import { DecisionsRepo } from '../repos/decisionsRepo.js';
 import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
 import type { SemanticMemoryService } from '../services/semanticMemoryService.js';
@@ -53,6 +54,7 @@ export class PaperBroker implements Broker {
   private readonly fillsRepo: FillsRepo;
   private readonly positionsRepo: PositionsRepo;
   private readonly portfolioRepo: PortfolioRepo;
+  private readonly watchlistRepo: WatchlistRepo;
   private readonly db: Database.Database;
   private readonly config: PaperBrokerConfig;
   private readonly outcomeDeps?: PaperBrokerOutcomeDeps;
@@ -74,6 +76,7 @@ export class PaperBroker implements Broker {
     this.fillsRepo = fillsRepo;
     this.positionsRepo = positionsRepo;
     this.portfolioRepo = portfolioRepo;
+    this.watchlistRepo = new WatchlistRepo(db);
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.outcomeDeps = outcomeDeps;
   }
@@ -572,6 +575,11 @@ export class PaperBroker implements Broker {
         qty: newPosition.qty,
         avgCostCents: newPosition.avgCostCents,
       });
+
+      // Auto-add to watchlist on buy fills
+      if (req.side === 'buy') {
+        this.watchlistRepo.addSymbolIfNotRemoved(req.symbol, 'Auto-added from position');
+      }
     })();
 
     // Fire-and-forget: embed the realized trade outcome for semantic memory.

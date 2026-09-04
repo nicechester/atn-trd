@@ -11,6 +11,7 @@ import { FillsRepo } from '../../repos/fillsRepo.js';
 import { PositionsRepo, type PositionRow } from '../../repos/positionsRepo.js';
 import { PortfolioRepo } from '../../repos/portfolioRepo.js';
 import { PricesRepo } from '../../repos/pricesRepo.js';
+import { WatchlistRepo } from '../../repos/watchlistRepo.js';
 import { nextTradingDateStr, toETDateStr, isMarketHours, isTradingDay } from '../marketCalendar.js';
 import { notionalCents } from '../../lib/money.js';
 import { logger } from '../../lib/logger.js';
@@ -75,6 +76,7 @@ export async function runMarketOpenFillJob(
   const positionsRepo = new PositionsRepo(db);
   const portfolioRepo = new PortfolioRepo(db);
   const pricesRepo = new PricesRepo(db);
+  const watchlistRepo = new WatchlistRepo(db);
 
   const accepted = ordersRepo.list({ status: ['accepted'] });
   const todayStr = toETDateStr(new Date());
@@ -208,6 +210,12 @@ export async function runMarketOpenFillJob(
       }
 
       positionsRepo.upsert(newPosition);
+
+      // Auto-add to watchlist on buy fills
+      if (order.side === 'buy') {
+        watchlistRepo.addSymbolIfNotRemoved(order.symbol, 'Auto-added from position');
+      }
+
       ordersRepo.updateStatus(order.id, 'filled');
     })();
 
