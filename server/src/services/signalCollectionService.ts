@@ -21,7 +21,6 @@ export interface SignalCollectionDeps {
   signalSnapshotsRepo: SignalSnapshotsRepo;
   pricesRepo: PricesRepo;
   watchlistRepo: WatchlistRepo;
-  positionSymbols: string[];
   newsSource: NewsDataSource;
   getSettings: () => Settings;
 }
@@ -224,7 +223,7 @@ async function collectSymbolSignals(
  * Does NOT make any trading decisions.
  */
 export async function runSignalCollection(deps: SignalCollectionDeps): Promise<CollectionResult[]> {
-  const { watchlistRepo, positionSymbols, getSettings } = deps;
+  const { watchlistRepo, getSettings } = deps;
   const settings = getSettings();
 
   if (!settings.signals.enabled) {
@@ -234,17 +233,14 @@ export async function runSignalCollection(deps: SignalCollectionDeps): Promise<C
 
   const snapshotDate = new Date().toISOString().split('T')[0];
   const watchlist = watchlistRepo.list().filter(w => w.enabled);
-  const watchlistSymbols = watchlist.map(w => w.symbol);
-
-  // Union of watchlist + positions (deduplicated)
-  const allSymbols = [...new Set([...watchlistSymbols, ...positionSymbols])];
+  const allSymbols = watchlist.map(w => w.symbol);
 
   if (allSymbols.length === 0) {
-    log.info('no symbols in watchlist or positions');
+    log.info('no symbols in watchlist');
     return [];
   }
 
-  log.info('starting signal collection', { date: snapshotDate, symbolCount: allSymbols.length, fromWatchlist: watchlistSymbols.length, fromPositions: positionSymbols.length });
+  log.info('starting signal collection', { date: snapshotDate, symbolCount: allSymbols.length });
 
   const results: CollectionResult[] = [];
 

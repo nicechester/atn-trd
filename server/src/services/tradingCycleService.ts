@@ -425,10 +425,6 @@ class TradingCycleServiceImpl implements TradingCycleService {
           .map(s => s.symbol);
       }
 
-      // Always include existing portfolio positions to ensure re-analysis
-      const positionSymbols = portfolio.positions.map(p => p.symbol);
-      symbols = Array.from(new Set([...symbols, ...positionSymbols])); // deduplicate
-
       if (symbols.length === 0) {
         this.deps.runsRepo.setSkipped(runId, 'no symbols to analyze');
         return;

@@ -11,7 +11,6 @@ import { runSignalCollection } from '../../services/signalCollectionService.js';
 import { SignalSnapshotsRepo } from '../../repos/signalSnapshotsRepo.js';
 import { PricesRepo } from '../../repos/pricesRepo.js';
 import { WatchlistRepo } from '../../repos/watchlistRepo.js';
-import { PositionsRepo } from '../../repos/positionsRepo.js';
 import { RunsRepo, type RunTrigger } from '../../repos/runsRepo.js';
 import { dataSourceRegistry } from '../../datasources/registry.js';
 import type { NewsDataSource } from '../../datasources/news/index.js';
@@ -42,12 +41,13 @@ export async function runSignalCollectionJob(
   };
 
   // Create run record
+  const model = settings.signals.useLlm ? settings.llm.model : null;
   const runId = runsRepo.create({
     trigger,
     status: 'running',
     startedAt: Date.now(),
     finishedAt: null,
-    model: null,
+    model,
     settingsSnapshot: JSON.stringify(settings),
     error: null,
     tokenUsageJson: null,
@@ -69,17 +69,12 @@ export async function runSignalCollectionJob(
     const signalSnapshotsRepo = new SignalSnapshotsRepo(db);
     const pricesRepo = new PricesRepo(db);
     const watchlistRepo = new WatchlistRepo(db);
-    const positionsRepo = new PositionsRepo(db);
     const newsSource = dataSourceRegistry.get('news') as unknown as NewsDataSource;
-
-    // Get position symbols to include in signal collection
-    const positionSymbols = positionsRepo.list().map(p => p.symbol);
 
     const results = await runSignalCollection({
       signalSnapshotsRepo,
       pricesRepo,
       watchlistRepo,
-      positionSymbols,
       newsSource,
       getSettings,
     });
