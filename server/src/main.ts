@@ -4,6 +4,7 @@ import { initializeDatabase, closeDatabase } from './db/index.js';
 import { runMigrations } from './db/migrate.js';
 import { createApp } from './app.js';
 import { startScheduler, stopScheduler } from './scheduler/index.js';
+import { prewarmFinBERT } from './services/finbertService.js';
 import { logger } from './lib/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,6 +26,21 @@ async function main(): Promise<void> {
     const migrationsDir = path.join(__dirname, 'db', 'migrations');
     runMigrations(db, migrationsDir);
     logger.info('Migrations complete');
+
+    // Clean up orphaned "running" jobs from previous crash/restart
+    const orphaned = db.prepare(`
+      UPDATE agent_runs 
+      SET status = 'failed', error = 'interrupted by server restart', finished_at = ?
+      WHERE status = 'running'
+    `).run(Date.now());
+    if (orphaned.changes > 0) {
+      logger.info('Cleaned up orphaned running jobs', { count: orphaned.changes });
+    }
+
+    // Pre-warm FinBERT model to avoid OOM during signal collection
+    logger.info('Pre-warming FinBERT model...');
+    await prewarmFinBERT();
+    logger.info('FinBERT model ready');
 
     // Start Express when role is 'all' or 'web'
     if (ATN_ROLE === 'all' || ATN_ROLE === 'web') {
