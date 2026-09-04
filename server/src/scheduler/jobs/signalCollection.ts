@@ -41,12 +41,13 @@ export async function runSignalCollectionJob(
   };
 
   // Create run record
+  const model = settings.signals.useLlm ? settings.llm.model : null;
   const runId = runsRepo.create({
     trigger,
     status: 'running',
     startedAt: Date.now(),
     finishedAt: null,
-    model: null,
+    model,
     settingsSnapshot: JSON.stringify(settings),
     error: null,
     tokenUsageJson: null,

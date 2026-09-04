@@ -58,7 +58,7 @@ export function getPortfolioHistoryHandler(req: Request, res: Response, next: Ne
 
 const TransferSchema = z.object({
   amountCents: z.number().int(),
-  type: z.enum(['deposit', 'withdraw']),
+  type: z.enum(['deposit', 'withdrawal']),
 });
 
 const InitSchema = z.object({
