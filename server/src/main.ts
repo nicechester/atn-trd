@@ -37,11 +37,6 @@ async function main(): Promise<void> {
       logger.info('Cleaned up orphaned running jobs', { count: orphaned.changes });
     }
 
-    // Pre-warm FinBERT model to avoid OOM during signal collection
-    logger.info('Pre-warming FinBERT model...');
-    await prewarmFinBERT();
-    logger.info('FinBERT model ready');
-
     // Start Express when role is 'all' or 'web'
     if (ATN_ROLE === 'all' || ATN_ROLE === 'web') {
       let staticRoot: string | undefined;
@@ -76,6 +71,13 @@ async function main(): Promise<void> {
     if (ATN_ROLE === 'all' || ATN_ROLE === 'worker') {
       startScheduler();
     }
+
+    // Pre-warm FinBERT model in background (non-blocking)
+    // This loads the model before signal collection needs it
+    logger.info('Pre-warming FinBERT model in background...');
+    prewarmFinBERT()
+      .then(() => logger.info('FinBERT model ready'))
+      .catch((err) => logger.error('Failed to pre-warm FinBERT', { error: String(err) }));
 
     // Graceful shutdown
     const signals = ['SIGTERM', 'SIGINT'];
