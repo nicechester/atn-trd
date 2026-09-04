@@ -9,6 +9,7 @@ import { PortfolioRepo } from '../../repos/portfolioRepo.js';
 import { PricesRepo } from '../../repos/pricesRepo.js';
 import { SnapshotsRepo } from '../../repos/snapshotsRepo.js';
 import { CalibrationRepo } from '../../repos/calibrationRepo.js';
+import { RunsRepo } from '../../repos/runsRepo.js';
 
 const log = logger.child({ component: 'snapshot-job' });
 
@@ -25,12 +26,37 @@ function computeCorrectDirection(direction: string, return5d: number): number {
  */
 export async function runSnapshotJob(db: Database.Database): Promise<void> {
   const now = new Date();
+  const runsRepo = new RunsRepo(db);
 
-  // Skip on non-trading days
   if (!isTradingDay(now)) {
-    log.info('not a trading day, skipping snapshot job');
+    const runId = runsRepo.create({
+      trigger: 'snapshot',
+      status: 'running',
+      startedAt: Date.now(),
+      finishedAt: null,
+      model: null,
+      settingsSnapshot: JSON.stringify({}),
+      error: null,
+      tokenUsageJson: null,
+      skipReason: null,
+      summaryJson: null,
+    });
+    runsRepo.setSkipped(runId, 'not a trading day');
     return;
   }
+
+  const runId = runsRepo.create({
+    trigger: 'snapshot',
+    status: 'running',
+    startedAt: Date.now(),
+    finishedAt: null,
+    model: null,
+    settingsSnapshot: JSON.stringify({}),
+    error: null,
+    tokenUsageJson: null,
+    skipReason: null,
+    summaryJson: null,
+  });
 
   try {
     // Wire up repos and services
@@ -62,7 +88,8 @@ export async function runSnapshotJob(db: Database.Database): Promise<void> {
         benchmarkSnapshotId: result.benchmarkSnapshotId,
       });
     } else if (result.status === 'skipped') {
-      log.info('snapshot job skipped', { reason: result.reason });
+      runsRepo.setSkipped(runId, result.reason || 'skipped');
+      return;
     }
 
     // Backfill pending calibration rows
@@ -92,8 +119,10 @@ export async function runSnapshotJob(db: Database.Database): Promise<void> {
     } catch (err) {
       log.warn('calibration backfill failed', { error: err instanceof Error ? err.message : String(err) });
     }
+
+    runsRepo.updateStatus(runId, 'succeeded');
   } catch (err) {
-    // Log error but don't throw - snapshot failures are non-critical
+    runsRepo.updateStatus(runId, 'failed', err instanceof Error ? err.message : String(err));
     log.warn('snapshot job failed', {
       error: err instanceof Error ? err.message : String(err),
     });

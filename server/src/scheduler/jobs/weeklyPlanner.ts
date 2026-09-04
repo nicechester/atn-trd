@@ -13,7 +13,7 @@ const log = logger.child({ component: 'weekly-planner-job' });
 
 export async function runWeeklyPlannerJob(db: Database.Database): Promise<void> {
   try {
-    const summary = await runPlanReviewJob(db, 'plan_review');
+    const summary = await runPlanReviewJob(db, 'weekly_planner');
     log.info('weekly planner job complete', { ...summary });
   } catch (err) {
     log.error('weekly planner job failed', { error: err instanceof Error ? err.message : String(err) });
