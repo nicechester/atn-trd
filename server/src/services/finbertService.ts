@@ -65,6 +65,14 @@ export async function scoreFinBERT(text: string): Promise<FinBERTResult> {
 }
 
 /**
+ * Pre-warm the FinBERT model by loading it into memory.
+ * Call this at startup to avoid OOM during signal collection.
+ */
+export async function prewarmFinBERT(): Promise<void> {
+  await getPipeline();
+}
+
+/**
  * Batch score multiple texts.
  */
 export async function scoreFinBERTBatch(texts: string[]): Promise<FinBERTResult[]> {

@@ -6,7 +6,10 @@ export type RunTrigger =
   | 'signal_collection'
   | 'plan_review'
   | 'tranche_execution'
-  | 'watchlist_curation';
+  | 'watchlist_curation'
+  | 'regime_detection'
+  | 'snapshot'
+  | 'weekly_planner';
 
 export interface AgentRunRow {
   id: string;
