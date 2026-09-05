@@ -9,8 +9,8 @@ steps:
     args:
       - '-c'
       - |
-        VERSION=$(cat finbert-server/VERSION)
-        docker build --build-arg VERSION=$VERSION \
+        VERSION=$$(cat finbert-server/VERSION)
+        docker build --build-arg VERSION=$$VERSION \
           -t us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/finbert:$SHORT_SHA \
           -t us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/finbert:latest \
           finbert-server
