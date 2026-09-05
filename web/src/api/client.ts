@@ -715,6 +715,7 @@ export interface PlanReviewSummary {
   trimPlansCreated: number;
   plansSkipped: Array<{ symbol: string; reason: string }>;
   existingActivePlans: number;
+  symbolsPruned: string[];
 }
 
 export interface SignalCollectionSummary {
