@@ -1,11 +1,27 @@
 steps:
-  # Build Docker image
+  # Build app image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/app:$SHORT_SHA', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/app:latest', '.']
 
-  # Push image
+  # Build finbert image with version label
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        VERSION=$(cat finbert-server/VERSION)
+        docker build --build-arg VERSION=$VERSION \
+          -t us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/finbert:$SHORT_SHA \
+          -t us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/finbert:latest \
+          finbert-server
+
+  # Push app image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/app']
+
+  # Push finbert image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/finbert']
 
   # Deploy to VM
   - name: 'gcr.io/cloud-builders/gcloud'
@@ -14,17 +30,64 @@ steps:
       - '-c'
       - |
         gcloud compute ssh atn-trd-vm --zone=us-central1-a --tunnel-through-iap --command='
+          set -e
+
+          # Create network if not exists
+          sudo docker network create atn-net 2>/dev/null || true
+
+          # Pull app image
           sudo docker --config /mnt/stateful_partition/.docker pull us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/app:latest
-          sudo docker stop atn-trd 2>/dev/null || true
+
+          # Check if finbert needs restart (compare version label)
+          OLD_VERSION=$(sudo docker inspect finbert --format="{{.Config.Labels.version}}" 2>/dev/null || echo "none")
+          sudo docker --config /mnt/stateful_partition/.docker pull us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/finbert:latest
+          NEW_VERSION=$(sudo docker inspect us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/finbert:latest --format="{{.Config.Labels.version}}")
+
+          # Start finbert if not running or version changed
+          if [ "$OLD_VERSION" = "none" ]; then
+            echo "FinBERT not running, starting..."
+            sudo docker run -d --name finbert --network atn-net --restart=unless-stopped \
+              us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/finbert:latest
+            echo "Waiting for FinBERT to be ready..."
+            for i in $(seq 1 60); do
+              if sudo docker exec finbert curl -s http://localhost:5000/health > /dev/null 2>&1; then
+                echo "FinBERT ready after ${i}s"
+                break
+              fi
+              sleep 1
+            done
+          elif [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
+            echo "FinBERT version changed ($OLD_VERSION -> $NEW_VERSION), restarting..."
+            sudo docker stop finbert 2>/dev/null || true
+            sudo docker rm finbert 2>/dev/null || true
+            sudo docker run -d --name finbert --network atn-net --restart=unless-stopped \
+              us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/finbert:latest
+            echo "Waiting for FinBERT to be ready..."
+            for i in $(seq 1 60); do
+              if sudo docker exec finbert curl -s http://localhost:5000/health > /dev/null 2>&1; then
+                echo "FinBERT ready after ${i}s"
+                break
+              fi
+              sleep 1
+            done
+          else
+            echo "FinBERT version unchanged ($OLD_VERSION), skipping restart"
+          fi
+
+          # Always restart app container
+          sudo docker stop -t 30 atn-trd 2>/dev/null || true
           sudo docker rm atn-trd 2>/dev/null || true
-          sudo docker run -d --name atn-trd --restart=unless-stopped \
+          sudo docker run -d --name atn-trd --network atn-net --restart=unless-stopped \
             -p 8080:8080 \
             -v /mnt/stateful_partition/data:/app/data \
             --env-file /mnt/stateful_partition/.env \
             us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/app:latest
+
+          # Cleanup old images
+          sudo docker image prune -a -f
         '
 
 options:
   logging: CLOUD_LOGGING_ONLY
 
-timeout: '600s'
+timeout: '900s'
