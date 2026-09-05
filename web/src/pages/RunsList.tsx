@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { runs as runsApi, type AgentRunRow, type RunTrigger } from '../api/client';
+import { runs as runsApi, type AgentRunRow } from '../api/client';
 import { formatTimestamp, formatDuration } from '../lib/format';
 import { useToast } from '../context/ToastContext';
 import styles from './RunsList.module.css';

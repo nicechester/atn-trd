@@ -58,6 +58,11 @@ export const SettingsSchema = z.object({
       minVolume: z.number().min(0).default(1000000),
       minMarketCap: z.number().min(0).default(0),
     }).default({}),
+    pruning: z.object({
+      enabled: z.boolean().default(true),
+      scoreThreshold: z.number().min(-1).max(0).default(-0.3),
+      consecutiveDaysBelow: z.number().int().min(1).max(30).default(5),
+    }).default({}),
   }).default({}),
 
   dataSources: z.object({
@@ -229,6 +234,11 @@ export const DEFAULT_SETTINGS: Settings = {
       maxPrice: 10000,
       minVolume: 1000000,
       minMarketCap: 0,
+    },
+    pruning: {
+      enabled: true,
+      scoreThreshold: -0.3,
+      consecutiveDaysBelow: 5,
     },
   },
   dataSources: {

@@ -100,6 +100,22 @@ export class SignalSnapshotsRepo {
       .all(symbol, fromDate, toDate) as SignalSnapshotRow[];
   }
 
+  /** Get recent N snapshots to check consecutive days below threshold */
+  getRecentSnapshots(symbol: string, days: number): SignalSnapshotRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, symbol, snapshot_date as snapshotDate, price_cents as priceCents,
+           sentiment_score as sentimentScore, sentiment_confidence as sentimentConfidence,
+           sentiment_trend as sentimentTrend, price_vs_sma50 as priceVsSma50,
+           composite_score as compositeScore, composite_ewma as compositeEwma,
+           created_at as createdAt
+         FROM signal_snapshots
+         WHERE symbol = ?
+         ORDER BY snapshot_date DESC LIMIT ?`
+      )
+      .all(symbol, days) as SignalSnapshotRow[];
+  }
+
   /** Get previous N days of sentiment scores for trend calculation */
   getRecentSentiment(symbol: string, days: number): Array<{ snapshotDate: string; sentimentScore: number }> {
     return this.db

@@ -33,6 +33,7 @@ export interface PlanReviewSummary {
   trimPlansCreated: number;
   plansSkipped: Array<{ symbol: string; reason: string }>;
   existingActivePlans: number;
+  symbolsPruned: string[];
 }
 
 function computeTargetAllocation(
@@ -70,6 +71,7 @@ export async function runPlanReviewJob(
     trimPlansCreated: 0,
     plansSkipped: [],
     existingActivePlans: 0,
+    symbolsPruned: [],
   };
 
   // Create run record
@@ -254,6 +256,39 @@ export async function runPlanReviewJob(
       });
 
       summary.trimPlansCreated++;
+    }
+
+    // --- PRUNE watchlist symbols with sustained negative scores ---
+    if (settings.watchlist.pruning.enabled) {
+      const { scoreThreshold, consecutiveDaysBelow } = settings.watchlist.pruning;
+      const positionSymbols = new Set(positions.map(p => p.symbol));
+      const activeplanSymbols = new Set(strategicPlansRepo.listActive().map(p => p.symbol));
+
+      for (const item of watchlist) {
+        // Skip if we hold a position
+        if (positionSymbols.has(item.symbol)) continue;
+        // Skip if there's an active plan
+        if (activeplanSymbols.has(item.symbol)) continue;
+
+        // Check recent signals
+        const snapshots = signalSnapshotsRepo.getRecentSnapshots(item.symbol, consecutiveDaysBelow);
+        if (snapshots.length < consecutiveDaysBelow) continue;
+
+        // Check if all recent scores are below threshold
+        const allBelowThreshold = snapshots.every(s => {
+          const score = s.compositeEwma ?? s.compositeScore;
+          return score !== null && score < scoreThreshold;
+        });
+
+        if (allBelowThreshold) {
+          watchlistRepo.removeSymbol(item.symbol);
+          summary.symbolsPruned.push(item.symbol);
+          log.info('pruned watchlist symbol', {
+            symbol: item.symbol,
+            reason: `score below ${scoreThreshold} for ${consecutiveDaysBelow} consecutive days`,
+          });
+        }
+      }
     }
 
     runsRepo.updateStatus(runId, 'succeeded');
