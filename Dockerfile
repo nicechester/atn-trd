@@ -1,7 +1,5 @@
-FROM node:24-slim AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
-
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json tsconfig.base.json ./
 COPY shared/package*.json ./shared/
@@ -17,10 +15,10 @@ RUN npm run build --workspace=shared
 RUN npm run build --workspace=web
 RUN cp -r web/dist server/public
 
-FROM node:24-slim
+FROM node:24-alpine
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y sqlite3 && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache sqlite
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/server ./server

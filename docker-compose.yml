@@ -1,4 +1,14 @@
 services:
+  finbert:
+    build: ./finbert-server
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
   app:
     build:
       context: .
@@ -16,6 +26,10 @@ services:
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_API_URL: ${LLM_API_URL}
       LLM_MODEL: ${LLM_MODEL}
+      FINBERT_URL: http://finbert:5000
     volumes:
       - ./data:/data
+    depends_on:
+      finbert:
+        condition: service_healthy
     restart: unless-stopped
