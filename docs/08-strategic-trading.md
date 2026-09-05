@@ -694,34 +694,55 @@ You'll feel like the bot is broken when it doesn't trade. Add notifications:
 
 ## Related Issues
 
-### Implementation Order
-
-**Phase 1: Foundation** (no trading changes, collect data)
-| Order | Issue | Description |
-|-------|-------|-------------|
-| 1 | [#136](https://github.com/nicechester/atn-trd/issues/136) | Add Strategic Trading Settings |
-| 2 | [#132](https://github.com/nicechester/atn-trd/issues/132) | Implement Signal Accumulation Layer |
-| 3 | [#133](https://github.com/nicechester/atn-trd/issues/133) | Implement Market Regime Detection |
-
-**Phase 2: Plan Infrastructure**
-| Order | Issue | Description |
-|-------|-------|-------------|
-| 4 | [#134](https://github.com/nicechester/atn-trd/issues/134) | Implement Strategic Plans & Tranched Execution |
-| 5 | [#138](https://github.com/nicechester/atn-trd/issues/138) | Handle Edge Cases: Chunky Stocks, Hysteresis, Partial Fills |
-
-**Phase 3: Cut Over** (replace reactive cycle)
-| Order | Issue | Description |
-|-------|-------|-------------|
-| 6 | [#135](https://github.com/nicechester/atn-trd/issues/135) | Refactor Trading Cycle to Plan-Driven Execution |
-| 7 | [#139](https://github.com/nicechester/atn-trd/issues/139) | Refinements: Signal Decay, Regime Delay, Sector Caps, Notifications |
-
-**Phase 4: Visibility**
-| Order | Issue | Description |
-|-------|-------|-------------|
-| 8 | [#145](https://github.com/nicechester/atn-trd/issues/145) | Add Portfolio Reset and Manual Trading Capabilities |
-| 9 | [#137](https://github.com/nicechester/atn-trd/issues/137) | Add Strategic Plans UI Components |
-
 **Epic**: [#131](https://github.com/nicechester/atn-trd/issues/131) - Architecture: Strategic Plan-Based Trading System
+
+### Completed
+
+| Issue | Description | Status |
+|-------|-------------|--------|
+| [#136](https://github.com/nicechester/atn-trd/issues/136) | Add Strategic Trading Settings | ✅ Done |
+| [#132](https://github.com/nicechester/atn-trd/issues/132) | Implement Signal Accumulation Layer | ✅ Done |
+| [#133](https://github.com/nicechester/atn-trd/issues/133) | Implement Market Regime Detection | ✅ Done |
+| [#134](https://github.com/nicechester/atn-trd/issues/134) | Implement Strategic Plans & Tranched Execution | ✅ Done |
+| [#135](https://github.com/nicechester/atn-trd/issues/135) | Refactor Trading Cycle to Plan-Driven Execution | ✅ Done |
+| [#137](https://github.com/nicechester/atn-trd/issues/137) | Add Strategic Plans UI Components | ✅ Done |
+| [#145](https://github.com/nicechester/atn-trd/issues/145) | Add Portfolio Reset and Manual Trading Capabilities | ✅ Done |
+| [#152](https://github.com/nicechester/atn-trd/issues/152) | Rename Runs to Job History with job type filter | ✅ Done |
+| [#153](https://github.com/nicechester/atn-trd/issues/153) | On-demand LLM-powered Reports | ✅ Done |
+
+### Remaining Implementation
+
+Recommended order based on dependencies and value:
+
+| Order | Issue | Description | Rationale |
+|-------|-------|-------------|----------|
+| 1 | [#169](https://github.com/nicechester/atn-trd/issues/169) | Watchlist pruning (planner removes stale symbols) | Foundation - planner already runs weekly |
+| 2 | [#174](https://github.com/nicechester/atn-trd/issues/174) | Waiting notifications (surface "no action" reasons) | Quick win - improves visibility |
+| 3 | [#171](https://github.com/nicechester/atn-trd/issues/171) | Sector exposure caps (max 30% per sector) | Risk management - prevents concentration |
+| 4 | [#172](https://github.com/nicechester/atn-trd/issues/172) | Conviction-scaled tranches | Execution improvement - standalone |
+| 5 | [#175](https://github.com/nicechester/atn-trd/issues/175) | Scheduled watchlist curator | Automation - watchlist grows/shrinks automatically |
+| 6 | [#170](https://github.com/nicechester/atn-trd/issues/170) | Auto-hedging (GLD/TLT plans when RISK_OFF) | Requires regime detection working well |
+| 7 | [#173](https://github.com/nicechester/atn-trd/issues/173) | Auto-trim for hedge liquidity | Depends on #170 |
+
+### Backlog (Edge Cases & Refinements)
+
+| Issue | Description |
+|-------|-------------|
+| [#138](https://github.com/nicechester/atn-trd/issues/138) | Handle Edge Cases: Chunky Stocks, Hysteresis, Partial Fills |
+| [#139](https://github.com/nicechester/atn-trd/issues/139) | Refinements: Signal Decay, Regime Delay, Sector Caps, Notifications |
+
+### Dependency Graph
+
+```
+#169 (prune) ──┐
+               ├──> #175 (scheduled curator)
+#174 (notifications) - standalone
+
+#171 (sector caps) - standalone
+#172 (conviction scaling) - standalone
+
+#170 (auto-hedge) ──> #173 (auto-trim for hedge)
+```
 
 ---
 
@@ -753,8 +774,7 @@ Shows execution mode context:
 ## Future Enhancements
 
 - **Issue #155**: Enhanced signal collection with LLM + FinBERT (better signal quality)
-- **Issue #152**: Rename Runs to Job History with job type filter
-- **Issue #153**: On-demand LLM-powered Reports (synthesized insights)
+- **Issue #120**: Screener Optimization: Bulk Data Caching & Multi-tier Filtering
 
 ---
 [← Future Improvements](07-future-improvements.md) · [back to index](README.md)
