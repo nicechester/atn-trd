@@ -169,6 +169,7 @@ export async function runWatchlistCuration(db: Database.Database): Promise<Watch
       symbolCategoriesRepo.upsert({
         symbol: selection.symbol,
         category,
+        sector: fundamentals?.sector ?? null,
         yieldPercent: dividendYield ? dividendYield * 100 : null,
         dividendGrowthPercent: null, // Not available from fundamentals
         estCagrPercent: null,
@@ -188,4 +189,70 @@ export async function runWatchlistCuration(db: Database.Database): Promise<Watch
     log.error('watchlist curation failed', { error: err instanceof Error ? err.message : String(err) });
     throw err;
   }
+}
+
+
+/**
+ * Backfill sector data from Finnhub profile2 endpoint for watchlist symbols missing sector.
+ */
+export async function backfillSectors(db: Database.Database): Promise<{ updated: number; errors: number; symbols: string[] }> {
+  const watchlistRepo = new WatchlistRepo(db);
+  const symbolCategoriesRepo = new SymbolCategoriesRepo(db);
+  
+  const watchlist = watchlistRepo.list();
+  const result = { updated: 0, errors: 0, symbols: [] as string[] };
+  
+  const apiKey = process.env.FINNHUB_API_KEY;
+  if (!apiKey) {
+    log.warn('FINNHUB_API_KEY not set, skipping sector backfill');
+    return result;
+  }
+
+  for (const item of watchlist) {
+    const existing = symbolCategoriesRepo.get(item.symbol);
+    if (existing?.sector) continue; // Already has sector
+
+    try {
+      const url = `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(item.symbol)}&token=${apiKey}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        log.warn('finnhub profile2 failed', { symbol: item.symbol, status: response.status });
+        result.errors++;
+        continue;
+      }
+
+      const data = await response.json() as { finnhubIndustry?: string };
+      const sector = data.finnhubIndustry ?? null;
+
+      if (sector) {
+        if (existing) {
+          // Update existing record
+          symbolCategoriesRepo.upsert({ ...existing, sector });
+        } else {
+          // Create new record
+          symbolCategoriesRepo.upsert({
+            symbol: item.symbol,
+            category: 'GROWTH_CORE',
+            sector,
+            yieldPercent: null,
+            dividendGrowthPercent: null,
+            estCagrPercent: null,
+            lastScreenedAt: null,
+          });
+        }
+        result.updated++;
+        result.symbols.push(item.symbol);
+        log.debug('sector backfilled', { symbol: item.symbol, sector });
+      }
+
+      // Rate limit: 1 req/sec for free tier
+      await new Promise(r => setTimeout(r, 1100));
+    } catch (err) {
+      log.warn('sector backfill error', { symbol: item.symbol, error: err instanceof Error ? err.message : String(err) });
+      result.errors++;
+    }
+  }
+
+  log.info('sector backfill complete', result);
+  return result;
 }

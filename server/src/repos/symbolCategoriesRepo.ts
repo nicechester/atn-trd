@@ -5,6 +5,7 @@ export type SymbolCategory = 'GROWTH_CORE' | 'DIVIDEND_GROWTH' | 'INCOME_BOOSTER
 export interface SymbolCategoryRow {
   symbol: string;
   category: SymbolCategory;
+  sector: string | null;
   yieldPercent: number | null;
   dividendGrowthPercent: number | null;
   estCagrPercent: number | null;
@@ -18,10 +19,11 @@ export class SymbolCategoriesRepo {
   upsert(row: Omit<SymbolCategoryRow, 'updatedAt'>): void {
     this.db
       .prepare(
-        `INSERT INTO symbol_categories (symbol, category, yield_percent, dividend_growth_percent, est_cagr_percent, last_screened_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO symbol_categories (symbol, category, sector, yield_percent, dividend_growth_percent, est_cagr_percent, last_screened_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(symbol) DO UPDATE SET
            category = excluded.category,
+           sector = excluded.sector,
            yield_percent = excluded.yield_percent,
            dividend_growth_percent = excluded.dividend_growth_percent,
            est_cagr_percent = excluded.est_cagr_percent,
@@ -31,6 +33,7 @@ export class SymbolCategoriesRepo {
       .run(
         row.symbol,
         row.category,
+        row.sector,
         row.yieldPercent,
         row.dividendGrowthPercent,
         row.estCagrPercent,
@@ -42,7 +45,7 @@ export class SymbolCategoriesRepo {
   get(symbol: string): SymbolCategoryRow | undefined {
     return this.db
       .prepare(
-        `SELECT symbol, category, yield_percent as yieldPercent, dividend_growth_percent as dividendGrowthPercent,
+        `SELECT symbol, category, sector, yield_percent as yieldPercent, dividend_growth_percent as dividendGrowthPercent,
            est_cagr_percent as estCagrPercent, last_screened_at as lastScreenedAt, updated_at as updatedAt
          FROM symbol_categories WHERE symbol = ?`
       )
@@ -52,7 +55,7 @@ export class SymbolCategoriesRepo {
   listAll(): SymbolCategoryRow[] {
     return this.db
       .prepare(
-        `SELECT symbol, category, yield_percent as yieldPercent, dividend_growth_percent as dividendGrowthPercent,
+        `SELECT symbol, category, sector, yield_percent as yieldPercent, dividend_growth_percent as dividendGrowthPercent,
            est_cagr_percent as estCagrPercent, last_screened_at as lastScreenedAt, updated_at as updatedAt
          FROM symbol_categories ORDER BY symbol`
       )
@@ -64,10 +67,17 @@ export class SymbolCategoriesRepo {
     const placeholders = symbols.map(() => '?').join(',');
     return this.db
       .prepare(
-        `SELECT symbol, category, yield_percent as yieldPercent, dividend_growth_percent as dividendGrowthPercent,
+        `SELECT symbol, category, sector, yield_percent as yieldPercent, dividend_growth_percent as dividendGrowthPercent,
            est_cagr_percent as estCagrPercent, last_screened_at as lastScreenedAt, updated_at as updatedAt
          FROM symbol_categories WHERE symbol IN (${placeholders}) ORDER BY symbol`
       )
       .all(...symbols) as SymbolCategoryRow[];
+  }
+
+  getSector(symbol: string): string | null {
+    const row = this.db
+      .prepare('SELECT sector FROM symbol_categories WHERE symbol = ?')
+      .get(symbol) as { sector: string | null } | undefined;
+    return row?.sector ?? null;
   }
 }

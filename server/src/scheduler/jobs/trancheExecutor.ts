@@ -14,6 +14,7 @@ import { MarketRegimeRepo } from '../../repos/marketRegimeRepo.js';
 import { PortfolioRepo } from '../../repos/portfolioRepo.js';
 import { PricesRepo } from '../../repos/pricesRepo.js';
 import { PositionsRepo } from '../../repos/positionsRepo.js';
+import { SymbolCategoriesRepo } from '../../repos/symbolCategoriesRepo.js';
 import { RunsRepo, type RunTrigger } from '../../repos/runsRepo.js';
 import {
   shouldExecuteTranche,
@@ -96,6 +97,7 @@ export async function runTrancheExecutorJob(
     const portfolioRepo = new PortfolioRepo(db);
     const pricesRepo = new PricesRepo(db);
     const positionsRepo = new PositionsRepo(db);
+    const symbolCategoriesRepo = new SymbolCategoriesRepo(db);
 
     const deps: StrategicPlanDeps = {
       strategicPlansRepo,
@@ -105,6 +107,7 @@ export async function runTrancheExecutorJob(
       portfolioRepo,
       pricesRepo,
       positionsRepo,
+      symbolCategoriesRepo,
       getSettings,
     };
 
@@ -177,7 +180,7 @@ export async function runTrancheExecutorJob(
       // Check sector exposure before executing (for ACCUMULATE plans)
       if (plan.direction === 'ACCUMULATE') {
         const trancheValueCents = price.adjCloseCents * 10; // Estimate ~10 shares
-        const sectorCheck = checkSectorExposure(deps, plan.symbol, trancheValueCents);
+        const sectorCheck = await checkSectorExposure(deps, plan.symbol, trancheValueCents);
         if (!sectorCheck.allowed) {
           summary.tranchesSkipped.push({
             symbol: plan.symbol,

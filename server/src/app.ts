@@ -28,6 +28,7 @@ import {
   triggerPlanReviewHandler,
   triggerTrancheExecutionHandler,
   triggerWatchlistCurationHandler,
+  triggerBackfillSectorsHandler,
 } from './routes/trigger.js';
 import { listRunsHandler, getRunHandler, triggerRunHandler, getRunCoverageHandler, cancelRunHandler } from './routes/runs.js';
 import { getPortfolioHandler, getPortfolioHistoryHandler, transferFundsHandler, initPortfolioHandler, resetPortfolioHandler, manualOrderHandler, marketStatusHandler } from './routes/portfolio.js';
@@ -77,6 +78,7 @@ export function createApp(options: AppOptions = {}): Express {
   app.post('/api/trigger/plan-review', requireAuth, requireWrite, triggerPlanReviewHandler);
   app.post('/api/trigger/tranche-execution', requireAuth, requireWrite, triggerTrancheExecutionHandler);
   app.post('/api/trigger/watchlist-curation', requireAuth, requireWrite, triggerWatchlistCurationHandler);
+  app.post('/api/trigger/backfill-sectors', requireAuth, requireWrite, triggerBackfillSectorsHandler);
 
   // ── Authenticated routes ────────────────────────────────────────────────────
   app.get('/api/auth/me', requireAuth, meHandler);
