@@ -1,15 +1,18 @@
-"""FinBERT sentiment analysis microservice."""
+"""FinBERT sentiment analysis microservice using ONNX runtime."""
 
 import os
 from fastapi import FastAPI
 from pydantic import BaseModel
-from transformers import pipeline
+from optimum.onnxruntime import ORTModelForSequenceClassification
+from transformers import AutoTokenizer, pipeline
 
 app = FastAPI()
 
-# Use local model path if available, otherwise download
-model_path = os.environ.get("FINBERT_MODEL_PATH", "ProsusAI/finbert")
-classifier = pipeline("sentiment-analysis", model=model_path)
+# Use local model path if available
+model_path = os.environ.get("FINBERT_MODEL_PATH", "/models/finbert-onnx")
+tokenizer = AutoTokenizer.from_pretrained(model_path)
+model = ORTModelForSequenceClassification.from_pretrained(model_path)
+classifier = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer)
 
 
 class TextRequest(BaseModel):
