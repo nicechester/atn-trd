@@ -13,8 +13,8 @@ LABEL version=${VERSION:-1.0.0}
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download the model at build time
-RUN python -c "from transformers import pipeline; pipeline('sentiment-analysis', model='ProsusAI/finbert')"
+# Model will be mounted from host at /models/finbert
+ENV TRANSFORMERS_CACHE=/models
 
 COPY main.py .
 

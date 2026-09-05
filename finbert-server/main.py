@@ -1,11 +1,15 @@
 """FinBERT sentiment analysis microservice."""
 
+import os
 from fastapi import FastAPI
 from pydantic import BaseModel
 from transformers import pipeline
 
 app = FastAPI()
-classifier = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+
+# Use local model path if available, otherwise download
+model_path = os.environ.get("FINBERT_MODEL_PATH", "ProsusAI/finbert")
+classifier = pipeline("sentiment-analysis", model=model_path)
 
 
 class TextRequest(BaseModel):

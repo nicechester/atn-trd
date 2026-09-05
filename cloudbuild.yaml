@@ -47,6 +47,8 @@ steps:
           if [ "$$OLD_VERSION" = "none" ]; then
             echo "FinBERT not running, starting..."
             sudo docker run -d --name finbert --network atn-net --restart=unless-stopped \
+              -v /mnt/stateful_partition/models:/models \
+              -e FINBERT_MODEL_PATH=/models/finbert \
               us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/finbert:latest
             echo "Waiting for FinBERT to be ready..."
             for i in $$(seq 1 60); do
@@ -61,6 +63,8 @@ steps:
             sudo docker stop finbert 2>/dev/null || true
             sudo docker rm finbert 2>/dev/null || true
             sudo docker run -d --name finbert --network atn-net --restart=unless-stopped \
+              -v /mnt/stateful_partition/models:/models \
+              -e FINBERT_MODEL_PATH=/models/finbert \
               us-central1-docker.pkg.dev/$PROJECT_ID/atn-trd/finbert:latest
             echo "Waiting for FinBERT to be ready..."
             for i in $$(seq 1 60); do
