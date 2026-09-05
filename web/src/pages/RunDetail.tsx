@@ -55,6 +55,10 @@ function roleBadge(role: AgentMessageRow['role'], s: Record<string, string>) {
 }
 
 function renderPlanReviewSummary(s: PlanReviewSummary) {
+  // Group skipped by type for better display
+  const watchlistSkipped = s.plansSkipped.filter(sk => !sk.reason.startsWith('position:'));
+  const positionSkipped = s.plansSkipped.filter(sk => sk.reason.startsWith('position:'));
+
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-md)' }}>
@@ -65,11 +69,35 @@ function renderPlanReviewSummary(s: PlanReviewSummary) {
         <div><div className={styles.fieldLabel}>Trim Plans</div><div className={styles.fieldValue}>{s.trimPlansCreated}</div></div>
         <div><div className={styles.fieldLabel}>Existing Active</div><div className={styles.fieldValue}>{s.existingActivePlans}</div></div>
       </div>
-      {s.plansSkipped.length > 0 && (
-        <details>
-          <summary style={{ cursor: 'pointer', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Skipped ({s.plansSkipped.length})</summary>
+
+      {/* Pruned symbols */}
+      {s.symbolsPruned && s.symbolsPruned.length > 0 && (
+        <div style={{ marginBottom: 'var(--spacing-md)', padding: 'var(--spacing-sm)', background: 'var(--color-warning-bg, #fef3c7)', borderRadius: '4px' }}>
+          <div style={{ fontWeight: 500, fontSize: '0.875rem', marginBottom: '4px' }}>🗑️ Pruned from Watchlist</div>
+          <div style={{ fontSize: '0.875rem' }}>{s.symbolsPruned.join(', ')}</div>
+        </div>
+      )}
+
+      {/* Watchlist skipped (waiting for buy threshold) */}
+      {watchlistSkipped.length > 0 && (
+        <details style={{ marginBottom: 'var(--spacing-sm)' }}>
+          <summary style={{ cursor: 'pointer', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+            ⏳ Waiting ({watchlistSkipped.length}) - below buy threshold
+          </summary>
           <ul style={{ margin: 'var(--spacing-sm) 0 0 var(--spacing-md)', fontSize: '0.875rem' }}>
-            {s.plansSkipped.map((sk, i) => <li key={i}><strong>{sk.symbol}</strong>: {sk.reason}</li>)}
+            {watchlistSkipped.map((sk, i) => <li key={i}><strong>{sk.symbol}</strong>: {sk.reason}</li>)}
+          </ul>
+        </details>
+      )}
+
+      {/* Position skipped (not selling) */}
+      {positionSkipped.length > 0 && (
+        <details>
+          <summary style={{ cursor: 'pointer', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+            ✅ Holding ({positionSkipped.length}) - above sell threshold
+          </summary>
+          <ul style={{ margin: 'var(--spacing-sm) 0 0 var(--spacing-md)', fontSize: '0.875rem' }}>
+            {positionSkipped.map((sk, i) => <li key={i}><strong>{sk.symbol}</strong>: {sk.reason.replace('position: ', '')}</li>)}
           </ul>
         </details>
       )}
