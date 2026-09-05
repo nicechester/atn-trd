@@ -15,6 +15,7 @@ import type { MarketRegimeRepo } from '../repos/marketRegimeRepo.js';
 import type { PortfolioRepo } from '../repos/portfolioRepo.js';
 import type { PricesRepo } from '../repos/pricesRepo.js';
 import type { PositionsRepo } from '../repos/positionsRepo.js';
+import type { SymbolCategoriesRepo } from '../repos/symbolCategoriesRepo.js';
 import { getCurrentRegime } from './regimeDetectionService.js';
 
 const log = logger.child({ component: 'strategic-plan' });
@@ -27,6 +28,7 @@ export interface StrategicPlanDeps {
   portfolioRepo: PortfolioRepo;
   pricesRepo: PricesRepo;
   positionsRepo?: PositionsRepo; // Optional, needed for auto-trim
+  symbolCategoriesRepo?: SymbolCategoriesRepo; // Optional, for sector lookup
   getSettings: () => Settings;
 }
 
@@ -538,7 +540,7 @@ export function createAutoTrimPlans(deps: StrategicPlanDeps): AutoTrimResult {
 
 // ── Sector Exposure Check ───────────────────────────────────────────────────
 
-// Simple sector mapping (in production, fetch from fundamentals API)
+// Fallback sector mapping for symbols not in DB
 const SECTOR_MAP: Record<string, string> = {
   AAPL: 'Technology', MSFT: 'Technology', GOOGL: 'Technology', AMZN: 'Consumer Cyclical',
   META: 'Technology', NVDA: 'Technology', TSLA: 'Consumer Cyclical', AMD: 'Technology',
@@ -548,7 +550,58 @@ const SECTOR_MAP: Record<string, string> = {
   GLD: 'Commodities', TLT: 'Fixed Income', SHY: 'Fixed Income',
 };
 
-function getSector(symbol: string): string {
+/**
+ * Get sector for symbol. Checks DB first, then fetches from Finnhub if missing and caches.
+ */
+async function getSectorAsync(deps: StrategicPlanDeps, symbol: string): Promise<string> {
+  // Try DB first
+  if (deps.symbolCategoriesRepo) {
+    const dbSector = deps.symbolCategoriesRepo.getSector(symbol);
+    if (dbSector) return dbSector;
+
+    // Try to fetch from Finnhub and cache
+    const apiKey = process.env.FINNHUB_API_KEY;
+    if (apiKey) {
+      try {
+        const url = `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`;
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json() as { finnhubIndustry?: string };
+          if (data.finnhubIndustry) {
+            // Cache in DB
+            const existing = deps.symbolCategoriesRepo.get(symbol);
+            if (existing) {
+              deps.symbolCategoriesRepo.upsert({ ...existing, sector: data.finnhubIndustry });
+            } else {
+              deps.symbolCategoriesRepo.upsert({
+                symbol,
+                category: 'GROWTH_CORE',
+                sector: data.finnhubIndustry,
+                yieldPercent: null,
+                dividendGrowthPercent: null,
+                estCagrPercent: null,
+                lastScreenedAt: null,
+              });
+            }
+            log.debug('sector fetched and cached', { symbol, sector: data.finnhubIndustry });
+            return data.finnhubIndustry;
+          }
+        }
+      } catch (err) {
+        log.debug('failed to fetch sector from finnhub', { symbol, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  }
+  // Fallback to hardcoded map
+  return SECTOR_MAP[symbol.toUpperCase()] ?? 'Unknown';
+}
+
+/** Sync version for backward compat - uses DB/map only, no fetch */
+function getSector(deps: StrategicPlanDeps, symbol: string): string {
+  if (deps.symbolCategoriesRepo) {
+    const dbSector = deps.symbolCategoriesRepo.getSector(symbol);
+    if (dbSector) return dbSector;
+  }
   return SECTOR_MAP[symbol.toUpperCase()] ?? 'Unknown';
 }
 
@@ -586,7 +639,7 @@ export function calculateSectorExposure(
     const valueCents = pos.qty * price.adjCloseCents;
     totalValueCents += valueCents;
 
-    const sector = getSector(pos.symbol);
+    const sector = getSector(deps, pos.symbol);
     sectorValues.set(sector, (sectorValues.get(sector) ?? 0) + valueCents);
   }
 
@@ -604,12 +657,13 @@ export function calculateSectorExposure(
 
 /**
  * Check if executing a tranche would exceed sector exposure limit.
+ * Fetches sector from Finnhub if not in DB.
  */
-export function checkSectorExposure(
+export async function checkSectorExposure(
   deps: StrategicPlanDeps,
   symbol: string,
   trancheValueCents: number
-): { allowed: boolean; reason?: string; currentExposure?: number; newExposure?: number } {
+): Promise<{ allowed: boolean; reason?: string; currentExposure?: number; newExposure?: number }> {
   const { getSettings } = deps;
   const settings = getSettings();
 
@@ -619,7 +673,7 @@ export function checkSectorExposure(
   }
 
   const { exposures, totalValueCents } = calculateSectorExposure(deps);
-  const sector = getSector(symbol);
+  const sector = await getSectorAsync(deps, symbol);
   const currentSectorValue = exposures.find(e => e.sector === sector)?.valueCents ?? 0;
   const currentExposure = totalValueCents > 0 ? currentSectorValue / totalValueCents : 0;
   const newExposure = totalValueCents > 0 ? (currentSectorValue + trancheValueCents) / (totalValueCents + trancheValueCents) : 0;

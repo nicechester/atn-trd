@@ -128,7 +128,8 @@ interface ReportData {
   tranches: Array<{ symbol: string; trancheNumber: number; shares: number; priceCents: number; orderStatus: string }>;
   regimeHistory: Array<{ asOfDate: string; regime: string; riskScore: number }>;
   jobStats: { total: number; succeeded: number; failed: number; byType: Record<string, number> };
-  positions: Array<{ symbol: string; qty: number; avgCostCents: number }>;
+  positions: Array<{ symbol: string; qty: number; avgCostCents: number; sector: string | null }>;
+  sectorExposure: Array<{ sector: string; valueCents: number; percent: number }>;
 }
 
 function gatherReportData(db: any, startTs: number, startDateStr: string, endDateStr: string): ReportData {
@@ -190,10 +191,40 @@ function gatherReportData(db: any, startTs: number, startDateStr: string, endDat
     jobStats.byType[row.trigger] = (jobStats.byType[row.trigger] || 0) + row.cnt;
   }
 
-  // Current positions
+  // Current positions with sector
   const positions = db.prepare(`
-    SELECT symbol, qty, avg_cost_cents FROM positions WHERE qty > 0
-  `).all() as Array<{ symbol: string; qty: number; avg_cost_cents: number }>;
+    SELECT p.symbol, p.qty, p.avg_cost_cents, sc.sector
+    FROM positions p
+    LEFT JOIN symbol_categories sc ON p.symbol = sc.symbol
+    WHERE p.qty > 0
+  `).all() as Array<{ symbol: string; qty: number; avg_cost_cents: number; sector: string | null }>;
+
+  // Calculate sector exposure
+  const latestPrices = db.prepare(`
+    SELECT symbol, adj_close_cents FROM prices
+    WHERE (symbol, bar_date) IN (
+      SELECT symbol, MAX(bar_date) FROM prices GROUP BY symbol
+    )
+  `).all() as Array<{ symbol: string; adj_close_cents: number }>;
+  const priceMap = new Map(latestPrices.map(p => [p.symbol, p.adj_close_cents]));
+
+  const sectorValues = new Map<string, number>();
+  let totalPositionValue = 0;
+  for (const pos of positions) {
+    const price = priceMap.get(pos.symbol) ?? pos.avg_cost_cents;
+    const value = pos.qty * price;
+    totalPositionValue += value;
+    const sector = pos.sector ?? 'Unknown';
+    sectorValues.set(sector, (sectorValues.get(sector) ?? 0) + value);
+  }
+
+  const sectorExposure = Array.from(sectorValues.entries())
+    .map(([sector, valueCents]) => ({
+      sector,
+      valueCents,
+      percent: totalPositionValue > 0 ? valueCents / totalPositionValue : 0,
+    }))
+    .sort((a, b) => b.percent - a.percent);
 
   return {
     portfolioSnapshots: portfolioSnapshots.map(r => ({ asOfDate: r.as_of_date, totalValueCents: r.total_value_cents, cashCents: r.cash_cents })),
@@ -202,12 +233,13 @@ function gatherReportData(db: any, startTs: number, startDateStr: string, endDat
     tranches: tranches.map(r => ({ symbol: r.symbol, trancheNumber: r.tranche_number, shares: r.shares, priceCents: r.price_cents, orderStatus: r.order_status })),
     regimeHistory: regimeHistory.map(r => ({ asOfDate: r.as_of_date, regime: r.regime, riskScore: r.risk_score })),
     jobStats,
-    positions: positions.map(r => ({ symbol: r.symbol, qty: r.qty, avgCostCents: r.avg_cost_cents })),
+    positions: positions.map(r => ({ symbol: r.symbol, qty: r.qty, avgCostCents: r.avg_cost_cents, sector: r.sector })),
+    sectorExposure,
   };
 }
 
 function buildReportPrompt(data: ReportData, startDate: string, endDate: string): string {
-  const { portfolioSnapshots, signalSnapshots, plans, tranches, regimeHistory, jobStats, positions } = data;
+  const { portfolioSnapshots, signalSnapshots, plans, tranches, regimeHistory, jobStats, positions, sectorExposure } = data;
 
   // Calculate portfolio performance
   let portfolioPerf = 'No portfolio data available.';
@@ -254,8 +286,13 @@ function buildReportPrompt(data: ReportData, startDate: string, endDate: string)
 
   // Positions summary
   const positionsSummary = positions.length > 0
-    ? positions.map(p => `${p.symbol}: ${p.qty} shares @ $${(p.avgCostCents / 100).toFixed(2)} avg`).join('\n')
+    ? positions.map(p => `${p.symbol} (${p.sector ?? 'Unknown'}): ${p.qty} shares @ $${(p.avgCostCents / 100).toFixed(2)} avg`).join('\n')
     : 'No positions.';
+
+  // Sector exposure summary
+  const sectorSummary = sectorExposure.length > 0
+    ? sectorExposure.map(s => `${s.sector}: ${(s.percent * 100).toFixed(1)}% ($${(s.valueCents / 100).toLocaleString()})`).join('\n')
+    : 'No sector data.';
 
   return `You are a financial analyst assistant. Generate a comprehensive portfolio report for the period ${startDate} to ${endDate}.
 
@@ -266,6 +303,9 @@ ${portfolioPerf}
 
 ### Current Positions
 ${positionsSummary}
+
+### Sector Exposure
+${sectorSummary}
 
 ### Signal Trends (Composite Scores by Symbol)
 ${signalSummary || 'No signal data available.'}

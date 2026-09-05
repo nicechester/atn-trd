@@ -42,7 +42,7 @@ import { runMarketOpenFillJob } from '../scheduler/jobs/marketOpenFill.js';
 import { runSignalCollectionJob } from '../scheduler/jobs/signalCollection.js';
 import { runPlanReviewJob } from '../scheduler/jobs/planReviewJob.js';
 import { runTrancheExecutorJob } from '../scheduler/jobs/trancheExecutor.js';
-import { runWatchlistCuration } from '../services/watchlistCurationService.js';
+import { runWatchlistCuration, backfillSectors } from '../services/watchlistCurationService.js';
 
 const log = logger.child({ component: 'trigger-route' });
 
@@ -282,6 +282,23 @@ export async function triggerWatchlistCurationHandler(
     res.json({ ok: true, summary });
   } catch (err) {
     log.error('watchlist curation failed', { error: err instanceof Error ? err.message : String(err) });
+    next(err);
+  }
+}
+
+/** POST /api/trigger/backfill-sectors - One-time backfill of sector data from Finnhub */
+export async function triggerBackfillSectorsHandler(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  log.info('sector backfill triggered manually');
+  try {
+    const db = getDatabase();
+    const result = await backfillSectors(db);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    log.error('sector backfill failed', { error: err instanceof Error ? err.message : String(err) });
     next(err);
   }
 }
