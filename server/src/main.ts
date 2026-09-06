@@ -56,8 +56,8 @@ async function main(): Promise<void> {
           throw err;
         }
       } else {
-        // Production mode: use built static files
-        staticRoot = path.join(__dirname, '..', 'public');
+        // Production mode: use built static files from web/dist
+        staticRoot = path.join(__dirname, '..', '..', 'web', 'dist');
       }
 
       const app = createApp({ staticRoot, viteDevMiddleware });
