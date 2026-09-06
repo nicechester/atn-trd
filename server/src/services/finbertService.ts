@@ -2,7 +2,7 @@
  * FinBERT sentiment scoring service using Transformers.js (ONNX).
  */
 
-import { pipeline, env, type TextClassificationPipeline } from '@xenova/transformers';
+import { pipeline, env } from '@xenova/transformers';
 import { logger } from '../lib/logger.js';
 
 const log = logger.child({ component: 'finbert-service' });
@@ -15,7 +15,8 @@ if (modelPath) {
   env.allowRemoteModels = false;
 }
 
-let classifier: TextClassificationPipeline | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let classifier: any = null;
 
 export interface FinBERTResult {
   label: 'positive' | 'negative' | 'neutral';
@@ -35,7 +36,7 @@ function normalizeScore(label: string, score: number): number {
 export async function prewarmFinBERT(): Promise<void> {
   const modelName = modelPath ? '.' : 'ProsusAI/finbert';
   log.info(`Loading FinBERT model from ${modelPath || 'HuggingFace'}...`);
-  classifier = await pipeline('sentiment-analysis', modelName) as TextClassificationPipeline;
+  classifier = await pipeline('sentiment-analysis', modelName);
   log.info('FinBERT model loaded');
 }
 
@@ -44,7 +45,8 @@ export async function prewarmFinBERT(): Promise<void> {
  */
 export async function scoreFinBERT(text: string): Promise<FinBERTResult> {
   if (!classifier) throw new Error('FinBERT not initialized');
-  const [result] = await classifier(text);
+  const output = await classifier(text);
+  const result = Array.isArray(output) ? output[0] : output;
   const r: FinBERTResult = {
     label: result.label as FinBERTResult['label'],
     score: result.score,
@@ -59,7 +61,8 @@ export async function scoreFinBERT(text: string): Promise<FinBERTResult> {
  */
 export async function scoreFinBERTBatch(texts: string[]): Promise<FinBERTResult[]> {
   if (!classifier) throw new Error('FinBERT not initialized');
-  const results = await classifier(texts);
+  const output = await classifier(texts);
+  const results = Array.isArray(output[0]) ? output.flat() : output;
   return results.map((r: { label: string; score: number }) => ({
     label: r.label as FinBERTResult['label'],
     score: r.score,

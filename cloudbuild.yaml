@@ -9,8 +9,7 @@ steps:
           cd ~/atn-trd
           git fetch origin
           git reset --hard origin/main
-          npm ci
-          npm run build
+          npm install --omit=dev
           sudo systemctl restart atn-trd
         '
 
