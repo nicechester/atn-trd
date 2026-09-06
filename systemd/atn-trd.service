@@ -9,7 +9,7 @@ WorkingDirectory=/home/chester.kim/atn-trd
 EnvironmentFile=/home/chester.kim/.env
 Environment=NODE_ENV=production
 Environment=FINBERT_MODEL_PATH=/home/chester.kim/finbert-onnx
-ExecStart=/usr/bin/node server/dist/main.js
+ExecStart=/usr/bin/npx tsx server/src/main.ts
 Restart=always
 RestartSec=5
 
