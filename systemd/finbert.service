@@ -1,14 +1,16 @@
 [Unit]
-Description=FinBERT Sentiment Analysis Service
+Description=FinBERT Sentiment Analysis Server (Node.js)
 After=network.target
 
 [Service]
 Type=simple
-User=violckim_gmail_com
-WorkingDirectory=/home/violckim_gmail_com/atn-trd/finbert-server
-Environment=FINBERT_MODEL_PATH=/home/violckim_gmail_com/finbert-onnx
-ExecStart=/usr/bin/python3 -m uvicorn main:app --host 127.0.0.1 --port 5000
-Restart=always
+User=chester_kim
+WorkingDirectory=/home/chester_kim/atn-trd/finbert-server
+Environment=NODE_ENV=production
+Environment=PORT=5000
+Environment=FINBERT_MODEL_PATH=/home/chester_kim/finbert-onnx
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
 RestartSec=5
 
 [Install]
