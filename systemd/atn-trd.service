@@ -4,11 +4,11 @@ After=network.target
 
 [Service]
 Type=simple
-User=violckim_gmail_com
-WorkingDirectory=/home/violckim_gmail_com/atn-trd
-EnvironmentFile=/home/violckim_gmail_com/.env
+User=chester.kim
+WorkingDirectory=/home/chester.kim/atn-trd
+EnvironmentFile=/home/chester.kim/.env
 Environment=NODE_ENV=production
-Environment=FINBERT_MODEL_PATH=/home/violckim_gmail_com/finbert-onnx
+Environment=FINBERT_MODEL_PATH=/home/chester.kim/finbert-onnx
 ExecStart=/usr/bin/node server/dist/main.js
 Restart=always
 RestartSec=5
