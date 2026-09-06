@@ -2,9 +2,10 @@ import express from 'express';
 import { pipeline, env } from '@xenova/transformers';
 
 // Use local model path if set, otherwise download from HuggingFace
-const modelPath = process.env.FINBERT_MODEL_PATH || 'ProsusAI/finbert';
-if (process.env.FINBERT_MODEL_PATH) {
-  env.localModelPath = process.env.FINBERT_MODEL_PATH;
+const modelPath = process.env.FINBERT_MODEL_PATH;
+if (modelPath) {
+  env.localModelPath = modelPath;
+  env.allowLocalModels = true;
   env.allowRemoteModels = false;
 }
 
@@ -14,8 +15,10 @@ app.use(express.json());
 let classifier;
 
 async function init() {
-  console.log(`Loading model from ${modelPath}...`);
-  classifier = await pipeline('sentiment-analysis', modelPath);
+  // When using local path, pass '.' as model name since localModelPath points directly to model dir
+  const modelName = modelPath ? '.' : 'ProsusAI/finbert';
+  console.log(`Loading model from ${modelPath || 'HuggingFace'}...`);
+  classifier = await pipeline('sentiment-analysis', modelName);
   console.log('Model loaded');
 }
 
