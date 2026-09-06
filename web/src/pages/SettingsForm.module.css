@@ -10,6 +10,7 @@
 .saveBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 .disabledBtn { padding: var(--spacing-xs) var(--spacing-md); border-radius: var(--radius-sm); background: var(--color-border); color: var(--color-text-muted); border: none; cursor: not-allowed; font-size: inherit; min-height: var(--touch-target-min); }
 .warning { color: var(--color-error, #f87171); font-size: 0.75rem; margin-top: var(--spacing-xs); }
+.buildInfo { display: flex; flex-wrap: wrap; gap: var(--spacing-sm); font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: var(--spacing-lg); padding-bottom: var(--spacing-md); border-bottom: 1px solid var(--color-border); }
 
 .helpList { margin: 0; padding: 0; }
 .helpList dt { font-weight: 600; margin-top: var(--spacing-md); }

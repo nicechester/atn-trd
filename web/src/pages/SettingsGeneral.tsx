@@ -11,9 +11,21 @@ type FormState = {
   killSwitch: boolean;
 };
 
+type BuildInfo = {
+  commit: string;
+  buildTime: string;
+} | null;
+
+type HealthInfo = {
+  version: string;
+  build: BuildInfo;
+  uptime: number;
+};
+
 export default function SettingsGeneral(): JSX.Element {
   const { addToast } = useToast();
   const [form, setForm] = useState<FormState | null>(null);
+  const [health, setHealth] = useState<HealthInfo | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -28,6 +40,11 @@ export default function SettingsGeneral(): JSX.Element {
         });
       })
       .catch(err => addToast(err instanceof Error ? err.message : 'Failed to load settings', 'error'));
+    
+    fetch('/api/health')
+      .then(res => res.json())
+      .then(data => setHealth(data))
+      .catch(() => {});
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -59,6 +76,21 @@ export default function SettingsGeneral(): JSX.Element {
 
   return (
     <Card title="General">
+      {health && (
+        <div className={styles.buildInfo}>
+          <span>v{health.version}</span>
+          {health.build && (
+            <>
+              <span>•</span>
+              <span>Build: {health.build.commit}</span>
+              <span>•</span>
+              <span>{new Date(health.build.buildTime).toLocaleString()}</span>
+            </>
+          )}
+          <span>•</span>
+          <span>Uptime: {Math.floor(health.uptime / 3600)}h {Math.floor((health.uptime % 3600) / 60)}m</span>
+        </div>
+      )}
       <form onSubmit={handleSubmit}>
         <div className={styles.field}>
           <label className={styles.label}>Trading Mode</label>

@@ -16,6 +16,16 @@ function getAppVersion(): string {
   }
 }
 
+function getBuildInfo(): { commit: string; buildTime: string } | null {
+  try {
+    const buildPath = path.join(__dirname, '..', '..', 'build-info.json');
+    const info = JSON.parse(fs.readFileSync(buildPath, 'utf-8'));
+    return info;
+  } catch {
+    return null;
+  }
+}
+
 function getMigrationVersion(): number | null {
   try {
     const db = getDatabase();
@@ -42,6 +52,7 @@ function getDbInfo(): { path: string; size: number } | null {
 export function healthHandler(_req: Request, res: Response): void {
   res.json({
     version: getAppVersion(),
+    build: getBuildInfo(),
     migrationVersion: getMigrationVersion(),
     db: getDbInfo(),
     encKeyPresent: Boolean(process.env.ATN_ENC_KEY),
