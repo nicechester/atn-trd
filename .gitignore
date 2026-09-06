@@ -5,11 +5,11 @@ pnpm-lock.yaml
 yarn.lock
 
 # Build output
-dist/
 build/
 *.tsbuildinfo
-*.d.ts
-*.d.ts.map
+
+# Keep dist/ tracked for VM deployment
+# dist/
 
 # Environment
 .env

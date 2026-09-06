@@ -1,0 +1,2 @@
+export declare function getUniverse(types: ('sp500' | 'nasdaq100' | 'russell2000' | 'tech' | 'healthcare' | 'commodity' | 'crypto' | 'custom')[], customSymbols?: string[]): string[];
+//# sourceMappingURL=universeLoader.d.ts.map

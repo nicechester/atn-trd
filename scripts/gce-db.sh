@@ -8,4 +8,5 @@ if [ -z "$1" ]; then
   exit 1
 fi
 
-gcloud compute ssh atn-trd-vm --zone=us-central1-a --project=autonomous-trader-506715 --command="docker exec atn-trd sqlite3 /app/data/atn.db '$1'"
+gcloud compute ssh atn-trd-vm --zone=us-central1-a --project=autonomous-trader-506715 \
+  --command="sqlite3 ~/atn-trd/data/atn.db '$1'"

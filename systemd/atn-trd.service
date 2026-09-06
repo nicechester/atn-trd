@@ -1,0 +1,17 @@
+[Unit]
+Description=ATN-TRD Trading App
+After=network.target
+
+[Service]
+Type=simple
+User=chester.kim
+WorkingDirectory=/home/chester.kim/atn-trd
+EnvironmentFile=/home/chester.kim/atn-trd/.env
+Environment=NODE_ENV=production
+Environment=FINBERT_MODEL_PATH=/home/chester.kim/finbert-onnx
+ExecStart=/usr/bin/npx tsx server/src/main.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
