@@ -1,0 +1,18 @@
+[Unit]
+Description=ATN-TRD Trading App
+After=network.target finbert.service
+Requires=finbert.service
+
+[Service]
+Type=simple
+User=violckim_gmail_com
+WorkingDirectory=/home/violckim_gmail_com/atn-trd
+EnvironmentFile=/home/violckim_gmail_com/.env
+Environment=NODE_ENV=production
+Environment=FINBERT_URL=http://127.0.0.1:5000
+ExecStart=/usr/bin/node server/dist/index.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

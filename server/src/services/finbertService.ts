@@ -7,7 +7,7 @@ import { logger } from '../lib/logger.js';
 
 const log = logger.child({ component: 'finbert-service' });
 
-const FINBERT_URL = process.env.FINBERT_URL || 'http://finbert:5000';
+const FINBERT_URL = process.env.FINBERT_URL || 'http://127.0.0.1:5000';
 
 export interface FinBERTResult {
   label: 'positive' | 'negative' | 'neutral';
