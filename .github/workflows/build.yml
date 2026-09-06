@@ -1,15 +1,11 @@
-name: Build
+name: Build and Deploy
 
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'server/public/**'
-      - 'shared/dist/**'
-      - 'web/dist/**'
 
 jobs:
-  build:
+  build-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +20,7 @@ jobs:
       - name: Build
         run: |
           npm run build
+          mkdir -p server/public
           cp -r web/dist/* server/public/
 
       - name: Commit dist files
@@ -33,3 +30,15 @@ jobs:
           git add -f shared/dist server/public web/dist
           git diff --staged --quiet || git commit -m "build: update dist files [skip ci]"
           git push
+
+      - name: Deploy to VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            cd ~/atn-trd
+            git pull
+            npm install --omit=dev
+            sudo systemctl restart atn-trd
