@@ -11,8 +11,7 @@ steps:
           git reset --hard origin/main
           npm ci
           npm run build
-          cd finbert-server && npm ci && cd ..
-          sudo systemctl restart finbert atn-trd
+          sudo systemctl restart atn-trd
         '
 
 options:

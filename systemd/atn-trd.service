@@ -1,7 +1,6 @@
 [Unit]
 Description=ATN-TRD Trading App
-After=network.target finbert.service
-Requires=finbert.service
+After=network.target
 
 [Service]
 Type=simple
@@ -9,8 +8,8 @@ User=violckim_gmail_com
 WorkingDirectory=/home/violckim_gmail_com/atn-trd
 EnvironmentFile=/home/violckim_gmail_com/.env
 Environment=NODE_ENV=production
-Environment=FINBERT_URL=http://127.0.0.1:5000
-ExecStart=/usr/bin/node server/dist/index.js
+Environment=FINBERT_MODEL_PATH=/home/violckim_gmail_com/finbert-onnx
+ExecStart=/usr/bin/node server/dist/main.js
 Restart=always
 RestartSec=5
 
