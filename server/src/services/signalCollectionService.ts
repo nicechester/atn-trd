@@ -71,6 +71,11 @@ function computePriceVsSma50(prices: PriceBarRow[]): number | null {
 
 /**
  * Compute composite score from weighted signals.
+ * Returns score in [0, 1] range where:
+ *   0.0 = extremely bearish
+ *   0.5 = neutral
+ *   1.0 = extremely bullish
+ *   0.7 = moderately bullish (typical buyThreshold)
  */
 function computeCompositeScore(
   sentimentScore: number | null,
@@ -98,8 +103,14 @@ function computeCompositeScore(
     totalWeight += weights.priceMomentum;
   }
 
-  // Re-normalize if not all signals available
-  return totalWeight > 0 ? score / totalWeight : null;
+  if (totalWeight <= 0) return null;
+
+  // Raw score is in [-1, 1] range
+  const rawScore = score / totalWeight;
+
+  // Rescale to [0, 1] so buyThreshold: 0.70 is reachable
+  // -1 → 0.0, 0 → 0.5, +0.4 → 0.7, +1 → 1.0
+  return (rawScore + 1) / 2;
 }
 
 /**
