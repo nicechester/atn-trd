@@ -132,6 +132,14 @@ async function collectSymbolSignals(
 ): Promise<CollectionResult> {
   const { signalSnapshotsRepo, pricesRepo, newsSource, getSettings } = deps;
   const settings = getSettings();
+
+  // Check if snapshot already exists (skip expensive LLM/FinBERT calls)
+  const existing = signalSnapshotsRepo.get(symbol, snapshotDate);
+  if (existing) {
+    log.debug('snapshot already exists, skipping', { symbol, snapshotDate });
+    return { symbol, status: 'skipped', reason: 'already collected today' };
+  }
+
   let tokensUsed = 0;
 
   try {
@@ -212,7 +220,7 @@ async function collectSymbolSignals(
       createdAt: Date.now(),
     };
 
-    signalSnapshotsRepo.upsert(snapshot);
+    signalSnapshotsRepo.insert(snapshot);
 
     log.debug('signal collected', {
       symbol,

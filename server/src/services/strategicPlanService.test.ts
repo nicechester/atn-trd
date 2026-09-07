@@ -170,7 +170,7 @@ describe('StrategicPlanService', () => {
       const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 100 });
 
       // Add signal with score above pause threshold
-      deps.signalSnapshotsRepo.upsert({
+      deps.signalSnapshotsRepo.insert({
         id: 'sig1',
         symbol: 'AAPL',
         snapshotDate: new Date().toISOString().split('T')[0],
@@ -196,7 +196,7 @@ describe('StrategicPlanService', () => {
       const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 100 });
 
       // Add signal with score below pause threshold but above cancel
-      deps.signalSnapshotsRepo.upsert({
+      deps.signalSnapshotsRepo.insert({
         id: 'sig1',
         symbol: 'AAPL',
         snapshotDate: new Date().toISOString().split('T')[0],
@@ -223,7 +223,7 @@ describe('StrategicPlanService', () => {
       const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 100 });
 
       // Add signal with score below cancel threshold
-      deps.signalSnapshotsRepo.upsert({
+      deps.signalSnapshotsRepo.insert({
         id: 'sig1',
         symbol: 'AAPL',
         snapshotDate: new Date().toISOString().split('T')[0],
@@ -392,13 +392,13 @@ describe('StrategicPlanService', () => {
       });
 
       // Add signals (TSLA has lower score)
-      deps.signalSnapshotsRepo.upsert({
+      deps.signalSnapshotsRepo.insert({
         id: 's1', symbol: 'AAPL', snapshotDate: new Date().toISOString().split('T')[0],
         priceCents: 15000, sentimentScore: 0.7, sentimentConfidence: 0.8,
         sentimentTrend: 0.1, priceVsSma50: 0.05, compositeScore: 0.70, compositeEwma: 0.70,
         createdAt: Date.now(),
       });
-      deps.signalSnapshotsRepo.upsert({
+      deps.signalSnapshotsRepo.insert({
         id: 's2', symbol: 'TSLA', snapshotDate: new Date().toISOString().split('T')[0],
         priceCents: 20000, sentimentScore: 0.3, sentimentConfidence: 0.6,
         sentimentTrend: -0.1, priceVsSma50: -0.05, compositeScore: 0.30, compositeEwma: 0.30,
