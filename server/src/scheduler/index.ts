@@ -81,59 +81,28 @@ let trancheExecutorJob: Cron | null = null;
 // Watchlist curator job; runs on configurable schedule (weekly/monthly/quarterly).
 let watchlistCuratorJob: Cron | null = null;
 
-// ── job handlers ──────────────────────────────────────────────────────────────
-
 // ── internal ──────────────────────────────────────────────────────────────────
 
-function registerWatchlistCuratorJob(): void {
-  // Stop existing job if any
-  if (watchlistCuratorJob) {
-    watchlistCuratorJob.stop();
-    watchlistCuratorJob = null;
-  }
-
-  const settings = getSettings();
-  const cron = settings.watchlist.curatorCron;
-
-  if (!cron) {
-    log.debug('watchlist curator not scheduled (no cron set)');
-    return;
-  }
-
-  if (settings.watchlist.mode !== 'dynamic') {
-    log.debug('watchlist curator not scheduled (not in dynamic mode)');
-    return;
-  }
-
-  try {
-    const db = getDatabase();
-    watchlistCuratorJob = new Cron(
-      cron,
-      { timezone: 'America/New_York', protect: true },
-      async () => {
-        await runWatchlistCuratorJob(db);
-      }
-    );
-    const nextRun = watchlistCuratorJob.nextRun();
-    log.info('watchlist-curator job registered', { 
-      cron, 
-      nextRun: nextRun?.toISOString() ?? null 
-    });
-  } catch (err) {
-    log.error('failed to register watchlist-curator job', { error: err instanceof Error ? err.message : String(err) });
-    watchlistCuratorJob = null;
-  }
+function stopAllJobs(): void {
+  if (activeJob) { activeJob.stop(); activeJob = null; }
+  if (snapshotCronJob) { snapshotCronJob.stop(); snapshotCronJob = null; }
+  if (marketOpenFillJob) { marketOpenFillJob.stop(); marketOpenFillJob = null; }
+  if (signalCollectionJob) { signalCollectionJob.stop(); signalCollectionJob = null; }
+  if (regimeDetectionJob) { regimeDetectionJob.stop(); regimeDetectionJob = null; }
+  if (weeklyPlannerJob) { weeklyPlannerJob.stop(); weeklyPlannerJob = null; }
+  if (trancheExecutorJob) { trancheExecutorJob.stop(); trancheExecutorJob = null; }
+  if (watchlistCuratorJob) { watchlistCuratorJob.stop(); watchlistCuratorJob = null; }
 }
 
-function registerJobs(): void {
+function registerAllJobs(): void {
+  const db = getDatabase();
   const settings = getSettings();
-  const { cron, timezone } = settings.schedule;
 
-  if (activeJob) {
-    activeJob.stop();
-    activeJob = null;
-    log.info('previous jobs stopped');
-  }
+  stopAllJobs();
+  log.info('re-registering all scheduler jobs');
+
+  // Trading Cycle job
+  const { cron, timezone } = settings.schedule;
 
   try {
     activeJob = new Cron(cron, { timezone, protect: true }, async () => {
@@ -256,15 +225,93 @@ function registerJobs(): void {
         log.error('trading cycle job failed', { error: err instanceof Error ? err.message : String(err) });
       }
     });
-    const nextRun = activeJob.nextRun();
-    log.info('scheduler registered', { cron, timezone, nextRun: nextRun?.toISOString() ?? null });
+    log.info('trading-cycle job registered', { cron, timezone, nextRun: activeJob.nextRun()?.toISOString() ?? null });
   } catch (err) {
-    log.error('failed to register scheduler jobs', {
-      error: err instanceof Error ? err.message : String(err),
-      cron,
-      timezone,
-    });
+    log.error('failed to register trading-cycle job', { error: err instanceof Error ? err.message : String(err) });
     activeJob = null;
+  }
+
+  // Snapshot job (16:30 ET daily on trading days)
+  try {
+    snapshotCronJob = new Cron('30 16 * * 1-5', { timezone: 'America/New_York', protect: true }, async () => {
+      await runSnapshotJob(db);
+    });
+    log.info('snapshot job registered', { cron: '30 16 * * 1-5', nextRun: snapshotCronJob.nextRun()?.toISOString() ?? null });
+  } catch (err) {
+    log.error('failed to register snapshot job', { error: err instanceof Error ? err.message : String(err) });
+    snapshotCronJob = null;
+  }
+
+  // Market open fill job (9:30 AM ET on trading days)
+  try {
+    marketOpenFillJob = new Cron('30 9 * * 1-5', { timezone: 'America/New_York', protect: true }, async () => {
+      const settings = getSettings();
+      await runMarketOpenFillJob(db, { slippageBps: settings.paperAccount.slippageBps });
+    });
+    log.info('market-open-fill job registered', { cron: '30 9 * * 1-5' });
+  } catch (err) {
+    log.error('failed to register market-open-fill job', { error: err instanceof Error ? err.message : String(err) });
+    marketOpenFillJob = null;
+  }
+
+  // Signal collection job (16:00 ET on trading days)
+  try {
+    signalCollectionJob = new Cron('0 16 * * 1-5', { timezone: 'America/New_York', protect: true }, async () => {
+      await runSignalCollectionJob(db);
+    });
+    log.info('signal-collection job registered', { cron: '0 16 * * 1-5' });
+  } catch (err) {
+    log.error('failed to register signal-collection job', { error: err instanceof Error ? err.message : String(err) });
+    signalCollectionJob = null;
+  }
+
+  // Regime detection job (16:05 ET on trading days)
+  try {
+    regimeDetectionJob = new Cron('5 16 * * 1-5', { timezone: 'America/New_York', protect: true }, async () => {
+      await runRegimeDetectionJob(db);
+    });
+    log.info('regime-detection job registered', { cron: '5 16 * * 1-5' });
+  } catch (err) {
+    log.error('failed to register regime-detection job', { error: err instanceof Error ? err.message : String(err) });
+    regimeDetectionJob = null;
+  }
+
+  // Weekly planner job (Mondays at 16:10 ET)
+  try {
+    weeklyPlannerJob = new Cron('10 16 * * 1', { timezone: 'America/New_York', protect: true }, async () => {
+      await runWeeklyPlannerJob(db);
+    });
+    log.info('weekly-planner job registered', { cron: '10 16 * * 1' });
+  } catch (err) {
+    log.error('failed to register weekly-planner job', { error: err instanceof Error ? err.message : String(err) });
+    weeklyPlannerJob = null;
+  }
+
+  // Tranche executor job (16:15 ET on trading days)
+  try {
+    trancheExecutorJob = new Cron('15 16 * * 1-5', { timezone: 'America/New_York', protect: true }, async () => {
+      await runTrancheExecutorJob(db);
+    });
+    log.info('tranche-executor job registered', { cron: '15 16 * * 1-5' });
+  } catch (err) {
+    log.error('failed to register tranche-executor job', { error: err instanceof Error ? err.message : String(err) });
+    trancheExecutorJob = null;
+  }
+
+  // Watchlist curator job (configurable schedule)
+  const curatorCron = settings.watchlist.curatorCron?.trim();
+  if (curatorCron && settings.watchlist.mode === 'dynamic') {
+    try {
+      watchlistCuratorJob = new Cron(curatorCron, { timezone: 'America/New_York', protect: true }, async () => {
+        await runWatchlistCuratorJob(db);
+      });
+      log.info('watchlist-curator job registered', { cron: curatorCron, nextRun: watchlistCuratorJob.nextRun()?.toISOString() ?? null });
+    } catch (err) {
+      log.error('failed to register watchlist-curator job', { error: err instanceof Error ? err.message : String(err) });
+      watchlistCuratorJob = null;
+    }
+  } else {
+    log.debug('watchlist curator not scheduled', { reason: !curatorCron ? 'no cron set' : 'not in dynamic mode' });
   }
 }
 
@@ -272,159 +319,13 @@ function registerJobs(): void {
 
 /** Initialise the scheduler. Must be called once after settings are available. */
 export function startScheduler(): void {
-  registerJobs();
-
-  // Register fixed snapshot job (16:30 ET daily on trading days, after market close, before trading cycle)
-  try {
-    const db = getDatabase();
-    snapshotCronJob = new Cron(
-      '30 16 * * 1-5',
-      { timezone: 'America/New_York', protect: true },
-      async () => {
-        await runSnapshotJob(db);
-      }
-    );
-    const nextRun = snapshotCronJob.nextRun();
-    log.info('snapshot job registered', { cron: '30 16 * * 1-5', timezone: 'America/New_York', nextRun: nextRun?.toISOString() ?? null });
-  } catch (err) {
-    log.error('failed to register snapshot job', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    snapshotCronJob = null;
-  }
-
-  // Register market open fill job (9:30 AM ET on trading days)
-  try {
-    const db = getDatabase();
-    marketOpenFillJob = new Cron(
-      '30 9 * * 1-5',
-      { timezone: 'America/New_York', protect: true },
-      async () => {
-        const settings = getSettings();
-        await runMarketOpenFillJob(db, { slippageBps: settings.paperAccount.slippageBps });
-      }
-    );
-    log.info('market-open-fill job registered', { cron: '30 9 * * 1-5', timezone: 'America/New_York' });
-  } catch (err) {
-    log.error('failed to register market-open-fill job', { error: err instanceof Error ? err.message : String(err) });
-    marketOpenFillJob = null;
-  }
-
-  // Register signal collection job (16:00 ET on trading days, before snapshot)
-  try {
-    const db = getDatabase();
-    signalCollectionJob = new Cron(
-      '0 16 * * 1-5',
-      { timezone: 'America/New_York', protect: true },
-      async () => {
-        await runSignalCollectionJob(db);
-      }
-    );
-    log.info('signal-collection job registered', { cron: '0 16 * * 1-5', timezone: 'America/New_York' });
-  } catch (err) {
-    log.error('failed to register signal-collection job', { error: err instanceof Error ? err.message : String(err) });
-    signalCollectionJob = null;
-  }
-
-  // Register regime detection job (16:05 ET on trading days, after signal collection)
-  try {
-    const db = getDatabase();
-    regimeDetectionJob = new Cron(
-      '5 16 * * 1-5',
-      { timezone: 'America/New_York', protect: true },
-      async () => {
-        await runRegimeDetectionJob(db);
-      }
-    );
-    log.info('regime-detection job registered', { cron: '5 16 * * 1-5', timezone: 'America/New_York' });
-  } catch (err) {
-    log.error('failed to register regime-detection job', { error: err instanceof Error ? err.message : String(err) });
-    regimeDetectionJob = null;
-  }
-
-  // Register weekly planner job (Mondays at 16:10 ET)
-  try {
-    const db = getDatabase();
-    weeklyPlannerJob = new Cron(
-      '10 16 * * 1',
-      { timezone: 'America/New_York', protect: true },
-      async () => {
-        await runWeeklyPlannerJob(db);
-      }
-    );
-    log.info('weekly-planner job registered', { cron: '10 16 * * 1', timezone: 'America/New_York' });
-  } catch (err) {
-    log.error('failed to register weekly-planner job', { error: err instanceof Error ? err.message : String(err) });
-    weeklyPlannerJob = null;
-  }
-
-  // Register tranche executor job (16:15 ET on trading days)
-  try {
-    const db = getDatabase();
-    trancheExecutorJob = new Cron(
-      '15 16 * * 1-5',
-      { timezone: 'America/New_York', protect: true },
-      async () => {
-        await runTrancheExecutorJob(db);
-      }
-    );
-    log.info('tranche-executor job registered', { cron: '15 16 * * 1-5', timezone: 'America/New_York' });
-  } catch (err) {
-    log.error('failed to register tranche-executor job', { error: err instanceof Error ? err.message : String(err) });
-    trancheExecutorJob = null;
-  }
-
-  // Register watchlist curator job based on schedule setting
-  registerWatchlistCuratorJob();
-
-  settingsEvents.on('change', () => {
-    log.info('settings changed, re-registering scheduler jobs');
-    registerJobs();
-  });
+  registerAllJobs();
+  settingsEvents.on('change', () => registerAllJobs());
 }
 
 /** Stop all active jobs (call on SIGTERM/SIGINT). */
 export function stopScheduler(): void {
-  if (activeJob) {
-    activeJob.stop();
-    activeJob = null;
-  }
-
-  if (snapshotCronJob) {
-    snapshotCronJob.stop();
-    snapshotCronJob = null;
-  }
-
-  if (marketOpenFillJob) {
-    marketOpenFillJob.stop();
-    marketOpenFillJob = null;
-  }
-
-  if (signalCollectionJob) {
-    signalCollectionJob.stop();
-    signalCollectionJob = null;
-  }
-
-  if (regimeDetectionJob) {
-    regimeDetectionJob.stop();
-    regimeDetectionJob = null;
-  }
-
-  if (weeklyPlannerJob) {
-    weeklyPlannerJob.stop();
-    weeklyPlannerJob = null;
-  }
-
-  if (trancheExecutorJob) {
-    trancheExecutorJob.stop();
-    trancheExecutorJob = null;
-  }
-
-  if (watchlistCuratorJob) {
-    watchlistCuratorJob.stop();
-    watchlistCuratorJob = null;
-  }
-
+  stopAllJobs();
   log.info('scheduler stopped');
 }
 

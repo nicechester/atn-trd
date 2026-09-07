@@ -712,19 +712,29 @@ You'll feel like the bot is broken when it doesn't trade. Add notifications:
 
 ### Remaining Implementation
 
-Recommended order based on dependencies and value:
+**Paper Trading Prerequisites** (must complete before paper trading phase):
 
 | Order | Issue | Description | Rationale |
 |-------|-------|-------------|----------|
-| 1 | [#169](https://github.com/nicechester/atn-trd/issues/169) | Watchlist pruning (planner removes stale symbols) | Foundation - planner already runs weekly |
-| 2 | [#174](https://github.com/nicechester/atn-trd/issues/174) | Waiting notifications (surface "no action" reasons) | Quick win - improves visibility |
-| 3 | [#171](https://github.com/nicechester/atn-trd/issues/171) | Sector exposure caps (max 30% per sector) | Risk management - prevents concentration |
-| 4 | [#172](https://github.com/nicechester/atn-trd/issues/172) | Conviction-scaled tranches | Execution improvement - standalone |
-| 5 | [#175](https://github.com/nicechester/atn-trd/issues/175) | Scheduled watchlist curator | Automation - watchlist grows/shrinks automatically |
-| 6 | [#170](https://github.com/nicechester/atn-trd/issues/170) | Auto-hedging (GLD/TLT plans when RISK_OFF) | Requires regime detection working well |
-| 7 | [#173](https://github.com/nicechester/atn-trd/issues/173) | Auto-trim for hedge liquidity | Depends on #170 |
+| P1 | [#183](https://github.com/nicechester/atn-trd/issues/183) | Fix composite rescale | Cross-sectional normalization + sentiment_trend pinning. **Non-negotiable** — buyThreshold unreachable without this |
+| P2 | [#184](https://github.com/nicechester/atn-trd/issues/184) | Add IC measurement logging | Store raw sentiment, trend, momentum separately in signal_snapshots. Enables post-paper IC measurement vs realized returns |
+| P3 | [#185](https://github.com/nicechester/atn-trd/issues/185) | Adopt conviction scaling | Implement #172 formula if cost is low. Paper trading exercises it for free |
 
-### Backlog (Edge Cases & Refinements)
+### Backlog (In Progress & Edge Cases)
+
+**Active Work**:
+
+| Issue | Description |
+|-------|-------------|
+| [#169](https://github.com/nicechester/atn-trd/issues/169) | Watchlist pruning (planner removes stale symbols) |
+| [#174](https://github.com/nicechester/atn-trd/issues/174) | Waiting notifications (surface "no action" reasons) |
+| [#171](https://github.com/nicechester/atn-trd/issues/171) | Sector exposure caps (max 30% per sector) |
+| [#172](https://github.com/nicechester/atn-trd/issues/172) | Conviction-scaled tranches |
+| [#175](https://github.com/nicechester/atn-trd/issues/175) | Scheduled watchlist curator |
+| [#170](https://github.com/nicechester/atn-trd/issues/170) | Auto-hedging (GLD/TLT plans when RISK_OFF) |
+| [#173](https://github.com/nicechester/atn-trd/issues/173) | Auto-trim for hedge liquidity |
+
+**Edge Cases & Refinements**:
 
 | Issue | Description |
 |-------|-------------|
@@ -734,6 +744,12 @@ Recommended order based on dependencies and value:
 ### Dependency Graph
 
 ```
+BLOCKING PAPER TRADING:
+#183 (composite rescale) ──┐
+#184 (IC logging) ────────┼──> Paper Trading Phase
+#185 (conviction scaling) ─┘
+
+IN PROGRESS (backlog):
 #169 (prune) ──┐
                ├──> #175 (scheduled curator)
 #174 (notifications) - standalone
