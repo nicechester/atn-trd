@@ -710,55 +710,38 @@ You'll feel like the bot is broken when it doesn't trade. Add notifications:
 | [#152](https://github.com/nicechester/atn-trd/issues/152) | Rename Runs to Job History with job type filter | ✅ Done |
 | [#153](https://github.com/nicechester/atn-trd/issues/153) | On-demand LLM-powered Reports | ✅ Done |
 
-### Remaining Implementation
+### Implementation Status
 
-**Paper Trading Prerequisites** (must complete before paper trading phase):
+**Paper Trading Prerequisites** (all completed):
 
-| Order | Issue | Description | Rationale |
-|-------|-------|-------------|----------|
-| P1 | [#183](https://github.com/nicechester/atn-trd/issues/183) | Fix composite rescale | Cross-sectional normalization + sentiment_trend pinning. **Non-negotiable** — buyThreshold unreachable without this |
-| P2 | [#184](https://github.com/nicechester/atn-trd/issues/184) | Add IC measurement logging | Store raw sentiment, trend, momentum separately in signal_snapshots. Enables post-paper IC measurement vs realized returns |
-| P3 | [#185](https://github.com/nicechester/atn-trd/issues/185) | Adopt conviction scaling | Implement #172 formula if cost is low. Paper trading exercises it for free |
+| Issue | Description | Status |
+|-------|-------------|--------|
+| [#183](https://github.com/nicechester/atn-trd/issues/183) | Fix composite rescale to [0,1] range | ✅ Done |
+| [#184](https://github.com/nicechester/atn-trd/issues/184) | Add IC measurement logging (immutable snapshots) | ✅ Done |
+| [#185](https://github.com/nicechester/atn-trd/issues/185) | Adopt conviction scaling | ✅ Done |
 
-### Backlog (In Progress & Edge Cases)
+### Backlog (Completed)
 
-**Active Work**:
+| Issue | Description | Status |
+|-------|-------------|--------|
+| [#169](https://github.com/nicechester/atn-trd/issues/169) | Watchlist pruning (planner removes stale symbols) | ✅ Done |
+| [#174](https://github.com/nicechester/atn-trd/issues/174) | Waiting notifications (surface "no action" reasons) | ✅ Done |
+| [#171](https://github.com/nicechester/atn-trd/issues/171) | Sector exposure caps (max 30% per sector) | ✅ Done |
+| [#172](https://github.com/nicechester/atn-trd/issues/172) | Conviction-scaled tranches | ✅ Done |
+| [#175](https://github.com/nicechester/atn-trd/issues/175) | Scheduled watchlist curator | ✅ Done |
+| [#170](https://github.com/nicechester/atn-trd/issues/170) | Auto-hedging (GLD/TLT plans when RISK_OFF) | ✅ Done |
+| [#173](https://github.com/nicechester/atn-trd/issues/173) | Auto-trim for hedge liquidity | ✅ Done |
+| [#138](https://github.com/nicechester/atn-trd/issues/138) | Handle Edge Cases: Chunky Stocks, Hysteresis, Partial Fills | ✅ Done |
+| [#139](https://github.com/nicechester/atn-trd/issues/139) | Refinements: Signal Decay, Regime Delay, Sector Caps, Notifications | ✅ Done |
+
+### Remaining Open Issues
 
 | Issue | Description |
 |-------|-------------|
-| [#169](https://github.com/nicechester/atn-trd/issues/169) | Watchlist pruning (planner removes stale symbols) |
-| [#174](https://github.com/nicechester/atn-trd/issues/174) | Waiting notifications (surface "no action" reasons) |
-| [#171](https://github.com/nicechester/atn-trd/issues/171) | Sector exposure caps (max 30% per sector) |
-| [#172](https://github.com/nicechester/atn-trd/issues/172) | Conviction-scaled tranches |
-| [#175](https://github.com/nicechester/atn-trd/issues/175) | Scheduled watchlist curator |
-| [#170](https://github.com/nicechester/atn-trd/issues/170) | Auto-hedging (GLD/TLT plans when RISK_OFF) |
-| [#173](https://github.com/nicechester/atn-trd/issues/173) | Auto-trim for hedge liquidity |
-
-**Edge Cases & Refinements**:
-
-| Issue | Description |
-|-------|-------------|
-| [#138](https://github.com/nicechester/atn-trd/issues/138) | Handle Edge Cases: Chunky Stocks, Hysteresis, Partial Fills |
-| [#139](https://github.com/nicechester/atn-trd/issues/139) | Refinements: Signal Decay, Regime Delay, Sector Caps, Notifications |
-
-### Dependency Graph
-
-```
-BLOCKING PAPER TRADING:
-#183 (composite rescale) ──┐
-#184 (IC logging) ────────┼──> Paper Trading Phase
-#185 (conviction scaling) ─┘
-
-IN PROGRESS (backlog):
-#169 (prune) ──┐
-               ├──> #175 (scheduled curator)
-#174 (notifications) - standalone
-
-#171 (sector caps) - standalone
-#172 (conviction scaling) - standalone
-
-#170 (auto-hedge) ──> #173 (auto-trim for hedge)
-```
+| [#131](https://github.com/nicechester/atn-trd/issues/131) | Architecture epic (tracking issue) |
+| [#130](https://github.com/nicechester/atn-trd/issues/130) | Print view for run detail |
+| [#120](https://github.com/nicechester/atn-trd/issues/120) | Screener Optimization: Bulk Data Caching |
+| [#108](https://github.com/nicechester/atn-trd/issues/108) | Open status in new window |
 
 ---
 

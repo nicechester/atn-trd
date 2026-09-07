@@ -9,15 +9,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for code changes
+        id: changes
+        run: |
+          # Get changed files between HEAD and previous commit
+          CHANGED=$(git diff --name-only HEAD~1 HEAD)
+          echo "Changed files:"
+          echo "$CHANGED"
+          
+          # Check if any non-doc files changed
+          if echo "$CHANGED" | grep -qvE '^(docs/|README\.md|.*\.md$)'; then
+            echo "code_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "code_changed=false" >> $GITHUB_OUTPUT
+            echo "Only docs changed, skipping build/deploy"
+          fi
 
       - uses: actions/setup-node@v4
+        if: steps.changes.outputs.code_changed == 'true'
         with:
           node-version: '22'
 
       - name: Install dependencies
+        if: steps.changes.outputs.code_changed == 'true'
         run: npm install
 
       - name: Build
+        if: steps.changes.outputs.code_changed == 'true'
         run: |
           npm run build
           mkdir -p server/public
@@ -25,6 +46,7 @@ jobs:
           echo "{\"commit\":\"${GITHUB_SHA::7}\",\"buildNumber\":${{ github.run_number }},\"buildTime\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > server/build-info.json
 
       - name: Commit dist files
+        if: steps.changes.outputs.code_changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -33,6 +55,7 @@ jobs:
           git push
 
       - name: Deploy to VM
+        if: steps.changes.outputs.code_changed == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
@@ -45,6 +68,7 @@ jobs:
             sudo systemctl restart atn-trd
 
       - name: Wait for FinBERT ready
+        if: steps.changes.outputs.code_changed == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
