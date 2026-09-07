@@ -42,7 +42,24 @@ function loadFromDb(): Settings {
   const { settingsRepo } = getRepos();
   const row = settingsRepo.read();
   const raw = row ? JSON.parse(row.doc) : {};
-  return SettingsSchema.parse(raw);
+
+  // Migrate old sellThreshold from [-1,0] scale to [0,1] scale
+  let needsMigration = false;
+  if (raw.signals?.sellThreshold !== undefined && raw.signals.sellThreshold < 0) {
+    // Convert: old -0.50 → new 0.25 (formula: (old + 1) / 2)
+    raw.signals.sellThreshold = (raw.signals.sellThreshold + 1) / 2;
+    needsMigration = true;
+  }
+
+  const settings = SettingsSchema.parse(raw);
+
+  // Persist migrated settings
+  if (needsMigration) {
+    settings.updatedAt = Date.now();
+    settingsRepo.write(JSON.stringify(settings), settings.updatedAt);
+  }
+
+  return settings;
 }
 
 export function getSettings(): Settings {
