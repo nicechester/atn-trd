@@ -14,6 +14,7 @@ if (modelPath) {
   env.allowLocalModels = true;
   env.allowRemoteModels = false;
 }
+const modelName = modelPath ? 'finbert-onnx' : 'ProsusAI/finbert';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let classifier: any = null;
@@ -34,7 +35,6 @@ function normalizeScore(label: string, score: number): number {
  * Initialize the model. Call at startup.
  */
 export async function prewarmFinBERT(): Promise<void> {
-  const modelName = modelPath ? '.' : 'ProsusAI/finbert';
   log.info(`Loading FinBERT model from ${modelPath || 'HuggingFace'}...`);
   classifier = await pipeline('sentiment-analysis', modelName);
   log.info('FinBERT model loaded');

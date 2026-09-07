@@ -1,14 +1,4 @@
 services:
-  finbert:
-    build: ./finbert-server
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
-
   app:
     build:
       context: .
@@ -20,16 +10,8 @@ services:
     environment:
       NODE_ENV: development
       ATN_DATA_DIR: /data
-      ATN_ENC_KEY: ${ATN_ENC_KEY}
-      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
-      FRED_API_KEY: ${FRED_API_KEY}
-      LLM_API_KEY: ${LLM_API_KEY}
-      LLM_API_URL: ${LLM_API_URL}
-      LLM_MODEL: ${LLM_MODEL}
-      FINBERT_URL: http://finbert:5000
+      FINBERT_MODEL_PATH: /models
     volumes:
       - ./data:/data
-    depends_on:
-      finbert:
-        condition: service_healthy
+      - ./models:/models:ro
     restart: unless-stopped

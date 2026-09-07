@@ -41,3 +41,5 @@ yarn-error.log*
 *.pid
 *.seed
 *.sqlite
+
+models/

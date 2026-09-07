@@ -8,7 +8,7 @@ User=chester.kim
 WorkingDirectory=/home/chester.kim/atn-trd
 EnvironmentFile=/home/chester.kim/atn-trd/.env
 Environment=NODE_ENV=production
-Environment=FINBERT_MODEL_PATH=/home/chester.kim/finbert-onnx
+Environment=FINBERT_MODEL_PATH=/home/chester.kim/models
 ExecStart=/usr/bin/npx tsx server/src/main.ts
 Restart=always
 RestartSec=5
