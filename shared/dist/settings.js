@@ -124,7 +124,7 @@ export const SettingsSchema = z.object({
         enabled: z.boolean().default(false),
         useLlm: z.boolean().default(true), // Use LLM to synthesize news before FinBERT scoring
         buyThreshold: z.number().min(0).max(1).default(0.70),
-        sellThreshold: z.number().min(0).max(1).default(0.25), // Below this triggers sell (was -0.50 on old [-1,1] scale)
+        sellThreshold: z.number().min(-1).max(1).default(0.25), // [0,1] scale: 0.25 = bearish. Accepts old [-1,0] values for migration.
         pauseThreshold: z.number().min(0).max(1).default(0.60),
         cancelThreshold: z.number().min(0).max(1).default(0.45),
         rollingWindowDays: z.number().int().min(7).max(30).default(14),
