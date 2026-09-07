@@ -173,6 +173,7 @@ export declare const SettingsSchema: z.ZodObject<{
             scoreThreshold?: number | undefined;
             consecutiveDaysBelow?: number | undefined;
         }>>;
+        curatorCron: z.ZodDefault<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         mode: "manual" | "dynamic";
         symbols: {
@@ -197,6 +198,7 @@ export declare const SettingsSchema: z.ZodObject<{
             scoreThreshold: number;
             consecutiveDaysBelow: number;
         };
+        curatorCron: string;
     }, {
         mode?: "manual" | "dynamic" | undefined;
         symbols?: {
@@ -221,6 +223,7 @@ export declare const SettingsSchema: z.ZodObject<{
             scoreThreshold?: number | undefined;
             consecutiveDaysBelow?: number | undefined;
         } | undefined;
+        curatorCron?: string | undefined;
     }>>;
     dataSources: z.ZodDefault<z.ZodObject<{
         news: z.ZodDefault<z.ZodObject<{
@@ -705,6 +708,7 @@ export declare const SettingsSchema: z.ZodObject<{
             scoreThreshold: number;
             consecutiveDaysBelow: number;
         };
+        curatorCron: string;
     };
     dataSources: {
         options: {
@@ -863,6 +867,7 @@ export declare const SettingsSchema: z.ZodObject<{
             scoreThreshold?: number | undefined;
             consecutiveDaysBelow?: number | undefined;
         } | undefined;
+        curatorCron?: string | undefined;
     } | undefined;
     dataSources?: {
         options?: {

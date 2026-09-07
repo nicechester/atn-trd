@@ -23,6 +23,7 @@ import { runSignalCollectionJob } from './jobs/signalCollection.js';
 import { runRegimeDetectionJob } from './jobs/regimeDetection.js';
 import { runWeeklyPlannerJob } from './jobs/weeklyPlanner.js';
 import { runTrancheExecutorJob } from './jobs/trancheExecutor.js';
+import { runWatchlistCuratorJob } from './jobs/watchlistCurator.js';
 import { getDatabase } from '../db/index.js';
 import { RunsRepo } from '../repos/runsRepo.js';
 import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
@@ -77,9 +78,52 @@ let weeklyPlannerJob: Cron | null = null;
 // Tranche executor job; runs daily at 16:15 ET on trading days.
 let trancheExecutorJob: Cron | null = null;
 
+// Watchlist curator job; runs on configurable schedule (weekly/monthly/quarterly).
+let watchlistCuratorJob: Cron | null = null;
+
 // ── job handlers ──────────────────────────────────────────────────────────────
 
 // ── internal ──────────────────────────────────────────────────────────────────
+
+function registerWatchlistCuratorJob(): void {
+  // Stop existing job if any
+  if (watchlistCuratorJob) {
+    watchlistCuratorJob.stop();
+    watchlistCuratorJob = null;
+  }
+
+  const settings = getSettings();
+  const cron = settings.watchlist.curatorCron;
+
+  if (!cron) {
+    log.debug('watchlist curator not scheduled (no cron set)');
+    return;
+  }
+
+  if (settings.watchlist.mode !== 'dynamic') {
+    log.debug('watchlist curator not scheduled (not in dynamic mode)');
+    return;
+  }
+
+  try {
+    const db = getDatabase();
+    watchlistCuratorJob = new Cron(
+      cron,
+      { timezone: 'America/New_York', protect: true },
+      async () => {
+        await runWatchlistCuratorJob(db);
+      }
+    );
+    const nextRun = watchlistCuratorJob.nextRun();
+    log.info('watchlist-curator job registered', { 
+      cron, 
+      nextRun: nextRun?.toISOString() ?? null 
+    });
+  } catch (err) {
+    log.error('failed to register watchlist-curator job', { error: err instanceof Error ? err.message : String(err) });
+    watchlistCuratorJob = null;
+  }
+}
 
 function registerJobs(): void {
   const settings = getSettings();
@@ -330,6 +374,9 @@ export function startScheduler(): void {
     trancheExecutorJob = null;
   }
 
+  // Register watchlist curator job based on schedule setting
+  registerWatchlistCuratorJob();
+
   settingsEvents.on('change', () => {
     log.info('settings changed, re-registering scheduler jobs');
     registerJobs();
@@ -371,6 +418,11 @@ export function stopScheduler(): void {
   if (trancheExecutorJob) {
     trancheExecutorJob.stop();
     trancheExecutorJob = null;
+  }
+
+  if (watchlistCuratorJob) {
+    watchlistCuratorJob.stop();
+    watchlistCuratorJob = null;
   }
 
   log.info('scheduler stopped');
@@ -437,6 +489,16 @@ export function getJobSchedules(): JobSchedule[] {
       enabled: settings.execution.enabled,
     });
   }
+
+  // Always show Watchlist Curator (even when not scheduled)
+  const curatorCron = settings.watchlist.curatorCron;
+  const curatorEnabled = settings.watchlist.mode === 'dynamic' && !!curatorCron;
+  jobs.push({
+    name: 'Watchlist Curator',
+    cron: curatorCron || 'disabled',
+    nextRun: watchlistCuratorJob?.nextRun()?.toISOString() ?? null,
+    enabled: curatorEnabled,
+  });
 
   if (snapshotCronJob) {
     jobs.push({

@@ -13,6 +13,7 @@ type FormState = {
 
 type BuildInfo = {
   commit: string;
+  buildNumber?: number;
   buildTime: string;
 } | null;
 
@@ -82,7 +83,7 @@ export default function SettingsGeneral(): JSX.Element {
           {health.build && (
             <>
               <span>•</span>
-              <span>Build: {health.build.commit}</span>
+              <span>Build: #{health.build.buildNumber ?? '?'} ({health.build.commit})</span>
               <span>•</span>
               <span>{new Date(health.build.buildTime).toLocaleString()}</span>
             </>

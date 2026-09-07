@@ -18,6 +18,11 @@ const modelName = modelPath ? 'finbert-onnx' : 'ProsusAI/finbert';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let classifier: any = null;
+let finbertReady = false;
+
+export function isFinBERTReady(): boolean {
+  return finbertReady;
+}
 
 export interface FinBERTResult {
   label: 'positive' | 'negative' | 'neutral';
@@ -37,6 +42,7 @@ function normalizeScore(label: string, score: number): number {
 export async function prewarmFinBERT(): Promise<void> {
   log.info(`Loading FinBERT model from ${modelPath || 'HuggingFace'}...`);
   classifier = await pipeline('sentiment-analysis', modelName);
+  finbertReady = true;
   log.info('FinBERT model loaded');
 }
 

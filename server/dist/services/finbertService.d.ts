@@ -1,6 +1,7 @@
 /**
  * FinBERT sentiment scoring service using Transformers.js (ONNX).
  */
+export declare function isFinBERTReady(): boolean;
 export interface FinBERTResult {
     label: 'positive' | 'negative' | 'neutral';
     score: number;

@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getDatabase } from '../db/index.js';
+import { isFinBERTReady } from '../services/finbertService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,7 +17,7 @@ function getAppVersion(): string {
   }
 }
 
-function getBuildInfo(): { commit: string; buildTime: string } | null {
+function getBuildInfo(): { commit: string; buildTime: string; buildNumber?: number } | null {
   try {
     const buildPath = path.join(__dirname, '..', '..', 'build-info.json');
     const info = JSON.parse(fs.readFileSync(buildPath, 'utf-8'));
@@ -56,6 +57,7 @@ export function healthHandler(_req: Request, res: Response): void {
     migrationVersion: getMigrationVersion(),
     db: getDbInfo(),
     encKeyPresent: Boolean(process.env.ATN_ENC_KEY),
+    finbertReady: isFinBERTReady(),
     uptime: process.uptime(),
   });
 }
