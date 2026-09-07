@@ -15,7 +15,11 @@ export interface SignalSnapshotRow {
 export declare class SignalSnapshotsRepo {
     private readonly db;
     constructor(db: Database.Database);
-    upsert(row: SignalSnapshotRow): void;
+    /**
+     * Insert snapshot if not exists. Skips if already recorded for this symbol+date.
+     * This ensures snapshots are immutable for IC measurement against forward returns.
+     */
+    insert(row: SignalSnapshotRow): boolean;
     get(symbol: string, snapshotDate: string): SignalSnapshotRow | undefined;
     getLatest(symbol: string): SignalSnapshotRow | undefined;
     listBySymbol(symbol: string, limit?: number): SignalSnapshotRow[];
@@ -26,6 +30,18 @@ export declare class SignalSnapshotsRepo {
     getRecentSentiment(symbol: string, days: number): Array<{
         snapshotDate: string;
         sentimentScore: number;
+    }>;
+    /**
+     * Get all snapshots for IC measurement.
+     * Returns snapshots with both sentiment and price for forward return calculation.
+     */
+    listForIcMeasurement(fromDate: string, toDate: string): Array<{
+        symbol: string;
+        snapshotDate: string;
+        priceCents: number;
+        sentimentScore: number;
+        priceVsSma50: number | null;
+        compositeScore: number | null;
     }>;
 }
 //# sourceMappingURL=signalSnapshotsRepo.d.ts.map
