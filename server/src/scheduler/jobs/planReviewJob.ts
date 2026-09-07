@@ -229,7 +229,7 @@ export async function runPlanReviewJob(
         continue;
       }
 
-      // Check sell threshold (negative score = bearish)
+      // Check sell threshold (score below threshold = bearish, trigger sell)
       if (score > settings.signals.sellThreshold) {
         summary.plansSkipped.push({
           symbol: position.symbol,
@@ -245,7 +245,8 @@ export async function runPlanReviewJob(
       }
 
       // Create TRIM plan for full position
-      const conviction = Math.min(1, Math.abs(score - settings.signals.sellThreshold) / Math.abs(settings.signals.sellThreshold));
+      // Conviction: how far below threshold (0 at threshold, 1 at 0)
+      const conviction = Math.min(1, (settings.signals.sellThreshold - score) / settings.signals.sellThreshold);
 
       createPlan(deps, {
         symbol: position.symbol,
