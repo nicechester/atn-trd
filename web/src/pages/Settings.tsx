@@ -16,7 +16,7 @@ export default function SettingsPage(): JSX.Element {
       <nav className={styles.subNav}>
         <NavLink to="general" className={styles.subLink}>General</NavLink>
         <NavLink to="watchlist" className={styles.subLink}>Watchlist</NavLink>
-        <NavLink to="schedule" className={styles.subLink}>Schedule</NavLink>
+        <NavLink to="schedule" className={styles.subLink}>Schedules</NavLink>
         <NavLink to="risk" className={styles.subLink}>Risk</NavLink>
         <NavLink to="investor-profile" className={styles.subLink}>Investor Profile</NavLink>
         <NavLink to="data-sources" className={styles.subLink}>Data Sources</NavLink>

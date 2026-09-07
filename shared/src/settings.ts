@@ -63,6 +63,7 @@ export const SettingsSchema = z.object({
       scoreThreshold: z.number().min(-1).max(0).default(-0.3),
       consecutiveDaysBelow: z.number().int().min(1).max(30).default(5),
     }).default({}),
+    curatorCron: z.string().default(''), // empty = disabled, or cron expression
   }).default({}),
 
   dataSources: z.object({
@@ -240,6 +241,7 @@ export const DEFAULT_SETTINGS: Settings = {
       scoreThreshold: -0.3,
       consecutiveDaysBelow: 5,
     },
+    curatorCron: '',
   },
   dataSources: {
     news: { provider: 'finnhub', enabled: true },

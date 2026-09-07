@@ -22,7 +22,7 @@ jobs:
           npm run build
           mkdir -p server/public
           cp -r web/dist/* server/public/
-          echo "{\"commit\":\"${GITHUB_SHA::7}\",\"buildTime\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > server/build-info.json
+          echo "{\"commit\":\"${GITHUB_SHA::7}\",\"buildNumber\":${{ github.run_number }},\"buildTime\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > server/build-info.json
 
       - name: Commit dist files
         run: |
@@ -44,15 +44,21 @@ jobs:
             npm install --omit=dev
             sudo systemctl restart atn-trd
 
-      - name: Wait for health check
-        run: |
-          echo "Waiting for server to be ready..."
-          for i in {1..60}; do
-            if curl -sf http://${{ secrets.VM_HOST }}:8080/api/health > /dev/null; then
-              echo "Server is healthy!"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "Health check timed out"
-          exit 1
+      - name: Wait for FinBERT ready
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            echo "Waiting for FinBERT model to load..."
+            for i in $(seq 1 120); do
+              if journalctl -u atn-trd --since "5 minutes ago" | grep -q "FinBERT model ready"; then
+                echo "FinBERT is ready!"
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "FinBERT readiness check timed out"
+            exit 1
