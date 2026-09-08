@@ -44,7 +44,7 @@ export async function prewarmFinBERT(): Promise<void> {
   log.info(`Loading FinBERT model from ${modelPath || 'HuggingFace'}...`);
   classifier = await pipeline('text-classification', modelName, pipelineOptions);
   finbertReady = true;
-  log.info('FinBERT model loaded');
+  log.info('FinBERT model ready');
 }
 
 /**
