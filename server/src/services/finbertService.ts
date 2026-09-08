@@ -2,7 +2,7 @@
  * FinBERT sentiment scoring service using Transformers.js (ONNX).
  */
 
-import { pipeline, env } from '@xenova/transformers';
+import { pipeline, env } from '@huggingface/transformers';
 import { logger } from '../lib/logger.js';
 
 const log = logger.child({ component: 'finbert-service' });
@@ -11,12 +11,11 @@ const log = logger.child({ component: 'finbert-service' });
 const modelPath = process.env.FINBERT_MODEL_PATH;
 if (modelPath) {
   env.localModelPath = modelPath;
-  env.allowLocalModels = true;
   env.allowRemoteModels = false;
 }
-// Use INT8 quantized model for lower memory footprint (~400MB vs ~1.5GB)
-// Local path: uses 'finbert-int8' subfolder, remote: uses HuggingFace
+// Local: 'finbert-int8' subfolder with model_quantized.onnx, Remote: HuggingFace
 const modelName = modelPath ? 'finbert-int8' : 'sekarkrishna/finbert-int8';
+const pipelineOptions = modelPath ? { model_file_name: 'model_quantized' } : {};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let classifier: any = null;
@@ -43,7 +42,7 @@ function normalizeScore(label: string, score: number): number {
  */
 export async function prewarmFinBERT(): Promise<void> {
   log.info(`Loading FinBERT model from ${modelPath || 'HuggingFace'}...`);
-  classifier = await pipeline('sentiment-analysis', modelName);
+  classifier = await pipeline('text-classification', modelName, pipelineOptions);
   finbertReady = true;
   log.info('FinBERT model loaded');
 }
