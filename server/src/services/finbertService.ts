@@ -15,9 +15,7 @@ if (modelPath) {
 }
 // Local: 'finbert-int8' subfolder with model_quantized.onnx, Remote: HuggingFace
 const modelName = modelPath ? 'finbert-int8' : 'sekarkrishna/finbert-int8';
-const pipelineOptions = modelPath
-  ? { model_file_name: 'model_quantized', dtype: 'q8' as const }
-  : {};
+const pipelineOptions = { model_file_name: 'model', dtype: 'q8' as const };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let classifier: any = null;
