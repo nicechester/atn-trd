@@ -15,7 +15,9 @@ import { PortfolioRepo } from '../../repos/portfolioRepo.js';
 import { PricesRepo } from '../../repos/pricesRepo.js';
 import { PositionsRepo } from '../../repos/positionsRepo.js';
 import { SymbolCategoriesRepo } from '../../repos/symbolCategoriesRepo.js';
+import { OrdersRepo } from '../../repos/ordersRepo.js';
 import { RunsRepo, type RunTrigger } from '../../repos/runsRepo.js';
+import { AlpacaBroker } from '../../brokers/alpacaBroker.js';
 import {
   shouldExecuteTranche,
   executeTranche,
@@ -98,6 +100,14 @@ export async function runTrancheExecutorJob(
     const pricesRepo = new PricesRepo(db);
     const positionsRepo = new PositionsRepo(db);
     const symbolCategoriesRepo = new SymbolCategoriesRepo(db);
+    const ordersRepo = new OrdersRepo(db);
+
+    // Initialize Alpaca broker for order submission
+    const apiKey = process.env.ALPACA_API_KEY;
+    const apiSecret = process.env.ALPACA_API_SECRET;
+    const broker = apiKey && apiSecret
+      ? new AlpacaBroker({ apiKey, apiSecret, paperTrading: true })
+      : undefined;
 
     const deps: StrategicPlanDeps = {
       strategicPlansRepo,
@@ -108,6 +118,8 @@ export async function runTrancheExecutorJob(
       pricesRepo,
       positionsRepo,
       symbolCategoriesRepo,
+      ordersRepo,
+      broker,
       getSettings,
     };
 
@@ -193,7 +205,7 @@ export async function runTrancheExecutorJob(
       }
 
       // Execute tranche with budget awareness (handles chunky stocks)
-      const result = executeTranche(
+      const result = await executeTranche(
         deps,
         plan,
         price.adjCloseCents,

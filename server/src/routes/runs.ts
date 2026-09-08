@@ -19,7 +19,7 @@ import { NotFoundError } from '../lib/errors.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
 import { CoverageServiceImpl } from '../services/coverageService.js';
-import { PaperBroker } from '../brokers/paperBroker.js';
+import { AlpacaBroker } from '../brokers/alpacaBroker.js';
 import { RunCache } from '../datasources/cache.js';
 import { createTradingCycleService } from '../services/tradingCycleService.js';
 import { runScreener } from '../services/screenerOrchestrationService.js';
@@ -180,10 +180,18 @@ export async function triggerRunHandler(
     // services
     const priceService     = new PriceService(pricesRepo);
     const portfolioService = new PortfolioServiceImpl(db, priceService, positionsRepo, portfolioRepo);
-    const broker           = new PaperBroker(db, priceService, ordersRepo, fillsRepo, positionsRepo, portfolioRepo, {
-      fillModel:   settings.paperAccount.fillModel,
-      slippageBps: settings.paperAccount.slippageBps,
-    }, semanticMemory ? { decisionsRepo, assessmentsRepo, semanticMemory } : undefined);
+
+    // Initialize Alpaca paper trading broker
+    const apiKey = process.env.ALPACA_API_KEY;
+    const apiSecret = process.env.ALPACA_API_SECRET;
+    if (!apiKey || !apiSecret) {
+      throw new Error('ALPACA_API_KEY and ALPACA_API_SECRET environment variables are required for Alpaca paper trading');
+    }
+    const broker = new AlpacaBroker({
+      apiKey,
+      apiSecret,
+      paperTrading: true,
+    });
 
     // agent tools deps (with per-run cache)
     const runCache = new RunCache();

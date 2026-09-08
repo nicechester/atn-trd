@@ -11,7 +11,7 @@ import { AuditLogRepo } from '../repos/auditLogRepo.js';
 import { CashFlowsRepo } from '../repos/cashFlowsRepo.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
-import { PaperBroker } from '../brokers/paperBroker.js';
+import { AlpacaBroker } from '../brokers/alpacaBroker.js';
 import { ValidationError } from '../lib/errors.js';
 import { getSettings } from '../config/settingsService.js';
 import { logger } from '../lib/logger.js';
@@ -31,8 +31,63 @@ export async function getPortfolioHandler(
     const priceService = new PriceService(pricesRepo);
     const positionsRepo = new PositionsRepo(db);
     const portfolioRepo = new PortfolioRepo(db);
-    const portfolioService = new PortfolioServiceImpl(db, priceService, positionsRepo, portfolioRepo);
 
+    // Initialize Alpaca broker to sync account data
+    const apiKey = process.env.ALPACA_API_KEY;
+    const apiSecret = process.env.ALPACA_API_SECRET;
+    if (apiKey && apiSecret) {
+      try {
+        const broker = new AlpacaBroker({ apiKey, apiSecret, paperTrading: true });
+
+        // Sync account data from Alpaca
+        const alpacaAccount = await broker.getAccount();
+        const alpacaPositions = await broker.getPositions();
+
+        // Update local portfolio with Alpaca data
+        const currentPortfolio = portfolioRepo.read();
+        if (currentPortfolio) {
+          portfolioRepo.write({
+            ...currentPortfolio,
+            cashCents: alpacaAccount.cashCents,
+          });
+        }
+
+        // Sync positions: update existing, add new, close positions no longer in Alpaca
+        const alpacaSymbols = new Set(alpacaPositions.map(p => p.symbol));
+        const localPositions = positionsRepo.listAll();
+
+        // Close positions that are no longer in Alpaca
+        for (const localPos of localPositions) {
+          if (!alpacaSymbols.has(localPos.symbol) && localPos.qty !== 0) {
+            positionsRepo.upsert({
+              ...localPos,
+              qty: 0,
+              updatedAt: Date.now(),
+            });
+          }
+        }
+
+        // Update positions from Alpaca
+        for (const pos of alpacaPositions) {
+          const existing = positionsRepo.get(pos.symbol);
+          positionsRepo.upsert({
+            symbol: pos.symbol,
+            qty: pos.qty,
+            avgCostCents: pos.avgCostCents,
+            realizedPnlCents: existing?.realizedPnlCents ?? 0,
+            openedAt: existing?.openedAt ?? Date.now(),
+            updatedAt: Date.now(),
+          });
+        }
+      } catch (err) {
+        log.warn('failed to sync Alpaca account data', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        // Continue with local data if Alpaca sync fails
+      }
+    }
+
+    const portfolioService = new PortfolioServiceImpl(db, priceService, positionsRepo, portfolioRepo);
     const portfolio = await portfolioService.getPortfolio();
 
     res.json({ ok: true, data: portfolio });
@@ -267,18 +322,18 @@ export async function manualOrderHandler(
     const portfolioRepo = new PortfolioRepo(db);
     const auditLogRepo = new AuditLogRepo(db);
     const settings = getSettings();
-    const broker = new PaperBroker(
-      db,
-      priceService,
-      ordersRepo,
-      fillsRepo,
-      positionsRepo,
-      portfolioRepo,
-      {
-        fillModel: settings.paperAccount.fillModel,
-        slippageBps: settings.paperAccount.slippageBps,
-      }
-    );
+
+    // Initialize Alpaca paper trading broker
+    const apiKey = process.env.ALPACA_API_KEY;
+    const apiSecret = process.env.ALPACA_API_SECRET;
+    if (!apiKey || !apiSecret) {
+      throw new ValidationError('ALPACA_API_KEY and ALPACA_API_SECRET environment variables are required');
+    }
+    const broker = new AlpacaBroker({
+      apiKey,
+      apiSecret,
+      paperTrading: true,
+    });
 
     const clientOrderId = `manual-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
     const user = (req as any).user?.username || 'unknown';

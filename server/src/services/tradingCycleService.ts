@@ -693,7 +693,26 @@ class TradingCycleServiceImpl implements TradingCycleService {
             tif: proposal.order.tif,
           };
           const orderState = await this.deps.broker.submitOrder(req);
-          this.deps.ordersRepo.updateRunContext(orderState.id, proposal.order.decisionId ?? null, runId);
+
+          // Store order in local database
+          const localOrderId = this.deps.ordersRepo.create({
+            clientOrderId: req.clientOrderId,
+            decisionId: proposal.order.decisionId ?? null,
+            runId,
+            broker: 'alpaca',
+            brokerOrderId: orderState.id,
+            mode: 'paper',
+            symbol: req.symbol,
+            side: req.side,
+            qty: req.qty,
+            type: req.type,
+            limitPriceCents: req.limitPriceCents ?? null,
+            tif: req.tif,
+            status: orderState.status,
+            rejectReason: orderState.rejectReason,
+            submittedAt: orderState.submittedAt,
+          });
+
           ordersSubmitted++;
           log.info('order submitted', {
             runId,
@@ -701,6 +720,8 @@ class TradingCycleServiceImpl implements TradingCycleService {
             side: proposal.order.side,
             qty: proposal.order.qty,
             status: orderState.status,
+            brokerOrderId: orderState.id,
+            localOrderId,
           });
         } catch (err) {
           log.warn('order submission failed', {

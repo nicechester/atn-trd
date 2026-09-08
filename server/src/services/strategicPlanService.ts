@@ -16,6 +16,8 @@ import type { PortfolioRepo } from '../repos/portfolioRepo.js';
 import type { PricesRepo } from '../repos/pricesRepo.js';
 import type { PositionsRepo } from '../repos/positionsRepo.js';
 import type { SymbolCategoriesRepo } from '../repos/symbolCategoriesRepo.js';
+import type { OrdersRepo } from '../repos/ordersRepo.js';
+import type { Broker } from '../brokers/types.js';
 import { getCurrentRegime } from './regimeDetectionService.js';
 
 const log = logger.child({ component: 'strategic-plan' });
@@ -29,6 +31,8 @@ export interface StrategicPlanDeps {
   pricesRepo: PricesRepo;
   positionsRepo?: PositionsRepo; // Optional, needed for auto-trim
   symbolCategoriesRepo?: SymbolCategoriesRepo; // Optional, for sector lookup
+  ordersRepo?: OrdersRepo; // Optional, needed for order submission
+  broker?: Broker; // Optional, needed for order submission to Alpaca
   getSettings: () => Settings;
 }
 
@@ -249,13 +253,13 @@ export function computeTrancheSizeWithBudget(
   return { shares };
 }
 
-export function executeTranche(
+export async function executeTranche(
   deps: StrategicPlanDeps,
   plan: StrategicPlanRow,
   priceCents: number,
   availableCashCents?: number,
   orderId?: string
-): TrancheResult | null {
+): Promise<TrancheResult | null> {
   const { strategicPlansRepo, planTranchesRepo, signalSnapshotsRepo, marketRegimeRepo, getSettings } = deps;
   const settings = getSettings();
 
@@ -305,8 +309,80 @@ export function executeTranche(
     executedAt: Date.now(),
   });
 
-  // For paper trading, immediately mark as filled and update plan
-  // In live trading, this would wait for order confirmation
+  // Submit order to broker if available
+  if (deps.broker && deps.ordersRepo) {
+    const clientOrderId = `plan-${plan.id}-tranche-${trancheNumber}-${Date.now()}`;
+    const orderReq = {
+      clientOrderId,
+      symbol: plan.symbol,
+      side: plan.direction === 'long' ? 'buy' : 'sell' as const,
+      qty: shares,
+      type: 'market' as const,
+      tif: 'day' as const,
+    };
+
+    try {
+      const orderState = await deps.broker.submitOrder(orderReq);
+
+      // Store order in local database
+      deps.ordersRepo.create({
+        clientOrderId: orderState.clientOrderId,
+        decisionId: null,
+        runId: null,
+        broker: 'alpaca',
+        brokerOrderId: orderState.id,
+        mode: 'paper',
+        symbol: plan.symbol,
+        side: orderReq.side,
+        qty: shares,
+        type: 'market',
+        limitPriceCents: null,
+        tif: 'day',
+        status: orderState.status,
+        rejectReason: orderState.rejectReason,
+        submittedAt: orderState.submittedAt,
+      });
+
+      // Update tranche with order info
+      planTranchesRepo.updateStatus(trancheId, 'PENDING', null, Date.now());
+      log.info('tranche order submitted to Alpaca', {
+        planId: plan.id,
+        symbol: plan.symbol,
+        trancheId,
+        trancheNumber,
+        shares,
+        brokerOrderId: orderState.id,
+        orderStatus: orderState.status,
+      });
+
+      // If order filled immediately, update tranche status
+      if (orderState.status === 'filled') {
+        planTranchesRepo.updateStatus(trancheId, 'FILLED', shares * priceCents, Date.now());
+        strategicPlansRepo.recordTrancheExecution(plan.id, shares);
+      }
+
+      return {
+        planId: plan.id,
+        symbol: plan.symbol,
+        shares,
+        priceCents,
+        trancheNumber,
+        trancheId,
+        orderId: orderState.id,
+      };
+    } catch (err) {
+      log.error('failed to submit tranche order to Alpaca', {
+        planId: plan.id,
+        symbol: plan.symbol,
+        shares,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      planTranchesRepo.updateStatus(trancheId, 'FAILED', null, Date.now());
+      return null;
+    }
+  }
+
+  // Fallback: for paper trading without broker, mark as filled
   planTranchesRepo.updateStatus(trancheId, 'FILLED', shares * priceCents, Date.now());
   strategicPlansRepo.recordTrancheExecution(plan.id, shares);
 
