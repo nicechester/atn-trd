@@ -13,9 +13,11 @@ if (modelPath) {
   env.localModelPath = modelPath;
   env.allowRemoteModels = false;
 }
-// Local: 'finbert-int8' subfolder with model_quantized.onnx, Remote: HuggingFace
-const modelName = modelPath ? 'finbert-int8' : 'sekarkrishna/finbert-int8';
-const pipelineOptions = { model_file_name: 'model', dtype: 'q8' as const };
+// Local: 'finbert-q8' subfolder, Remote: HuggingFace
+const modelName = modelPath ? 'finbert-q8' : 'ProsusAI/finbert';
+const pipelineOptions = modelPath
+  ? { model_file_name: 'model', dtype: 'q8' as const }
+  : {};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let classifier: any = null;
