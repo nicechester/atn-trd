@@ -14,7 +14,9 @@ if (modelPath) {
   env.allowLocalModels = true;
   env.allowRemoteModels = false;
 }
-const modelName = modelPath ? 'finbert-onnx' : 'ProsusAI/finbert';
+// Use INT8 quantized model for lower memory footprint (~400MB vs ~1.5GB)
+// Local path: uses 'finbert-int8' subfolder, remote: uses HuggingFace
+const modelName = modelPath ? 'finbert-int8' : 'sekarkrishna/finbert-int8';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let classifier: any = null;
