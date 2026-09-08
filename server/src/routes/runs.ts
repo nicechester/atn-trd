@@ -5,7 +5,6 @@ import { RunsRepo } from '../repos/runsRepo.js';
 import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
 import { DecisionsRepo } from '../repos/decisionsRepo.js';
 import { OrdersRepo } from '../repos/ordersRepo.js';
-import { FillsRepo } from '../repos/fillsRepo.js';
 import { AgentMessagesRepo } from '../repos/agentMessagesRepo.js';
 import { ArtifactsRepo } from '../repos/artifactsRepo.js';
 import { PositionsRepo } from '../repos/positionsRepo.js';
@@ -64,7 +63,6 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
     const assessmentsRepo = new AssessmentsRepo(db);
     const decisionsRepo = new DecisionsRepo(db);
     const ordersRepo = new OrdersRepo(db);
-    const fillsRepo = new FillsRepo(db);
     const messagesRepo = new AgentMessagesRepo(db);
     const artifactsRepo = new ArtifactsRepo(db);
     const rejectionsRepo = new RejectionsRepo(db);
@@ -94,19 +92,13 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
     }));
     const screenerSelections = screenerSelectionsRepo.listByRun(id);
 
-    // For each order, fetch its fills
-    const ordersWithFills = orders.map(order => ({
-      ...order,
-      fills: fillsRepo.listByOrder(order.id),
-    }));
-
     res.json({
       ok: true,
       data: {
         run,
         assessments,
         decisions,
-        orders: ordersWithFills,
+        orders,
         rejections,
         messages,
         artifacts,
@@ -157,7 +149,6 @@ export async function triggerRunHandler(
     const assessmentsRepo = new AssessmentsRepo(db);
     const decisionsRepo   = new DecisionsRepo(db);
     const ordersRepo      = new OrdersRepo(db);
-    const fillsRepo       = new FillsRepo(db);
     const positionsRepo   = new PositionsRepo(db);
     const portfolioRepo   = new PortfolioRepo(db);
     const pricesRepo      = new PricesRepo(db);

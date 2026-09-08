@@ -244,12 +244,12 @@ describe('StrategicPlanService', () => {
   });
 
   describe('executeTranche', () => {
-    it('executes tranche and updates plan', () => {
+    it('executes tranche and updates plan', async () => {
       const deps = createDeps(db);
       const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 40 });
 
       // Use budget-aware execution with enough cash
-      const result = executeTranche(deps, plan, 15000, 1000000);
+      const result = await executeTranche(deps, plan, 15000, 1000000);
 
       assert.ok(result);
       assert.equal(result.symbol, 'AAPL');

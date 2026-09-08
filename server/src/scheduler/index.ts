@@ -29,7 +29,6 @@ import { RunsRepo } from '../repos/runsRepo.js';
 import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
 import { DecisionsRepo } from '../repos/decisionsRepo.js';
 import { OrdersRepo } from '../repos/ordersRepo.js';
-import { FillsRepo } from '../repos/fillsRepo.js';
 import { PositionsRepo } from '../repos/positionsRepo.js';
 import { PortfolioRepo } from '../repos/portfolioRepo.js';
 import { PricesRepo } from '../repos/pricesRepo.js';
@@ -128,7 +127,6 @@ function registerAllJobs(): void {
         const assessmentsRepo = new AssessmentsRepo(db);
         const decisionsRepo   = new DecisionsRepo(db);
         const ordersRepo      = new OrdersRepo(db);
-        const fillsRepo       = new FillsRepo(db);
         const positionsRepo   = new PositionsRepo(db);
         const portfolioRepo   = new PortfolioRepo(db);
         const pricesRepo      = new PricesRepo(db);

@@ -17,7 +17,7 @@ import type { PricesRepo } from '../repos/pricesRepo.js';
 import type { PositionsRepo } from '../repos/positionsRepo.js';
 import type { SymbolCategoriesRepo } from '../repos/symbolCategoriesRepo.js';
 import type { OrdersRepo } from '../repos/ordersRepo.js';
-import type { Broker } from '../brokers/types.js';
+import type { Broker, OrderRequest } from '../brokers/types.js';
 import { getCurrentRegime } from './regimeDetectionService.js';
 
 const log = logger.child({ component: 'strategic-plan' });
@@ -312,13 +312,14 @@ export async function executeTranche(
   // Submit order to broker if available
   if (deps.broker && deps.ordersRepo) {
     const clientOrderId = `plan-${plan.id}-tranche-${trancheNumber}-${Date.now()}`;
-    const orderReq = {
+    const side: 'buy' | 'sell' = plan.direction === 'ACCUMULATE' ? 'buy' : 'sell';
+    const orderReq: OrderRequest = {
       clientOrderId,
       symbol: plan.symbol,
-      side: plan.direction === 'long' ? 'buy' : 'sell' as const,
+      side,
       qty: shares,
-      type: 'market' as const,
-      tif: 'day' as const,
+      type: 'market',
+      tif: 'day',
     };
 
     try {
@@ -344,7 +345,7 @@ export async function executeTranche(
       });
 
       // Update tranche with order info
-      planTranchesRepo.updateStatus(trancheId, 'PENDING', null, Date.now());
+      planTranchesRepo.updateStatus(trancheId, 'PENDING', undefined, Date.now());
       log.info('tranche order submitted to Alpaca', {
         planId: plan.id,
         symbol: plan.symbol,
@@ -367,8 +368,6 @@ export async function executeTranche(
         shares,
         priceCents,
         trancheNumber,
-        trancheId,
-        orderId: orderState.id,
       };
     } catch (err) {
       log.error('failed to submit tranche order to Alpaca', {
@@ -377,7 +376,7 @@ export async function executeTranche(
         shares,
         error: err instanceof Error ? err.message : String(err),
       });
-      planTranchesRepo.updateStatus(trancheId, 'FAILED', null, Date.now());
+      planTranchesRepo.updateStatus(trancheId, 'FAILED', undefined, Date.now());
       return null;
     }
   }

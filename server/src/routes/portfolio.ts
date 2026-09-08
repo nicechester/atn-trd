@@ -5,15 +5,12 @@ import { PositionsRepo } from '../repos/positionsRepo.js';
 import { PortfolioRepo } from '../repos/portfolioRepo.js';
 import { PricesRepo } from '../repos/pricesRepo.js';
 import { SnapshotsRepo } from '../repos/snapshotsRepo.js';
-import { OrdersRepo } from '../repos/ordersRepo.js';
-import { FillsRepo } from '../repos/fillsRepo.js';
 import { AuditLogRepo } from '../repos/auditLogRepo.js';
 import { CashFlowsRepo } from '../repos/cashFlowsRepo.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
 import { AlpacaBroker } from '../brokers/alpacaBroker.js';
 import { ValidationError } from '../lib/errors.js';
-import { getSettings } from '../config/settingsService.js';
 import { logger } from '../lib/logger.js';
 import { isMarketHours, nextSessionOpen, nextSessionClose } from '../scheduler/marketCalendar.js';
 
@@ -314,14 +311,7 @@ export async function manualOrderHandler(
     }
 
     const db = getDatabase();
-    const pricesRepo = new PricesRepo(db);
-    const priceService = new PriceService(pricesRepo);
-    const ordersRepo = new OrdersRepo(db);
-    const fillsRepo = new FillsRepo(db);
-    const positionsRepo = new PositionsRepo(db);
-    const portfolioRepo = new PortfolioRepo(db);
     const auditLogRepo = new AuditLogRepo(db);
-    const settings = getSettings();
 
     // Initialize Alpaca paper trading broker
     const apiKey = process.env.ALPACA_API_KEY;

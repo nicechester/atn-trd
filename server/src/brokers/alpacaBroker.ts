@@ -56,11 +56,8 @@ export class AlpacaBroker implements Broker {
   readonly supportsFractionalShares = true;
 
   private readonly http: HttpClient;
-  private readonly config: AlpacaBrokerConfig;
 
   constructor(config: AlpacaBrokerConfig) {
-    this.config = config;
-
     const baseUrl = config.paperTrading
       ? 'https://paper-api.alpaca.markets/v2/'
       : 'https://api.alpaca.markets/v2/';

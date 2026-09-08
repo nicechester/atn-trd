@@ -13,6 +13,8 @@ import type { PortfolioRepo } from '../repos/portfolioRepo.js';
 import type { PricesRepo } from '../repos/pricesRepo.js';
 import type { PositionsRepo } from '../repos/positionsRepo.js';
 import type { SymbolCategoriesRepo } from '../repos/symbolCategoriesRepo.js';
+import type { OrdersRepo } from '../repos/ordersRepo.js';
+import type { Broker } from '../brokers/types.js';
 export interface StrategicPlanDeps {
     strategicPlansRepo: StrategicPlansRepo;
     planTranchesRepo: PlanTranchesRepo;
@@ -22,6 +24,8 @@ export interface StrategicPlanDeps {
     pricesRepo: PricesRepo;
     positionsRepo?: PositionsRepo;
     symbolCategoriesRepo?: SymbolCategoriesRepo;
+    ordersRepo?: OrdersRepo;
+    broker?: Broker;
     getSettings: () => Settings;
 }
 export interface CreatePlanParams {
@@ -67,7 +71,7 @@ export declare function computeTrancheSizeWithBudget(plan: StrategicPlanRow, pri
     shares: number;
     reason?: string;
 };
-export declare function executeTranche(deps: StrategicPlanDeps, plan: StrategicPlanRow, priceCents: number, availableCashCents?: number, orderId?: string): TrancheResult | null;
+export declare function executeTranche(deps: StrategicPlanDeps, plan: StrategicPlanRow, priceCents: number, availableCashCents?: number, orderId?: string): Promise<TrancheResult | null>;
 export declare function checkAndPausePlansForRegime(deps: StrategicPlanDeps): number;
 export declare function checkAndResumePlansForRegime(deps: StrategicPlanDeps): number;
 export declare function checkAndCancelPlansForSignal(deps: StrategicPlanDeps): number;
