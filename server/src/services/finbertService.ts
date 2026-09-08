@@ -14,7 +14,7 @@ if (modelPath) {
   env.allowRemoteModels = false;
 }
 // Local: 'finbert-q8' subfolder, Remote: HuggingFace
-const modelName = modelPath ? 'finbert-q8' : 'ProsusAI/finbert';
+const modelName = modelPath ? 'finbert-q8' : 'nicechester/finbert-sentiment-onnx';
 const pipelineOptions = modelPath
   ? { model_file_name: 'model', dtype: 'q8' as const }
   : {};
