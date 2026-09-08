@@ -10,6 +10,7 @@ import { PricesRepo } from '../../repos/pricesRepo.js';
 import { SnapshotsRepo } from '../../repos/snapshotsRepo.js';
 import { CalibrationRepo } from '../../repos/calibrationRepo.js';
 import { RunsRepo } from '../../repos/runsRepo.js';
+import { AlpacaBroker } from '../../brokers/alpacaBroker.js';
 
 const log = logger.child({ component: 'snapshot-job' });
 
@@ -64,6 +65,50 @@ export async function runSnapshotJob(db: Database.Database): Promise<void> {
     const portfolioRepo = new PortfolioRepo(db);
     const pricesRepo = new PricesRepo(db);
     const snapshotsRepo = new SnapshotsRepo(db);
+
+    // Sync Alpaca data before snapshot
+    const apiKey = process.env.ALPACA_API_KEY;
+    const apiSecret = process.env.ALPACA_API_SECRET;
+    if (apiKey && apiSecret) {
+      try {
+        const broker = new AlpacaBroker({ apiKey, apiSecret, paperTrading: true });
+        const alpacaAccount = await broker.getAccount();
+        const alpacaPositions = await broker.getPositions();
+
+        // Update local portfolio with Alpaca data
+        const currentPortfolio = portfolioRepo.read();
+        if (currentPortfolio) {
+          portfolioRepo.write({
+            ...currentPortfolio,
+            cashCents: alpacaAccount.cashCents,
+          });
+        }
+
+        // Sync positions
+        const alpacaSymbols = new Set(alpacaPositions.map(p => p.symbol));
+        const localPositions = positionsRepo.listAll();
+        for (const localPos of localPositions) {
+          if (!alpacaSymbols.has(localPos.symbol) && localPos.qty !== 0) {
+            positionsRepo.upsert({ ...localPos, qty: 0, updatedAt: Date.now() });
+          }
+        }
+        for (const pos of alpacaPositions) {
+          const existing = positionsRepo.get(pos.symbol);
+          positionsRepo.upsert({
+            symbol: pos.symbol,
+            qty: pos.qty,
+            avgCostCents: pos.avgCostCents,
+            realizedPnlCents: existing?.realizedPnlCents ?? 0,
+            openedAt: existing?.openedAt ?? Date.now(),
+            updatedAt: Date.now(),
+          });
+        }
+      } catch (err) {
+        log.warn('failed to sync Alpaca data for snapshot', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
     // Create price service with in-app PriceService
     const priceService = new PriceService(pricesRepo);

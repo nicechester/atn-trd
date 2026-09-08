@@ -6,6 +6,7 @@ import { PortfolioRepo } from '../repos/portfolioRepo.js';
 import { PricesRepo } from '../repos/pricesRepo.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
+import { AlpacaBroker } from '../brokers/alpacaBroker.js';
 import { logger } from '../lib/logger.js';
 
 const log = logger.child({ component: 'performance-route' });
@@ -64,6 +65,51 @@ export async function getPerformanceHandler(
     const priceService = new PriceService(pricesRepo);
     const positionsRepo = new PositionsRepo(db);
     const portfolioRepo = new PortfolioRepo(db);
+
+    // Sync Alpaca data before calculating performance
+    const apiKey = process.env.ALPACA_API_KEY;
+    const apiSecret = process.env.ALPACA_API_SECRET;
+    if (apiKey && apiSecret) {
+      try {
+        const broker = new AlpacaBroker({ apiKey, apiSecret, paperTrading: true });
+        const alpacaAccount = await broker.getAccount();
+        const alpacaPositions = await broker.getPositions();
+
+        // Update local portfolio
+        const currentPortfolio = portfolioRepo.read();
+        if (currentPortfolio) {
+          portfolioRepo.write({
+            ...currentPortfolio,
+            cashCents: alpacaAccount.cashCents,
+          });
+        }
+
+        // Sync positions
+        const alpacaSymbols = new Set(alpacaPositions.map(p => p.symbol));
+        const localPositions = positionsRepo.listAll();
+        for (const localPos of localPositions) {
+          if (!alpacaSymbols.has(localPos.symbol) && localPos.qty !== 0) {
+            positionsRepo.upsert({ ...localPos, qty: 0, updatedAt: Date.now() });
+          }
+        }
+        for (const pos of alpacaPositions) {
+          const existing = positionsRepo.get(pos.symbol);
+          positionsRepo.upsert({
+            symbol: pos.symbol,
+            qty: pos.qty,
+            avgCostCents: pos.avgCostCents,
+            realizedPnlCents: existing?.realizedPnlCents ?? 0,
+            openedAt: existing?.openedAt ?? Date.now(),
+            updatedAt: Date.now(),
+          });
+        }
+      } catch (err) {
+        log.warn('failed to sync Alpaca data for performance', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     const portfolioService = new PortfolioServiceImpl(db, priceService, positionsRepo, portfolioRepo);
 
     const fromDate = (req.query.fromDate as string) || '';
