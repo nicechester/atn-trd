@@ -21,7 +21,7 @@ RUN cp -r web/dist server/public
 FROM node:24-bookworm-slim
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y sqlite3 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y sqlite3 curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/server ./server

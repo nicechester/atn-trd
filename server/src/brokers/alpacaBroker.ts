@@ -40,7 +40,7 @@ interface AlpacaOrderResponse {
 interface AlpacaPosition {
   symbol: string;
   qty: string | number;
-  avg_fill_price: string;
+  avg_entry_price: string;
   side: string;
   market_value: string;
 }
@@ -98,7 +98,7 @@ export class AlpacaBroker implements Broker {
       .map(pos => ({
         symbol: pos.symbol,
         qty: parseFloat(String(pos.qty)),
-        avgCostCents: Math.round(parseFloat(pos.avg_fill_price) * 100),
+        avgCostCents: Math.round(parseFloat(pos.avg_entry_price) * 100),
       }));
   }
 
