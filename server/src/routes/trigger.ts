@@ -37,7 +37,6 @@ import { createSemanticMemoryService, type SemanticMemoryService } from '../serv
 import { resolveApiKey } from '../llm/openaiChatModel.js';
 import { logger } from '../lib/logger.js';
 import { runSnapshotJob } from '../scheduler/jobs/snapshot.js';
-import { runMarketOpenFillJob } from '../scheduler/jobs/marketOpenFill.js';
 import { runSignalCollectionJob } from '../scheduler/jobs/signalCollection.js';
 import { runPlanReviewJob } from '../scheduler/jobs/planReviewJob.js';
 import { runTrancheExecutorJob } from '../scheduler/jobs/trancheExecutor.js';
@@ -201,24 +200,6 @@ export async function triggerSnapshotHandler(
     res.json({ ok: true });
   } catch (err) {
     log.error('snapshot failed', { error: err instanceof Error ? err.message : String(err) });
-    next(err);
-  }
-}
-
-/** POST /api/trigger/market-open-fill - Called by Cloud Scheduler at 9:30 AM ET */
-export async function triggerMarketOpenFillHandler(
-  _req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  log.info('market-open-fill triggered by scheduler');
-  try {
-    const db = getDatabase();
-    const settings = getSettings();
-    await runMarketOpenFillJob(db, { slippageBps: settings.paperAccount.slippageBps });
-    res.json({ ok: true });
-  } catch (err) {
-    log.error('market-open-fill failed', { error: err instanceof Error ? err.message : String(err) });
     next(err);
   }
 }

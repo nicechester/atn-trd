@@ -55,7 +55,7 @@ export async function listTradesHandler(req: Request, res: Response, next: NextF
       }
     }
 
-    // Return only Alpaca orders (exclude old PaperBroker orders)
+    // Return only Alpaca orders
     const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '50', 10), 1), 200);
     const offset = Math.max(parseInt((req.query.offset as string) || '0', 10), 0);
 

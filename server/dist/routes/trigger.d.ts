@@ -14,8 +14,6 @@ export declare function verifySchedulerAuth(req: Request, res: Response, next: N
 export declare function triggerTradingCycleHandler(_req: Request, res: Response, next: NextFunction): Promise<void>;
 /** POST /api/trigger/snapshot - Called by Cloud Scheduler */
 export declare function triggerSnapshotHandler(_req: Request, res: Response, next: NextFunction): Promise<void>;
-/** POST /api/trigger/market-open-fill - Called by Cloud Scheduler at 9:30 AM ET */
-export declare function triggerMarketOpenFillHandler(_req: Request, res: Response, next: NextFunction): Promise<void>;
 /** POST /api/trigger/signal-collection - Manual trigger for signal collection */
 export declare function triggerSignalCollectionHandler(_req: Request, res: Response, next: NextFunction): Promise<void>;
 /** POST /api/trigger/plan-review - Manual trigger for plan review */

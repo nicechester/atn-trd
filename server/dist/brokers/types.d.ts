@@ -55,10 +55,9 @@ export interface Broker {
         nextClose: number;
     }>;
     /**
-     * Settle orders deferred to a future session (e.g. PaperBroker's next_open
-     * fill model). Optional — brokers that fill synchronously, or real adapters
-     * that self-settle via their own API, need not implement it. Safe to call
-     * every cycle; must be a no-op when nothing is pending.
+     * Settle orders deferred to a future session. Optional — brokers that fill
+     * synchronously or self-settle via their own API need not implement it.
+     * Safe to call every cycle; must be a no-op when nothing is pending.
      */
     processPendingOrders?(): Promise<void>;
 }

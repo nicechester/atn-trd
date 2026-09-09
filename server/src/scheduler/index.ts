@@ -18,7 +18,6 @@ import { getLlmLimits } from '@atn-trd/shared';
 import { logger } from '../lib/logger.js';
 import { runSnapshotJob } from './jobs/snapshot.js';
 import { isTradingDay } from './marketCalendar.js';
-import { runMarketOpenFillJob } from './jobs/marketOpenFill.js';
 import { runSignalCollectionJob } from './jobs/signalCollection.js';
 import { runRegimeDetectionJob } from './jobs/regimeDetection.js';
 import { runWeeklyPlannerJob } from './jobs/weeklyPlanner.js';
@@ -62,9 +61,6 @@ let activeJob: Cron | null = null;
 // Snapshot job handle; runs daily at 16:30 ET on trading days (after market close, before trading cycle).
 let snapshotCronJob: Cron | null = null;
 
-// Missed-fill recovery job; runs hourly to fill orders that missed market open.
-let marketOpenFillJob: Cron | null = null;
-
 // Signal collection job; runs daily at 16:00 ET on trading days (before snapshot).
 let signalCollectionJob: Cron | null = null;
 
@@ -85,7 +81,6 @@ let watchlistCuratorJob: Cron | null = null;
 function stopAllJobs(): void {
   if (activeJob) { activeJob.stop(); activeJob = null; }
   if (snapshotCronJob) { snapshotCronJob.stop(); snapshotCronJob = null; }
-  if (marketOpenFillJob) { marketOpenFillJob.stop(); marketOpenFillJob = null; }
   if (signalCollectionJob) { signalCollectionJob.stop(); signalCollectionJob = null; }
   if (regimeDetectionJob) { regimeDetectionJob.stop(); regimeDetectionJob = null; }
   if (weeklyPlannerJob) { weeklyPlannerJob.stop(); weeklyPlannerJob = null; }
@@ -246,18 +241,6 @@ function registerAllJobs(): void {
   } catch (err) {
     log.error('failed to register snapshot job', { error: err instanceof Error ? err.message : String(err) });
     snapshotCronJob = null;
-  }
-
-  // Market open fill job (9:30 AM ET on trading days)
-  try {
-    marketOpenFillJob = new Cron('30 9 * * 1-5', { timezone: 'America/New_York', protect: true }, async () => {
-      const settings = getSettings();
-      await runMarketOpenFillJob(db, { slippageBps: settings.paperAccount.slippageBps });
-    });
-    log.info('market-open-fill job registered', { cron: '30 9 * * 1-5' });
-  } catch (err) {
-    log.error('failed to register market-open-fill job', { error: err instanceof Error ? err.message : String(err) });
-    marketOpenFillJob = null;
   }
 
   // Signal collection job (16:00 ET on trading days)

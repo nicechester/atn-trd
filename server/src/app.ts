@@ -23,7 +23,6 @@ import {
   verifySchedulerAuth,
   triggerTradingCycleHandler,
   triggerSnapshotHandler,
-  triggerMarketOpenFillHandler,
   triggerSignalCollectionHandler,
   triggerPlanReviewHandler,
   triggerTrancheExecutionHandler,
@@ -71,7 +70,6 @@ export function createApp(options: AppOptions = {}): Express {
   // Cloud Scheduler triggers (OIDC auth, not user auth)
   app.post('/api/trigger/trading-cycle', verifySchedulerAuth, triggerTradingCycleHandler);
   app.post('/api/trigger/snapshot', verifySchedulerAuth, triggerSnapshotHandler);
-  app.post('/api/trigger/market-open-fill', verifySchedulerAuth, triggerMarketOpenFillHandler);
 
   // Manual triggers for plan-driven execution jobs (user auth + write permission)
   app.post('/api/trigger/signal-collection', requireAuth, requireWrite, triggerSignalCollectionHandler);
