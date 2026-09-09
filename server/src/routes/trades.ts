@@ -5,6 +5,7 @@ import { OrdersRepo } from '../repos/ordersRepo.js';
 import { AlpacaBroker } from '../brokers/alpacaBroker.js';
 import { NotFoundError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
+import crypto from 'crypto';
 
 const log = logger.child({ component: 'trades-route' });
 
@@ -14,7 +15,7 @@ export async function listTradesHandler(req: Request, res: Response, next: NextF
     const db = getDatabase();
     const ordersRepo = new OrdersRepo(db);
 
-    // Sync all orders from Alpaca (including filled ones)
+    // Sync all orders from Alpaca to get latest filled status
     const apiKey = process.env.ALPACA_API_KEY;
     const apiSecret = process.env.ALPACA_API_SECRET;
     if (apiKey && apiSecret) {
@@ -22,48 +23,104 @@ export async function listTradesHandler(req: Request, res: Response, next: NextF
         const broker = new AlpacaBroker({ apiKey, apiSecret, paperTrading: true });
         const allOrders = await broker.listOrders({});
 
-        // Update local database with Alpaca order statuses
+        // Update local database with latest Alpaca order statuses
+        const fillsRepo = new FillsRepo(db);
         for (const order of allOrders) {
-          const existing = ordersRepo.get(order.id);
+          const existing = ordersRepo.getByClientOrderId(order.clientOrderId);
           if (existing) {
-            ordersRepo.updateStatus(order.id, order.status);
+            // Update status if it has changed
+            if (existing.status !== order.status) {
+              ordersRepo.updateStatus(existing.id, order.status, order.id);
+              // Create fill record if order just filled
+              if (order.status === 'filled' && order.fillPriceCents) {
+                try {
+                  fillsRepo.create({
+                    orderId: existing.id,
+                    qty: order.qty,
+                    priceCents: order.fillPriceCents,
+                    feeCents: 0,
+                    filledAt: order.updatedAt || Date.now(),
+                    barDate: new Date(order.updatedAt || Date.now()).toISOString().split('T')[0],
+                  });
+                } catch (err) {
+                  log.debug('fill record already exists or create failed', {
+                    orderId: existing.id,
+                    error: err instanceof Error ? err.message : String(err),
+                  });
+                }
+              }
+            }
           } else {
             // Store new order from Alpaca
-            ordersRepo.create({
-              clientOrderId: order.clientOrderId,
-              decisionId: null,
-              runId: null,
-              broker: 'alpaca',
-              brokerOrderId: order.id,
-              mode: 'paper',
-              symbol: order.symbol,
-              side: order.side,
-              qty: order.qty,
-              type: order.type,
-              limitPriceCents: order.limitPriceCents,
-              tif: order.tif,
-              status: order.status,
-              rejectReason: order.rejectReason,
-              submittedAt: order.submittedAt,
-            });
+            try {
+              ordersRepo.create({
+                clientOrderId: order.clientOrderId,
+                decisionId: null,
+                runId: null,
+                broker: 'alpaca',
+                brokerOrderId: order.id,
+                mode: 'paper',
+                symbol: order.symbol,
+                side: order.side,
+                qty: order.qty,
+                type: order.type,
+                limitPriceCents: order.limitPriceCents,
+                tif: order.tif,
+                status: order.status,
+                rejectReason: order.rejectReason,
+                submittedAt: order.submittedAt,
+              });
+            } catch (createErr) {
+              // Skip if order already exists (UNIQUE constraint)
+              if (createErr instanceof Error && createErr.message.includes('UNIQUE constraint')) {
+                log.debug('order already exists, skipping create', { clientOrderId: order.clientOrderId });
+              } else {
+                throw createErr;
+              }
+            }
           }
         }
       } catch (err) {
-        log.warn('failed to sync all orders from Alpaca', {
+        log.warn('failed to sync orders from Alpaca', {
           error: err instanceof Error ? err.message : String(err),
         });
+        // Continue with local data if Alpaca sync fails
       }
     }
 
-    // Return only Alpaca orders
+    // Return filled trades with fill details
+    const fillsRepo = new FillsRepo(db);
     const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '50', 10), 1), 200);
     const offset = Math.max(parseInt((req.query.offset as string) || '0', 10), 0);
 
-    const allOrders = ordersRepo.list({ status: ['filled', 'partially_filled'] });
-    const alpacaOrders = allOrders.filter(o => o.broker === 'alpaca');
-    const paginatedOrders = alpacaOrders.slice(offset, offset + limit);
+    // Get all fills and join with order details
+    const allFills = db
+      .prepare(`
+        SELECT
+          fills.id, fills.order_id as orderId, fills.qty, fills.price_cents as priceCents,
+          fills.fee_cents as feeCents, fills.filled_at as filledAt, fills.bar_date as barDate,
+          orders.symbol, orders.side, orders.mode
+        FROM fills
+        JOIN orders ON fills.order_id = orders.id
+        WHERE orders.broker = 'alpaca'
+        ORDER BY fills.filled_at DESC
+      `)
+      .all() as Array<{
+        id: string;
+        orderId: string;
+        qty: number;
+        priceCents: number;
+        feeCents: number | null;
+        filledAt: number;
+        barDate: string;
+        symbol: string;
+        side: string;
+        mode: string;
+      }>;
 
-    res.json({ ok: true, data: paginatedOrders, total: alpacaOrders.length });
+    const paginatedFills = allFills.slice(offset, offset + limit);
+
+    res.json({ ok: true, data: paginatedFills, total: allFills.length });
   } catch (err) {
     next(err);
   }
@@ -75,44 +132,76 @@ export async function listPendingOrdersHandler(_req: Request, res: Response, nex
     const db = getDatabase();
     const ordersRepo = new OrdersRepo(db);
 
-    // Sync pending orders from Alpaca
+    // Sync all orders from Alpaca to catch status transitions (e.g., accepted → filled)
     const apiKey = process.env.ALPACA_API_KEY;
     const apiSecret = process.env.ALPACA_API_SECRET;
     if (apiKey && apiSecret) {
       try {
         const broker = new AlpacaBroker({ apiKey, apiSecret, paperTrading: true });
-        const alpacaPending = await broker.listOrders({ status: ['pending', 'accepted'] });
+        const allOrders = await broker.listOrders({});
 
-        // Update local orders with Alpaca data
-        for (const order of alpacaPending) {
-          const existing = ordersRepo.get(order.id);
+        // Update local orders with latest statuses from Alpaca
+        const fillsRepo = new FillsRepo(db);
+        for (const order of allOrders) {
+          const existing = ordersRepo.getByClientOrderId(order.clientOrderId);
           if (existing) {
-            ordersRepo.updateStatus(order.id, order.status);
+            // Update status if it has changed
+            if (existing.status !== order.status) {
+              ordersRepo.updateStatus(existing.id, order.status, order.id);
+              // Create fill record if order just filled
+              if (order.status === 'filled' && order.fillPriceCents) {
+                try {
+                  fillsRepo.create({
+                    orderId: existing.id,
+                    qty: order.qty,
+                    priceCents: order.fillPriceCents,
+                    feeCents: 0,
+                    filledAt: order.updatedAt || Date.now(),
+                    barDate: new Date(order.updatedAt || Date.now()).toISOString().split('T')[0],
+                  });
+                } catch (err) {
+                  log.debug('fill record already exists or create failed', {
+                    orderId: existing.id,
+                    error: err instanceof Error ? err.message : String(err),
+                  });
+                }
+              }
+            }
           } else {
             // Store new order from Alpaca
-            ordersRepo.create({
-              clientOrderId: order.clientOrderId,
-              decisionId: null,
-              runId: null,
-              broker: 'alpaca',
-              brokerOrderId: order.id,
-              mode: 'paper',
-              symbol: order.symbol,
-              side: order.side,
-              qty: order.qty,
-              type: order.type,
-              limitPriceCents: order.limitPriceCents,
-              tif: order.tif,
-              status: order.status,
-              rejectReason: order.rejectReason,
-              submittedAt: order.submittedAt,
-            });
+            try {
+              ordersRepo.create({
+                clientOrderId: order.clientOrderId,
+                decisionId: null,
+                runId: null,
+                broker: 'alpaca',
+                brokerOrderId: order.id,
+                mode: 'paper',
+                symbol: order.symbol,
+                side: order.side,
+                qty: order.qty,
+                type: order.type,
+                limitPriceCents: order.limitPriceCents,
+                tif: order.tif,
+                status: order.status,
+                rejectReason: order.rejectReason,
+                submittedAt: order.submittedAt,
+              });
+            } catch (createErr) {
+              // Skip if order already exists (UNIQUE constraint)
+              if (createErr instanceof Error && createErr.message.includes('UNIQUE constraint')) {
+                log.debug('order already exists, skipping create', { clientOrderId: order.clientOrderId });
+              } else {
+                throw createErr;
+              }
+            }
           }
         }
       } catch (err) {
-        log.warn('failed to sync pending orders from Alpaca', {
+        log.warn('failed to sync orders from Alpaca', {
           error: err instanceof Error ? err.message : String(err),
         });
+        // Continue with local data if Alpaca sync fails
       }
     }
 
