@@ -41,8 +41,47 @@ import { runSignalCollectionJob } from '../scheduler/jobs/signalCollection.js';
 import { runPlanReviewJob } from '../scheduler/jobs/planReviewJob.js';
 import { runTrancheExecutorJob } from '../scheduler/jobs/trancheExecutor.js';
 import { runWatchlistCuration, backfillSectors } from '../services/watchlistCurationService.js';
+import { JOB_REGISTRY, resolveExecutionOrder } from '@atn-trd/shared';
+import { emitProgress } from '../services/runProgress.js';
 
 const log = logger.child({ component: 'trigger-route' });
+
+/**
+ * Validate selected job IDs and return execution order with error handling.
+ * @param jobIds - Array of job IDs to validate
+ * @returns Object with valid flag and execution order or error message
+ */
+export function validateJobSelection(jobIds: unknown): {
+  valid: boolean;
+  executionOrder?: ReturnType<typeof resolveExecutionOrder>;
+  error?: string;
+} {
+  if (!Array.isArray(jobIds)) {
+    return { valid: false, error: 'jobIds must be an array' };
+  }
+
+  if (jobIds.length === 0) {
+    return { valid: false, error: 'At least one job must be selected' };
+  }
+
+  const stringJobIds = jobIds.map(id => String(id));
+
+  // Check for unknown job IDs
+  const unknown = stringJobIds.filter(id => !JOB_REGISTRY[id as keyof typeof JOB_REGISTRY]);
+  if (unknown.length > 0) {
+    return { valid: false, error: `Unknown job IDs: ${unknown.join(', ')}` };
+  }
+
+  try {
+    const executionOrder = resolveExecutionOrder(stringJobIds);
+    return { valid: true, executionOrder };
+  } catch (err) {
+    return {
+      valid: false,
+      error: err instanceof Error ? err.message : 'Failed to resolve execution order',
+    };
+  }
+}
 
 /**
  * Verify Cloud Scheduler OIDC token.
@@ -285,6 +324,153 @@ export async function triggerBackfillSectorsHandler(
     res.json({ ok: true, ...result });
   } catch (err) {
     log.error('sector backfill failed', { error: err instanceof Error ? err.message : String(err) });
+    next(err);
+  }
+}
+
+/** POST /api/trigger/run-selected - Selective job execution */
+export async function triggerRunSelectedHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const startTime = Date.now();
+  const db = getDatabase();
+  const runsRepo = new RunsRepo(db);
+
+  try {
+    // Validate request body
+    const { jobIds } = req.body;
+    const validation = validateJobSelection(jobIds);
+
+    if (!validation.valid) {
+      res.status(400).json({ ok: false, error: validation.error });
+      return;
+    }
+
+    const executionOrder: ReturnType<typeof resolveExecutionOrder> = validation.executionOrder || [];
+    log.info('selective job execution triggered', { jobCount: executionOrder.length });
+
+    // Create a parent run record for tracking the batch
+    const parentRunId = runsRepo.create({
+      trigger: 'manual',
+      status: 'running',
+      startedAt: Date.now(),
+      finishedAt: null,
+      model: null,
+      settingsSnapshot: JSON.stringify({}),
+      error: null,
+      tokenUsageJson: null,
+      skipReason: null,
+      summaryJson: JSON.stringify({ selectedJobs: jobIds, executedJobs: [] }),
+    });
+
+    emitProgress(parentRunId, 'starting', `Starting selective job execution (${executionOrder.length} jobs)`);
+
+    const runIds: string[] = [];
+    const executedJobs: string[] = [];
+    let lastError: string | null = null;
+
+    // Execute jobs sequentially
+    for (const job of executionOrder) {
+      emitProgress(parentRunId, 'job-start', `Starting job: ${job.label}`, { jobId: job.id, jobName: job.label });
+
+      try {
+        let jobRunId: string | undefined;
+
+        // Map job ID to handler and execute
+        if (job.id === 'signal-collection') {
+          await runSignalCollectionJob(db, 'signal_collection');
+          const latestRun = runsRepo.listByTrigger('signal_collection', 1)[0];
+          jobRunId = latestRun?.id;
+        } else if (job.id === 'plan-review') {
+          await runPlanReviewJob(db, 'plan_review');
+          const latestRun = runsRepo.listByTrigger('plan_review', 1)[0];
+          jobRunId = latestRun?.id;
+        } else if (job.id === 'tranche-execution') {
+          await runTrancheExecutorJob(db, 'tranche_execution');
+          const latestRun = runsRepo.listByTrigger('tranche_execution', 1)[0];
+          jobRunId = latestRun?.id;
+        } else if (job.id === 'watchlist-curation') {
+          await runWatchlistCuration(db);
+          const latestRun = runsRepo.listByTrigger('watchlist_curation', 1)[0];
+          jobRunId = latestRun?.id;
+        } else if (job.id === 'snapshot') {
+          await runSnapshotJob(db);
+          const latestRun = runsRepo.listByTrigger('snapshot', 1)[0];
+          jobRunId = latestRun?.id;
+        }
+
+        if (jobRunId) {
+          runIds.push(jobRunId);
+          executedJobs.push(job.id);
+          const jobRun = runsRepo.get(jobRunId);
+          const jobStatus = jobRun?.status || 'unknown';
+
+          if (jobStatus === 'failed' || jobStatus === 'skipped') {
+            lastError = jobRun?.error || jobRun?.skipReason || `Job failed: ${job.id}`;
+            emitProgress(parentRunId, 'job-complete', `Job failed: ${job.label}`, { jobId: job.id, jobName: job.label });
+
+            // Cascade skip dependent jobs
+            for (const remainingJob of executionOrder) {
+              if (executionOrder.indexOf(remainingJob) > executionOrder.indexOf(job)) {
+                const deps = JOB_REGISTRY[remainingJob.id as keyof typeof JOB_REGISTRY]?.dependencies || [];
+                if (deps.includes(job.id)) {
+                  emitProgress(parentRunId, 'job-complete', `Skipped (dependency failed): ${remainingJob.label}`, { jobId: remainingJob.id, jobName: remainingJob.label });
+                }
+              }
+            }
+            break;
+          } else {
+            emitProgress(parentRunId, 'job-complete', `Completed: ${job.label}`, { jobId: job.id, jobName: job.label });
+          }
+        }
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        log.error(`Job execution failed: ${job.id}`, { error: lastError });
+        emitProgress(parentRunId, 'job-complete', `Error: ${lastError}`, { jobId: job.id, jobName: job.label });
+
+        // Cascade skip dependent jobs
+        for (const remainingJob of executionOrder) {
+          if (executionOrder.indexOf(remainingJob) > executionOrder.indexOf(job)) {
+            const deps = JOB_REGISTRY[remainingJob.id as keyof typeof JOB_REGISTRY]?.dependencies || [];
+            if (deps.includes(job.id)) {
+              emitProgress(parentRunId, 'job-complete', `Skipped (dependency failed): ${remainingJob.label}`, { jobId: remainingJob.id, jobName: remainingJob.label });
+            }
+          }
+        }
+        break;
+      }
+    }
+
+    // Update parent run with results
+    const finalStatus = lastError ? 'failed' : 'succeeded';
+    runsRepo.updateStatus(parentRunId, finalStatus, lastError || undefined);
+    runsRepo.updateSummary(parentRunId, JSON.stringify({
+      selectedJobs: jobIds,
+      executedJobs,
+      completedSuccessfully: !lastError,
+      error: lastError,
+    }));
+
+    emitProgress(parentRunId, 'complete', `Job execution ${finalStatus}`, { jobId: parentRunId });
+
+    const durationMs = Date.now() - startTime;
+    log.info('selective job execution completed', { runIds, durationMs, finalStatus });
+
+    res.json({
+      ok: !lastError,
+      runIds,
+      executionOrder: executionOrder.map(job => ({
+        id: job.id,
+        label: job.label,
+        description: job.description,
+        estimatedRuntimeSeconds: job.estimatedRuntimeSeconds,
+      })),
+      error: lastError || undefined,
+    });
+  } catch (err) {
+    log.error('selective job execution handler failed', { error: err instanceof Error ? err.message : String(err) });
     next(err);
   }
 }

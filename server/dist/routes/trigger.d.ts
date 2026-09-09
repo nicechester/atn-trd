@@ -4,6 +4,17 @@
  * Also supports manual triggers for each job type.
  */
 import { Request, Response, NextFunction } from 'express';
+import { resolveExecutionOrder } from '@atn-trd/shared';
+/**
+ * Validate selected job IDs and return execution order with error handling.
+ * @param jobIds - Array of job IDs to validate
+ * @returns Object with valid flag and execution order or error message
+ */
+export declare function validateJobSelection(jobIds: unknown): {
+    valid: boolean;
+    executionOrder?: ReturnType<typeof resolveExecutionOrder>;
+    error?: string;
+};
 /**
  * Verify Cloud Scheduler OIDC token.
  * In production, validates the Authorization header contains a valid OIDC token
@@ -24,4 +35,6 @@ export declare function triggerTrancheExecutionHandler(_req: Request, res: Respo
 export declare function triggerWatchlistCurationHandler(_req: Request, res: Response, next: NextFunction): Promise<void>;
 /** POST /api/trigger/backfill-sectors - One-time backfill of sector data from Finnhub */
 export declare function triggerBackfillSectorsHandler(_req: Request, res: Response, next: NextFunction): Promise<void>;
+/** POST /api/trigger/run-selected - Selective job execution */
+export declare function triggerRunSelectedHandler(req: Request, res: Response, next: NextFunction): Promise<void>;
 //# sourceMappingURL=trigger.d.ts.map

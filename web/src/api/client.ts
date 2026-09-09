@@ -1,4 +1,4 @@
-import type { GetSettingsResponse, PatchSettingsRequest, GetSecretsResponse, ValidateSymbolResponse } from '@atn-trd/shared/api';
+import type { GetSettingsResponse, PatchSettingsRequest, GetSecretsResponse, ValidateSymbolResponse, TriggerRunSelectedRequest, TriggerRunSelectedResponse } from '@atn-trd/shared/api';
 
 export class ApiError extends Error {
   constructor(
@@ -756,6 +756,9 @@ export const strategicJobs = {
   },
   runScreener(): Promise<{ ok: boolean; summary: WatchlistCurationSummary }> {
     return request('/trigger/watchlist-curation', { method: 'POST' });
+  },
+  triggerRunSelected(req: TriggerRunSelectedRequest): Promise<TriggerRunSelectedResponse> {
+    return request<TriggerRunSelectedResponse>('/trigger/run-selected', { method: 'POST', body: JSON.stringify(req) });
   },
 };
 

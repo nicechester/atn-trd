@@ -253,3 +253,28 @@ export const GetBacktestResponseSchema = z.object({
 });
 
 export type GetBacktestResponse = z.infer<typeof GetBacktestResponseSchema>;
+
+// Selective job execution API
+export const TriggerRunSelectedRequestSchema = z.object({
+  jobIds: z.array(z.string()).min(1, 'At least one job must be selected'),
+});
+
+export type TriggerRunSelectedRequest = z.infer<typeof TriggerRunSelectedRequestSchema>;
+
+export const JobExecutionOrderSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string(),
+  estimatedRuntimeSeconds: z.number().int().positive(),
+});
+
+export type JobExecutionOrder = z.infer<typeof JobExecutionOrderSchema>;
+
+export const TriggerRunSelectedResponseSchema = z.object({
+  ok: z.boolean(),
+  runIds: z.array(z.string()).describe('Array of run IDs, one per job in execution order'),
+  executionOrder: z.array(JobExecutionOrderSchema).describe('Jobs in the order they will execute'),
+  error: z.string().optional(),
+});
+
+export type TriggerRunSelectedResponse = z.infer<typeof TriggerRunSelectedResponseSchema>;
