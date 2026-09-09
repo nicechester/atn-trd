@@ -5,9 +5,11 @@
 import { EventEmitter } from 'events';
 export interface RunProgressEvent {
     runId: string;
-    phase: 'starting' | 'screener' | 'analyst' | 'finbert' | 'portfolio-manager' | 'risk' | 'orders' | 'complete';
+    phase: 'starting' | 'screener' | 'analyst' | 'finbert' | 'portfolio-manager' | 'risk' | 'orders' | 'complete' | 'job-start' | 'job-complete';
     symbol?: string;
     tool?: string;
+    jobId?: string;
+    jobName?: string;
     message: string;
     timestamp: number;
 }
@@ -20,6 +22,8 @@ export declare const runProgress: RunProgressEmitter;
 export declare function emitProgress(runId: string, phase: RunProgressEvent['phase'], message: string, extra?: {
     symbol?: string;
     tool?: string;
+    jobId?: string;
+    jobName?: string;
 }): void;
 export {};
 //# sourceMappingURL=runProgress.d.ts.map

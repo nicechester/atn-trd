@@ -2878,4 +2878,71 @@ export declare const GetBacktestResponseSchema: z.ZodObject<{
     }[] | undefined;
 }>;
 export type GetBacktestResponse = z.infer<typeof GetBacktestResponseSchema>;
+export declare const TriggerRunSelectedRequestSchema: z.ZodObject<{
+    jobIds: z.ZodArray<z.ZodString, "many">;
+}, "strip", z.ZodTypeAny, {
+    jobIds: string[];
+}, {
+    jobIds: string[];
+}>;
+export type TriggerRunSelectedRequest = z.infer<typeof TriggerRunSelectedRequestSchema>;
+export declare const JobExecutionOrderSchema: z.ZodObject<{
+    id: z.ZodString;
+    label: z.ZodString;
+    description: z.ZodString;
+    estimatedRuntimeSeconds: z.ZodNumber;
+}, "strip", z.ZodTypeAny, {
+    id: string;
+    label: string;
+    description: string;
+    estimatedRuntimeSeconds: number;
+}, {
+    id: string;
+    label: string;
+    description: string;
+    estimatedRuntimeSeconds: number;
+}>;
+export type JobExecutionOrder = z.infer<typeof JobExecutionOrderSchema>;
+export declare const TriggerRunSelectedResponseSchema: z.ZodObject<{
+    ok: z.ZodBoolean;
+    runIds: z.ZodArray<z.ZodString, "many">;
+    executionOrder: z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        label: z.ZodString;
+        description: z.ZodString;
+        estimatedRuntimeSeconds: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        id: string;
+        label: string;
+        description: string;
+        estimatedRuntimeSeconds: number;
+    }, {
+        id: string;
+        label: string;
+        description: string;
+        estimatedRuntimeSeconds: number;
+    }>, "many">;
+    error: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    ok: boolean;
+    runIds: string[];
+    executionOrder: {
+        id: string;
+        label: string;
+        description: string;
+        estimatedRuntimeSeconds: number;
+    }[];
+    error?: string | undefined;
+}, {
+    ok: boolean;
+    runIds: string[];
+    executionOrder: {
+        id: string;
+        label: string;
+        description: string;
+        estimatedRuntimeSeconds: number;
+    }[];
+    error?: string | undefined;
+}>;
+export type TriggerRunSelectedResponse = z.infer<typeof TriggerRunSelectedResponseSchema>;
 //# sourceMappingURL=api.d.ts.map
