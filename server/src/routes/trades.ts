@@ -5,7 +5,6 @@ import { OrdersRepo } from '../repos/ordersRepo.js';
 import { AlpacaBroker } from '../brokers/alpacaBroker.js';
 import { NotFoundError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
-import crypto from 'crypto';
 
 const log = logger.child({ component: 'trades-route' });
 
@@ -89,7 +88,6 @@ export async function listTradesHandler(req: Request, res: Response, next: NextF
     }
 
     // Return filled trades with fill details
-    const fillsRepo = new FillsRepo(db);
     const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '50', 10), 1), 200);
     const offset = Math.max(parseInt((req.query.offset as string) || '0', 10), 0);
 
