@@ -15,11 +15,11 @@ export interface PriceFeed {
      */
     getPrices(symbols: string[], fromDate: string, toDate: string): Promise<Map<string, HistoricalPrice[]>>;
     /**
-     * Get the latest bar for a symbol (used by PaperBroker for fills).
+     * Get the latest bar for a symbol.
      */
     getLatestBar(symbol: string): Promise<HistoricalPrice | null>;
     /**
-     * Get a specific bar by symbol and date (used by PaperBroker for fills).
+     * Get a specific bar by symbol and date.
      */
     getBar(symbol: string, date: string): Promise<HistoricalPrice | null>;
 }
