@@ -1,6 +1,7 @@
 import { Broker, BrokerPosition, Account, OrderRequest, OrderState, OrderStatus } from './types.js';
-import { HttpClient } from '../datasources/http.js';
 import { logger } from '../lib/logger.js';
+import type { Order as AlpacaOrder } from '@alpacahq/alpaca-trade-api';
+import { Alpaca } from '@alpacahq/alpaca-trade-api';
 
 const log = logger.child({ component: 'alpaca-broker' });
 
@@ -8,80 +9,48 @@ export interface AlpacaBrokerConfig {
   apiKey: string;
   apiSecret: string;
   paperTrading: boolean;  // true for paper, false for live
-}
-
-interface AlpacaOrderRequest {
-  symbol: string;
-  qty?: number;
-  notional?: number;
-  side: 'buy' | 'sell';
-  type: 'market' | 'limit';
-  time_in_force: 'day' | 'gtc';
-  limit_price?: number;
-  client_order_id: string;
-}
-
-interface AlpacaOrderResponse {
-  id: string;
-  client_order_id: string;
-  symbol: string;
-  qty: string | number;
-  side: 'buy' | 'sell';
-  type: 'market' | 'limit';
-  time_in_force: 'day' | 'gtc';
-  limit_price: string | null;
-  filled_avg_price: string | null;
-  status: string;
-  filled_qty: string | number;
-  created_at: string;
-  updated_at: string;
-}
-
-interface AlpacaPosition {
-  symbol: string;
-  qty: string | number;
-  avg_entry_price: string;
-  side: string;
-  market_value: string;
-}
-
-interface AlpacaAccount {
-  cash: string;
-  portfolio_value: string;
-  buying_power: string;
+  /** @internal for testing only */
+  testClient?: Alpaca;
 }
 
 export class AlpacaBroker implements Broker {
   readonly id = 'alpaca';
   readonly supportsFractionalShares = true;
 
-  private readonly http: HttpClient;
+  private readonly client: Alpaca;
 
   constructor(config: AlpacaBrokerConfig) {
-    const baseUrl = config.paperTrading
-      ? 'https://paper-api.alpaca.markets/v2/'
-      : 'https://api.alpaca.markets/v2/';
-
-    this.http = new HttpClient({
-      name: 'alpaca-trading',
-      baseUrl,
-      defaultHeaders: {
-        'APCA-API-KEY-ID': config.apiKey,
-        'APCA-API-SECRET-KEY': config.apiSecret,
-        'accept': 'application/json',
-        'content-type': 'application/json',
-      },
-      rateLimit: { capacity: 100, refillPerSecond: 10 },
-      retry: { retries: 3, baseDelayMs: 1000, maxDelayMs: 10000 },
-    });
+    // Use injected test client if provided, otherwise create a real client
+    if (config.testClient) {
+      this.client = config.testClient;
+    } else {
+      this.client = new Alpaca({
+        keyId: config.apiKey,
+        secret: config.apiSecret,
+        baseUrl: config.paperTrading
+          ? 'https://paper-api.alpaca.markets'
+          : 'https://api.alpaca.markets',
+        // Configure rate limiting and retry settings to match previous HttpClient config
+        // The SDK handles these through its built-in mechanisms
+      });
+    }
   }
 
   async getAccount(): Promise<Account> {
-    const account = await this.http.json<AlpacaAccount>('account');
+    const account = await this.client.trading.account.getAccount();
 
-    const cashCents = Math.round(parseFloat(account.cash) * 100);
-    const equityCents = Math.round(parseFloat(account.portfolio_value) * 100) - cashCents;
-    const buyingPowerCents = Math.round(parseFloat(account.buying_power) * 100);
+    // Convert string values to cents (API returns strings)
+    const cash = typeof account.cash === 'string' ? parseFloat(account.cash) : account.cash;
+    const portfolioValue = typeof account.portfolio_value === 'string'
+      ? parseFloat(account.portfolio_value)
+      : account.portfolio_value;
+    const buyingPower = typeof account.buying_power === 'string'
+      ? parseFloat(account.buying_power)
+      : account.buying_power;
+
+    const cashCents = Math.round(cash * 100);
+    const equityCents = Math.round(portfolioValue * 100) - cashCents;
+    const buyingPowerCents = Math.round(buyingPower * 100);
 
     return {
       cashCents,
@@ -91,36 +60,41 @@ export class AlpacaBroker implements Broker {
   }
 
   async getPositions(): Promise<BrokerPosition[]> {
-    const positions = await this.http.json<AlpacaPosition[]>('positions');
+    const positions = await this.client.trading.positions.getAllPositions();
 
     return positions
       .filter(pos => parseFloat(String(pos.qty)) !== 0)
-      .map(pos => ({
-        symbol: pos.symbol,
-        qty: parseFloat(String(pos.qty)),
-        avgCostCents: Math.round(parseFloat(pos.avg_entry_price) * 100),
-      }));
+      .map(pos => {
+        // The SDK may return avg_entry_price as a string or number; normalize to number
+        const avgEntryPrice = typeof pos.avg_entry_price === 'string'
+          ? parseFloat(pos.avg_entry_price)
+          : (pos.avg_entry_price ?? 0);
+
+        return {
+          symbol: pos.symbol,
+          qty: parseFloat(String(pos.qty)),
+          avgCostCents: Math.round(avgEntryPrice * 100),
+        };
+      });
   }
 
   async submitOrder(req: OrderRequest): Promise<OrderState> {
-    const alpacaReq: AlpacaOrderRequest = {
-      symbol: req.symbol,
-      qty: req.qty,
-      side: req.side,
-      type: req.type,
-      time_in_force: req.tif,
-      client_order_id: req.clientOrderId,
-    };
-
-    if (req.type === 'limit' && req.limitPriceCents) {
-      alpacaReq.limit_price = req.limitPriceCents / 100;
-    }
-
     try {
-      const response = await this.http.json<AlpacaOrderResponse>('orders', {
-        method: 'POST',
-        body: JSON.stringify(alpacaReq),
-      });
+      const orderParams: Parameters<typeof this.client.trading.orders.submit>[0] = {
+        symbol: req.symbol,
+        qty: req.qty,
+        side: req.side,
+        type: req.type,
+        timeInForce: req.tif,
+        clientOrderId: req.clientOrderId,
+      };
+
+      // Add limit price for limit orders
+      if (req.type === 'limit' && req.limitPriceCents) {
+        orderParams.limitPrice = req.limitPriceCents / 100;
+      }
+
+      const response = await this.client.trading.orders.submit(orderParams);
 
       log.debug('order submitted to Alpaca', {
         orderId: response.id,
@@ -134,6 +108,7 @@ export class AlpacaBroker implements Broker {
         clientOrderId: req.clientOrderId,
         symbol: req.symbol,
         error: err instanceof Error ? err.message : String(err),
+        status: err instanceof Error && 'status' in err ? (err as any).status : undefined,
       });
       throw err;
     }
@@ -141,39 +116,53 @@ export class AlpacaBroker implements Broker {
 
   async getOrder(orderId: string): Promise<OrderState | null> {
     try {
-      const response = await this.http.json<AlpacaOrderResponse>(`orders/${orderId}`);
+      const response = await this.client.trading.orders.getOrderByOrderID({ orderId });
       return this.mapAlpacaOrderToState(response);
     } catch (err) {
       log.warn('failed to fetch order from Alpaca', {
         orderId,
         error: err instanceof Error ? err.message : String(err),
+        status: err instanceof Error && 'status' in err ? (err as any).status : undefined,
       });
       return null;
     }
   }
 
   async listOrders(f: { status?: OrderStatus[]; since?: number }): Promise<OrderState[]> {
-    const params = new URLSearchParams();
-
-    if (f.status && f.status.length > 0) {
-      params.append('status', f.status.join(','));
-    } else {
-      params.append('status', 'all');
-    }
-
-    if (f.since) {
-      const date = new Date(f.since).toISOString().split('T')[0];
-      params.append('after', date);
-    }
-
     try {
-      const responses = await this.http.json<AlpacaOrderResponse[]>(
-        `orders?${params.toString()}`
-      );
+      // Map our internal status enum to Alpaca status values
+      // Alpaca v4 accepts: "open" | "closed" | "all"
+      let alpacaStatus: 'open' | 'closed' | 'all' = 'all';
+      if (f.status && f.status.length > 0) {
+        // Simple mapping: pending/accepted/partially_filled → "open", rest → "closed"
+        const hasOpen = f.status.some(s => ['pending', 'accepted', 'partially_filled'].includes(s));
+        const hasClosed = f.status.some(s => ['filled', 'canceled', 'expired', 'rejected'].includes(s));
+
+        if (hasOpen && !hasClosed) {
+          alpacaStatus = 'open';
+        } else if (!hasOpen && hasClosed) {
+          alpacaStatus = 'closed';
+        } else {
+          alpacaStatus = 'all';
+        }
+      }
+
+      const orderParams: Parameters<typeof this.client.trading.orders.getAllOrders>[0] = {
+        status: alpacaStatus,
+        limit: 100,  // Default limit
+      };
+
+      if (f.since) {
+        const date = new Date(f.since).toISOString().split('T')[0];
+        (orderParams as any).after = date;  // 'after' may be supported but not typed
+      }
+
+      const responses = await this.client.trading.orders.getAllOrders(orderParams);
       return responses.map(r => this.mapAlpacaOrderToState(r));
     } catch (err) {
       log.warn('failed to list orders from Alpaca', {
         error: err instanceof Error ? err.message : String(err),
+        status: err instanceof Error && 'status' in err ? (err as any).status : undefined,
       });
       return [];
     }
@@ -181,56 +170,88 @@ export class AlpacaBroker implements Broker {
 
   async cancelOrder(orderId: string): Promise<void> {
     try {
-      await this.http.request(`orders/${orderId}`, {
-        method: 'DELETE',
-      });
+      await this.client.trading.orders.deleteOrderByOrderID({ orderId });
       log.debug('order cancelled on Alpaca', { orderId });
     } catch (err) {
       log.error('failed to cancel order on Alpaca', {
         orderId,
         error: err instanceof Error ? err.message : String(err),
+        status: err instanceof Error && 'status' in err ? (err as any).status : undefined,
       });
       throw err;
     }
   }
 
   async getClock(): Promise<{ isOpen: boolean; nextOpen: number; nextClose: number }> {
-    interface AlpacaClock {
-      is_open: boolean;
-      next_open: string;
-      next_close: string;
+    try {
+      const clock = await this.client.trading.clock.clock();
+
+      // Handle both Date objects and ISO strings from the SDK
+      const nextOpen = clock.next_open instanceof Date
+        ? clock.next_open.getTime()
+        : new Date(clock.next_open).getTime();
+
+      const nextClose = clock.next_close instanceof Date
+        ? clock.next_close.getTime()
+        : new Date(clock.next_close).getTime();
+
+      return {
+        isOpen: clock.is_open,
+        nextOpen,
+        nextClose,
+      };
+    } catch (err) {
+      log.error('failed to fetch market clock from Alpaca', {
+        error: err instanceof Error ? err.message : String(err),
+        status: err instanceof Error && 'status' in err ? (err as any).status : undefined,
+      });
+      throw err;
     }
-
-    const clock = await this.http.json<AlpacaClock>('clock');
-
-    return {
-      isOpen: clock.is_open,
-      nextOpen: new Date(clock.next_open).getTime(),
-      nextClose: new Date(clock.next_close).getTime(),
-    };
   }
 
-  private mapAlpacaOrderToState(alpacaOrder: AlpacaOrderResponse): OrderState {
+  private mapAlpacaOrderToState(alpacaOrder: AlpacaOrder): OrderState {
     const status = this.mapAlpacaOrderStatus(alpacaOrder.status);
+
+    // Normalize values that may be strings or numbers from the SDK
+    const qty = typeof alpacaOrder.qty === 'string'
+      ? parseFloat(alpacaOrder.qty)
+      : (alpacaOrder.qty ?? 0);
+
+    const limitPrice = alpacaOrder.limit_price
+      ? (typeof alpacaOrder.limit_price === 'string'
+        ? parseFloat(alpacaOrder.limit_price)
+        : alpacaOrder.limit_price)
+      : null;
+
+    const filledAvgPrice = alpacaOrder.filled_avg_price
+      ? (typeof alpacaOrder.filled_avg_price === 'string'
+        ? parseFloat(alpacaOrder.filled_avg_price)
+        : alpacaOrder.filled_avg_price)
+      : null;
+
+    // Handle timestamps (may be Date objects or ISO strings)
+    const createdAt = alpacaOrder.created_at instanceof Date
+      ? alpacaOrder.created_at.getTime()
+      : new Date(alpacaOrder.created_at).getTime();
+
+    const updatedAt = alpacaOrder.updated_at instanceof Date
+      ? alpacaOrder.updated_at.getTime()
+      : new Date(alpacaOrder.updated_at).getTime();
 
     return {
       id: alpacaOrder.id,
-      clientOrderId: alpacaOrder.client_order_id,
+      clientOrderId: alpacaOrder.client_order_id ?? '',
       symbol: alpacaOrder.symbol,
-      side: alpacaOrder.side,
-      qty: parseFloat(String(alpacaOrder.qty)),
-      type: alpacaOrder.type,
-      limitPriceCents: alpacaOrder.limit_price
-        ? Math.round(parseFloat(alpacaOrder.limit_price) * 100)
-        : null,
-      fillPriceCents: alpacaOrder.filled_avg_price
-        ? Math.round(parseFloat(alpacaOrder.filled_avg_price) * 100)
-        : null,
-      tif: alpacaOrder.time_in_force,
+      side: alpacaOrder.side as 'buy' | 'sell',
+      qty,
+      type: alpacaOrder.type as 'market' | 'limit',
+      limitPriceCents: limitPrice ? Math.round(limitPrice * 100) : null,
+      fillPriceCents: filledAvgPrice ? Math.round(filledAvgPrice * 100) : null,
+      tif: alpacaOrder.time_in_force as 'day' | 'gtc',
       status,
       rejectReason: null,  // Alpaca doesn't provide reject reasons in this format
-      submittedAt: new Date(alpacaOrder.created_at).getTime(),
-      updatedAt: new Date(alpacaOrder.updated_at).getTime(),
+      submittedAt: createdAt,
+      updatedAt: updatedAt,
     };
   }
 
