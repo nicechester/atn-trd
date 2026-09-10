@@ -133,14 +133,14 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
         }>>;
         dataSources: z.ZodDefault<z.ZodObject<{
             news: z.ZodDefault<z.ZodObject<{
-                provider: z.ZodDefault<z.ZodEnum<["finnhub", "yahoo", "rss"]>>;
+                provider: z.ZodDefault<z.ZodEnum<["alpaca", "finnhub", "yahoo", "rss"]>>;
                 enabled: z.ZodDefault<z.ZodBoolean>;
             }, "strip", z.ZodTypeAny, {
                 enabled: boolean;
-                provider: "finnhub" | "yahoo" | "rss";
+                provider: "alpaca" | "finnhub" | "yahoo" | "rss";
             }, {
                 enabled?: boolean | undefined;
-                provider?: "finnhub" | "yahoo" | "rss" | undefined;
+                provider?: "alpaca" | "finnhub" | "yahoo" | "rss" | undefined;
             }>>;
             fundamentals: z.ZodDefault<z.ZodObject<{
                 provider: z.ZodDefault<z.ZodEnum<["yahoo"]>>;
@@ -179,7 +179,7 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             };
             news: {
                 enabled: boolean;
-                provider: "finnhub" | "yahoo" | "rss";
+                provider: "alpaca" | "finnhub" | "yahoo" | "rss";
             };
             fundamentals: {
                 enabled: boolean;
@@ -196,7 +196,7 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             } | undefined;
             news?: {
                 enabled?: boolean | undefined;
-                provider?: "finnhub" | "yahoo" | "rss" | undefined;
+                provider?: "alpaca" | "finnhub" | "yahoo" | "rss" | undefined;
             } | undefined;
             fundamentals?: {
                 enabled?: boolean | undefined;
@@ -623,7 +623,7 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             };
             news: {
                 enabled: boolean;
-                provider: "finnhub" | "yahoo" | "rss";
+                provider: "alpaca" | "finnhub" | "yahoo" | "rss";
             };
             fundamentals: {
                 enabled: boolean;
@@ -782,7 +782,7 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             } | undefined;
             news?: {
                 enabled?: boolean | undefined;
-                provider?: "finnhub" | "yahoo" | "rss" | undefined;
+                provider?: "alpaca" | "finnhub" | "yahoo" | "rss" | undefined;
             } | undefined;
             fundamentals?: {
                 enabled?: boolean | undefined;
@@ -944,7 +944,7 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             };
             news: {
                 enabled: boolean;
-                provider: "finnhub" | "yahoo" | "rss";
+                provider: "alpaca" | "finnhub" | "yahoo" | "rss";
             };
             fundamentals: {
                 enabled: boolean;
@@ -1106,7 +1106,7 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             } | undefined;
             news?: {
                 enabled?: boolean | undefined;
-                provider?: "finnhub" | "yahoo" | "rss" | undefined;
+                provider?: "alpaca" | "finnhub" | "yahoo" | "rss" | undefined;
             } | undefined;
             fundamentals?: {
                 enabled?: boolean | undefined;

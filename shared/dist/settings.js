@@ -56,7 +56,7 @@ export const SettingsSchema = z.object({
     }).default({}),
     dataSources: z.object({
         news: z.object({
-            provider: z.enum(['finnhub', 'yahoo', 'rss']).default('finnhub'),
+            provider: z.enum(['alpaca', 'finnhub', 'yahoo', 'rss']).default('alpaca'),
             enabled: z.boolean().default(true),
         }).default({}),
         fundamentals: z.object({
@@ -215,7 +215,7 @@ export const DEFAULT_SETTINGS = {
         curatorCron: '',
     },
     dataSources: {
-        news: { provider: 'finnhub', enabled: true },
+        news: { provider: 'alpaca', enabled: true },
         fundamentals: { provider: 'yahoo', enabled: true },
         macro: { provider: 'fred', enabled: true },
         options: { provider: 'yahoo', enabled: true },
