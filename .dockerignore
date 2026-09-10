@@ -16,3 +16,5 @@ docs/
 /data/
 dist
 build
+web/dist
+server/public

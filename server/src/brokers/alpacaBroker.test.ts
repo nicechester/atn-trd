@@ -1,7 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { AlpacaBroker, AlpacaBrokerConfig } from './alpacaBroker.js';
-import type { Order as AlpacaOrder, Position } from '@alpacahq/alpaca-trade-api';
 
 /**
  * Mock Alpaca client for testing.
@@ -15,7 +14,7 @@ class MockAlpacaClient {
     };
   }
 
-  async getPositions(): Promise<Position[]> {
+  async getPositions() {
     return [
       {
         symbol: 'AAPL',
@@ -34,7 +33,7 @@ class MockAlpacaClient {
     ] as any;
   }
 
-  async createOrder(params: any): Promise<AlpacaOrder> {
+  async createOrder(params: any) {
     return {
       id: 'order-123',
       client_order_id: params.client_order_id,
@@ -52,7 +51,7 @@ class MockAlpacaClient {
     } as any;
   }
 
-  async getOrder(orderId: string): Promise<AlpacaOrder> {
+  async getOrder(orderId: string) {
     if (orderId === 'not-found') {
       throw new Error('Order not found');
     }
@@ -73,7 +72,7 @@ class MockAlpacaClient {
     } as any;
   }
 
-  async getOrders(params: any): Promise<AlpacaOrder[]> {
+  async getOrders(_params?: any) {
     return [
       {
         id: 'order-456',

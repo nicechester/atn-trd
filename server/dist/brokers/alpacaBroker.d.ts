@@ -1,13 +1,16 @@
 import { Broker, BrokerPosition, Account, OrderRequest, OrderState, OrderStatus } from './types.js';
+import { Alpaca } from '@alpacahq/alpaca-trade-api';
 export interface AlpacaBrokerConfig {
     apiKey: string;
     apiSecret: string;
     paperTrading: boolean;
+    /** @internal for testing only */
+    testClient?: Alpaca;
 }
 export declare class AlpacaBroker implements Broker {
     readonly id = "alpaca";
     readonly supportsFractionalShares = true;
-    private readonly http;
+    private readonly client;
     constructor(config: AlpacaBrokerConfig);
     getAccount(): Promise<Account>;
     getPositions(): Promise<BrokerPosition[]>;

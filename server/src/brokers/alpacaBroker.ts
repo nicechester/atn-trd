@@ -1,6 +1,5 @@
 import { Broker, BrokerPosition, Account, OrderRequest, OrderState, OrderStatus } from './types.js';
 import { logger } from '../lib/logger.js';
-import type { Order as AlpacaOrder } from '@alpacahq/alpaca-trade-api';
 import { Alpaca } from '@alpacahq/alpaca-trade-api';
 
 const log = logger.child({ component: 'alpaca-broker' });
@@ -27,12 +26,8 @@ export class AlpacaBroker implements Broker {
       this.client = new Alpaca({
         keyId: config.apiKey,
         secret: config.apiSecret,
-        baseUrl: config.paperTrading
-          ? 'https://paper-api.alpaca.markets'
-          : 'https://api.alpaca.markets',
-        // Configure rate limiting and retry settings to match previous HttpClient config
-        // The SDK handles these through its built-in mechanisms
-      });
+        ...(config.paperTrading && { baseUrl: 'https://paper-api.alpaca.markets' }),
+      } as any);
     }
   }
 
@@ -40,13 +35,13 @@ export class AlpacaBroker implements Broker {
     const account = await this.client.trading.account.getAccount();
 
     // Convert string values to cents (API returns strings)
-    const cash = typeof account.cash === 'string' ? parseFloat(account.cash) : account.cash;
-    const portfolioValue = typeof account.portfolio_value === 'string'
-      ? parseFloat(account.portfolio_value)
-      : account.portfolio_value;
-    const buyingPower = typeof account.buying_power === 'string'
-      ? parseFloat(account.buying_power)
-      : account.buying_power;
+    const cash = typeof (account as any).cash === 'string' ? parseFloat((account as any).cash) : (account as any).cash || 0;
+    const portfolioValue = typeof (account as any).portfolio_value === 'string'
+      ? parseFloat((account as any).portfolio_value)
+      : (account as any).portfolio_value || 0;
+    const buyingPower = typeof (account as any).buying_power === 'string'
+      ? parseFloat((account as any).buying_power)
+      : (account as any).buying_power || 0;
 
     const cashCents = Math.round(cash * 100);
     const equityCents = Math.round(portfolioValue * 100) - cashCents;
@@ -60,11 +55,11 @@ export class AlpacaBroker implements Broker {
   }
 
   async getPositions(): Promise<BrokerPosition[]> {
-    const positions = await this.client.trading.positions.getAllPositions();
+    const positions = await this.client.trading.positions.getAllOpenPositions();
 
     return positions
-      .filter(pos => parseFloat(String(pos.qty)) !== 0)
-      .map(pos => {
+      .filter((pos: any) => parseFloat(String(pos.qty)) !== 0)
+      .map((pos: any) => {
         // The SDK may return avg_entry_price as a string or number; normalize to number
         const avgEntryPrice = typeof pos.avg_entry_price === 'string'
           ? parseFloat(pos.avg_entry_price)
@@ -187,16 +182,17 @@ export class AlpacaBroker implements Broker {
       const clock = await this.client.trading.clock.clock();
 
       // Handle both Date objects and ISO strings from the SDK
-      const nextOpen = clock.next_open instanceof Date
-        ? clock.next_open.getTime()
-        : new Date(clock.next_open).getTime();
+      const clockData = clock as any;
+      const nextOpen = clockData.next_open instanceof Date
+        ? clockData.next_open.getTime()
+        : new Date(clockData.next_open).getTime();
 
-      const nextClose = clock.next_close instanceof Date
-        ? clock.next_close.getTime()
-        : new Date(clock.next_close).getTime();
+      const nextClose = clockData.next_close instanceof Date
+        ? clockData.next_close.getTime()
+        : new Date(clockData.next_close).getTime();
 
       return {
-        isOpen: clock.is_open,
+        isOpen: clockData.is_open,
         nextOpen,
         nextClose,
       };
@@ -209,7 +205,7 @@ export class AlpacaBroker implements Broker {
     }
   }
 
-  private mapAlpacaOrderToState(alpacaOrder: AlpacaOrder): OrderState {
+  private mapAlpacaOrderToState(alpacaOrder: any): OrderState {
     const status = this.mapAlpacaOrderStatus(alpacaOrder.status);
 
     // Normalize values that may be strings or numbers from the SDK
