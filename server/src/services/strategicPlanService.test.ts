@@ -180,7 +180,7 @@ describe('StrategicPlanService', () => {
         sentimentTrend: 0.1,
         priceVsSma50: 0.05,
         compositeScore: 0.70,
-        compositeEwma: 0.70,
+        compositeEwma: 0.70, sentimentSynthesis: null,
         createdAt: Date.now(),
       });
 
@@ -206,7 +206,7 @@ describe('StrategicPlanService', () => {
         sentimentTrend: -0.1,
         priceVsSma50: -0.05,
         compositeScore: 0.55,
-        compositeEwma: 0.55,
+        compositeEwma: 0.55, sentimentSynthesis: null,
         createdAt: Date.now(),
       });
 
@@ -233,7 +233,7 @@ describe('StrategicPlanService', () => {
         sentimentTrend: -0.2,
         priceVsSma50: -0.1,
         compositeScore: 0.40,
-        compositeEwma: 0.40,
+        compositeEwma: 0.40, sentimentSynthesis: null,
         createdAt: Date.now(),
       });
 
@@ -395,13 +395,13 @@ describe('StrategicPlanService', () => {
       deps.signalSnapshotsRepo.insert({
         id: 's1', symbol: 'AAPL', snapshotDate: new Date().toISOString().split('T')[0],
         priceCents: 15000, sentimentScore: 0.7, sentimentConfidence: 0.8,
-        sentimentTrend: 0.1, priceVsSma50: 0.05, compositeScore: 0.70, compositeEwma: 0.70,
+        sentimentTrend: 0.1, priceVsSma50: 0.05, compositeScore: 0.70, compositeEwma: 0.70, sentimentSynthesis: null,
         createdAt: Date.now(),
       });
       deps.signalSnapshotsRepo.insert({
         id: 's2', symbol: 'TSLA', snapshotDate: new Date().toISOString().split('T')[0],
         priceCents: 20000, sentimentScore: 0.3, sentimentConfidence: 0.6,
-        sentimentTrend: -0.1, priceVsSma50: -0.05, compositeScore: 0.30, compositeEwma: 0.30,
+        sentimentTrend: -0.1, priceVsSma50: -0.05, compositeScore: 0.30, compositeEwma: 0.30, sentimentSynthesis: null,
         createdAt: Date.now(),
       });
 

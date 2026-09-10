@@ -14,6 +14,7 @@ import { WatchlistRepo } from '../repos/watchlistRepo.js';
 import { CalibrationRepo } from '../repos/calibrationRepo.js';
 import { RejectionsRepo } from '../repos/rejectionsRepo.js';
 import { ScreenerSelectionsRepo } from '../repos/screenerSelectionsRepo.js';
+import { SignalSnapshotsRepo } from '../repos/signalSnapshotsRepo.js';
 import { NotFoundError } from '../lib/errors.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
@@ -67,6 +68,7 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
     const artifactsRepo = new ArtifactsRepo(db);
     const rejectionsRepo = new RejectionsRepo(db);
     const screenerSelectionsRepo = new ScreenerSelectionsRepo(db);
+    const signalSnapshotsRepo = new SignalSnapshotsRepo(db);
 
     const run = runsRepo.get(id);
     if (!run) {
@@ -92,6 +94,13 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
     }));
     const screenerSelections = screenerSelectionsRepo.listByRun(id);
 
+    // For signal_collection runs, get the snapshots created on that date
+    let signalSnapshots: any[] = [];
+    if (run.trigger === 'signal_collection') {
+      const runDate = new Date(run.startedAt).toISOString().split('T')[0];
+      signalSnapshots = signalSnapshotsRepo.listByDate(runDate);
+    }
+
     res.json({
       ok: true,
       data: {
@@ -103,6 +112,7 @@ export function getRunHandler(req: Request, res: Response, next: NextFunction): 
         messages,
         artifacts,
         screenerSelections,
+        signalSnapshots,
       },
     });
   } catch (err) {

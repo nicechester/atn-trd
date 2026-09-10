@@ -75,7 +75,7 @@ export async function runScreener(
       rejected: preFilterResult.rejected.length,
     });
 
-    // 4. Screener agent: rank and select
+    // 4. Screener agent: fetch data and rank candidates
     emitProgress(runId, 'screener', `Screening ${preFilterResult.candidates.length} candidates...`, {});
     const candidateList = preFilterResult.candidates.map((c) => ({ symbol: c.symbol }));
 
