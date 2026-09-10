@@ -1,30 +1,36 @@
 import { z } from 'zod';
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
-import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
-import { resolveConfigForAgent } from '../llm/openaiChatModel.js';
-import { getRateLimitedLlm, getSynthesisLlm, isGeminiModel } from '../llm/rateLimitedLlm.js';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { getSynthesisLlm } from '../llm/rateLimitedLlm.js';
 import { SCREENER_SYSTEM_PROMPT } from '../llm/prompts/screener.js';
-import { createScreenerTools, type ScreenerToolsDeps } from './screenerTools.js';
 import { RunCollector } from './runCollector.js';
 import type { AgentMessagesRepo } from '../repos/agentMessagesRepo.js';
 import type { ArtifactsRepo } from '../repos/artifactsRepo.js';
+import type { YahooSectorPerformance } from '../datasources/sectors/index.js';
+import type { FundamentalsDataSource } from '../datasources/fundamentals/index.js';
+import type { OptionsDataSource } from '../datasources/options/index.js';
+import type { RunCache } from '../datasources/cache.js';
 import { logger } from '../lib/logger.js';
 import { emitProgress } from '../services/runProgress.js';
 
+const log = logger.child({ component: 'screener-agent' });
+
 const SelectionSchema = z.object({
-  symbol: z.string().describe('Stock ticker symbol'),
-  rationale: z.string().describe('Investment rationale based on screening factors, 1-3 sentences'),
-  conviction: z
-    .number()
-    .min(0)
-    .max(1)
-    .describe('Conviction score 0-1 based on signal strength'),
+  symbol: z.string(),
+  rationale: z.string(),
+  conviction: z.number().min(0).max(1),
 });
 
 export interface ScreenerSelection {
   symbol: string;
   rationale: string;
   conviction: number;
+}
+
+export interface ScreenerToolsDeps {
+  sectorSource: YahooSectorPerformance;
+  fundamentalsSource: FundamentalsDataSource;
+  optionsSource: OptionsDataSource;
+  cache: RunCache;
 }
 
 export interface ScreenerAgentDeps {
@@ -36,165 +42,160 @@ export interface ScreenerAgentDeps {
 export interface ScreenerAgentConfig {
   model?: string;
   temperature?: number;
-  recursionLimit?: number;
 }
 
-const log = logger.child({ component: 'screener-agent' });
+/**
+ * Fetch all data for candidates in parallel batches.
+ */
+async function fetchAllData(
+  symbols: string[],
+  deps: ScreenerToolsDeps
+): Promise<{ sectors: any[]; candidates: Array<{ symbol: string; fundamentals?: any; options?: any }> }> {
+  // Fetch sector performance
+  const sectors = await deps.cache.getOrFetch('sector_performance_all', 1800_000, () =>
+    deps.sectorSource.fetch()
+  ).catch(() => []);
 
+  // Fetch fundamentals and options for all symbols
+  const candidates: Array<{ symbol: string; fundamentals?: any; options?: any }> = [];
+  const batchSize = 10;
+
+  for (let i = 0; i < symbols.length; i += batchSize) {
+    const batch = symbols.slice(i, i + batchSize);
+    const results = await Promise.all(
+      batch.map(async (symbol) => {
+        const [fundamentals, options] = await Promise.all([
+          deps.cache.getOrFetch(`earnings:${symbol}`, 1800_000, () =>
+            deps.fundamentalsSource.fetch({ symbol })
+          ).catch(() => null),
+          deps.cache.getOrFetch(`options:${symbol}`, 1800_000, () =>
+            deps.optionsSource.fetch({ symbol })
+          ).catch(() => null),
+        ]);
+
+        return {
+          symbol,
+          fundamentals: fundamentals?.data ? {
+            pe: fundamentals.data.trailingPE,
+            marketCap: fundamentals.data.marketCap,
+            sector: fundamentals.data.sector,
+          } : undefined,
+          options: options?.data?.metrics ? {
+            putCallRatio: options.data.metrics.putCallVolumeRatio,
+            ivSkew: options.data.metrics.ivSkew,
+          } : undefined,
+        };
+      })
+    );
+    candidates.push(...results);
+  }
+
+  return { sectors, candidates };
+}
+
+/**
+ * Format data as a compact string for the LLM prompt.
+ */
+function formatDataForPrompt(sectors: any[], candidates: Array<{ symbol: string; fundamentals?: any; options?: any }>): string {
+  let output = '## Sector Performance\n';
+  for (const s of sectors.slice(0, 11)) {
+    output += `${s.sector}: ${s.dayChangePercent > 0 ? '+' : ''}${s.dayChangePercent?.toFixed(1)}% today, ${s.weekChangePercent > 0 ? '+' : ''}${s.weekChangePercent?.toFixed(1)}% week\n`;
+  }
+
+  output += '\n## Candidates\n';
+  for (const c of candidates) {
+    const parts = [c.symbol];
+    if (c.fundamentals?.sector) parts.push(`sector:${c.fundamentals.sector}`);
+    if (c.fundamentals?.pe) parts.push(`PE:${c.fundamentals.pe.toFixed(1)}`);
+    if (c.options?.putCallRatio) parts.push(`P/C:${c.options.putCallRatio.toFixed(2)}`);
+    if (c.options?.ivSkew) parts.push(`IVSkew:${c.options.ivSkew.toFixed(2)}`);
+    output += parts.join(' | ') + '\n';
+  }
+
+  return output;
+}
+
+/**
+ * Run screener with all data passed in prompt - no tools needed.
+ */
 export async function runScreenerAgent(
   runId: string,
   candidates: Array<{ symbol: string }>,
   deps: ScreenerAgentDeps,
-  config?: ScreenerAgentConfig
+  _config?: ScreenerAgentConfig
 ): Promise<ScreenerSelection[] | null> {
+  if (candidates.length === 0) {
+    log.debug('no candidates to screen');
+    return [];
+  }
+
+  const symbols = candidates.map(c => c.symbol);
+  const collector = new RunCollector(runId, 'screener', deps.messagesRepo, deps.artifactsRepo);
+
   try {
-    if (candidates.length === 0) {
-      log.debug('no candidates to screen');
-      return [];
-    }
+    // 1. Fetch all data upfront
+    emitProgress(runId, 'screener', `Fetching data for ${symbols.length} candidates...`, {});
+    log.debug('fetching data for candidates', { count: symbols.length });
+    const { sectors, candidates: candidateData } = await fetchAllData(symbols, deps.toolsDeps);
+    log.debug('data fetched', { sectors: sectors.length, candidates: candidateData.length });
 
-    // 1. Get rate-limited LLM singleton
-    const rateLimitedLlm = getRateLimitedLlm();
-    const synthesisLlm = getSynthesisLlm();
-    const resolved = resolveConfigForAgent('screener', { model: config?.model, temperature: config?.temperature });
-    const isGemini = isGeminiModel();
+    // 2. Format data for prompt
+    const dataBlock = formatDataForPrompt(sectors, candidateData);
 
-    // 2. Create tools and collector
-    const tools = createScreenerTools(deps.toolsDeps);
-    const collector = new RunCollector(runId, 'screener', deps.messagesRepo, deps.artifactsRepo);
+    // 3. Build prompt
+    const humanContent = `Screen these candidates and select the best 3-8 for investment:\n\n${dataBlock}`;
 
-    // 3. Build human content with candidate list
-    const symbolsStr = candidates.map((c) => c.symbol).join(', ');
-    const humanContent = `Screen the following candidates for investment merit: ${symbolsStr}
-
-For each candidate, evaluate sector momentum, earnings catalysts, and options market sentiment. Rank them by conviction and select the most promising for detailed analysis.`;
-
-    // 4. Write initial messages
     collector.writeInitialMessages([
       { role: 'system', content: SCREENER_SYSTEM_PROMPT },
       { role: 'human', content: humanContent },
     ]);
 
-    // 5. Create and stream the react agent
-    const recursionLimit = config?.recursionLimit ?? 10;
-    log.debug('starting screener agent', {
-      runId,
-      candidateCount: candidates.length,
-      model: resolved.model,
-      recursionLimit,
-    });
-
-    const agent = createReactAgent({
-      llm: rateLimitedLlm,
-      tools,
-      stateModifier: SCREENER_SYSTEM_PROMPT,
-    });
-
-    let finalReasoningText = '';
-    let eventCount = 0;
-    const stream = agent.streamEvents(
-      { messages: [new HumanMessage(humanContent)] },
-      { version: 'v2', recursionLimit }
-    );
-
-    for await (const event of stream) {
-      eventCount++;
-      // Emit progress for UI
-      if (event.event === 'on_tool_start') {
-        const toolName = event.name?.replace('get_', '') ?? 'tool';
-        emitProgress(runId, 'screener', `Screening: fetching ${toolName}`, { tool: event.name });
-      }
-      collector.handleEvent(event as any);
-      if (event.event === 'on_chat_model_end') {
-        const output = event.data?.output;
-        if (output && typeof output === 'object' && 'content' in output) {
-          const c = (output as { content: unknown }).content;
-          finalReasoningText = typeof c === 'string' ? c : '';
-        }
-      }
-    }
-
-    log.debug('stream complete', { candidateCount: candidates.length, eventCount });
-    emitProgress(runId, 'screener', 'Synthesizing selections', {});
-
-    // 6. Structured synthesis with 1 retry
-    const SelectionArraySchema = z.array(SelectionSchema);
-    const synthesisPrompt = `Based on your screening above, provide your final selections as a JSON array. Each element should have:
-- "symbol": stock ticker
-- "rationale": 1-3 sentence investment rationale
-- "conviction": number 0-1
-
-Return at least 3-5 selections if available. Respond ONLY with the JSON array, no markdown or explanation.`;
-
-    const synthesisMessages = [
+    // 4. Single LLM call
+    emitProgress(runId, 'screener', 'Analyzing candidates...', {});
+    const llm = getSynthesisLlm();
+    const response = await llm.invoke([
       new SystemMessage(SCREENER_SYSTEM_PROMPT),
       new HumanMessage(humanContent),
-      new AIMessage(finalReasoningText || '(No reasoning captured)'),
-      new HumanMessage(synthesisPrompt),
-    ];
+    ]);
 
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        let raw: any;
-        
-        // Skip withStructuredOutput for Gemini - use manual JSON extraction
-        if (!isGemini) {
-          try {
-            raw = await (synthesisLlm as any).withStructuredOutput(SelectionArraySchema).invoke(
-              synthesisMessages
-            );
-            if (Array.isArray(raw)) {
-              const parsed = SelectionArraySchema.parse(raw);
-              log.debug('screening complete', { candidateCount: candidates.length, selectedCount: parsed.length });
-              return parsed;
-            }
-          } catch (structuredErr) {
-            log.debug('withStructuredOutput failed, trying manual extraction', {
-              error: structuredErr instanceof Error ? structuredErr.message : String(structuredErr),
-            });
-          }
-        }
+    const content = typeof response.content === 'string'
+      ? response.content
+      : Array.isArray(response.content)
+        ? response.content.map((c: any) => (typeof c === 'string' ? c : c.text ?? '')).join('')
+        : '';
 
-        // Manual JSON extraction with rate limit handling
-        const response = await synthesisLlm.invoke(synthesisMessages);
-        const content =
-          typeof response.content === 'string'
-            ? response.content
-            : Array.isArray(response.content)
-              ? response.content.map((c: any) => (typeof c === 'string' ? c : c.text ?? '')).join('')
-              : '';
+    // Record AI response
+    deps.messagesRepo.create({
+      runId,
+      symbol: 'screener',
+      seq: 2,
+      role: 'ai',
+      content,
+      toolName: null,
+      toolArgsJson: null,
+      toolResultJson: null,
+      createdAt: Date.now(),
+    });
 
-        // Extract JSON array from response
-        let jsonMatch = content.match(/```json\s*([\s\S]*?)```/);
-        if (jsonMatch) {
-          raw = JSON.parse(jsonMatch[1].trim());
-        } else {
-          jsonMatch = content.match(/\[\s*\{[\s\S]*\}\s*\]/);
-          if (!jsonMatch) throw new Error('No JSON array found in response');
-          raw = JSON.parse(jsonMatch[0]);
-        }
-
-        const parsed = SelectionArraySchema.parse(raw);
-        log.debug('screening complete', { candidateCount: candidates.length, selectedCount: parsed.length });
-        return parsed;
-      } catch (err) {
-        if (attempt === 0) {
-          log.warn('synthesis attempt failed, retrying', {
-            error: err instanceof Error ? err.message : String(err),
-          });
-          continue;
-        }
-        throw err;
+    // 5. Parse JSON response
+    let jsonMatch = content.match(/```json\s*([\s\S]*?)```/);
+    let raw: any;
+    if (jsonMatch) {
+      raw = JSON.parse(jsonMatch[1].trim());
+    } else {
+      jsonMatch = content.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (!jsonMatch) {
+        log.warn('no JSON array found in response', { content: content.slice(0, 200) });
+        return null;
       }
+      raw = JSON.parse(jsonMatch[0]);
     }
 
-    return null;
+    const parsed = z.array(SelectionSchema).parse(raw);
+    log.debug('screening complete', { selections: parsed.length });
+    return parsed;
   } catch (err) {
-    log.warn('screener agent failed', {
-      runId,
-      candidateCount: candidates.length,
-      error: err instanceof Error ? err.message : String(err),
-    });
+    log.warn('screener agent failed', { error: err instanceof Error ? err.message : String(err) });
     return null;
   }
 }

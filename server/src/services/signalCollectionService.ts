@@ -150,6 +150,7 @@ async function collectSymbolSignals(
     // 2. Get news and compute sentiment
     let sentimentScore: number | null = null;
     let sentimentConfidence: number | null = null;
+    let sentimentSynthesis: string | null = null;
 
     try {
       const fromDate = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10);
@@ -165,6 +166,7 @@ async function collectSymbolSignals(
           const headlines = articles.map(a => a.headline);
           const synthesis = await synthesizeSentiment({ symbol, headlines });
           textToScore = synthesis.sentimentSummary || headlines.join('. ');
+          sentimentSynthesis = synthesis.sentimentSummary || null;
           tokensUsed = synthesis.tokensUsed;
         } else {
           // Direct FinBERT on raw headlines
@@ -217,6 +219,7 @@ async function collectSymbolSignals(
       priceVsSma50,
       compositeScore,
       compositeEwma,
+      sentimentSynthesis,
       createdAt: Date.now(),
     };
 

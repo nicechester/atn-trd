@@ -40,7 +40,7 @@ describe('SignalSnapshotsRepo', () => {
         sentimentTrend: 0.02,
         priceVsSma50: 0.05,
         compositeScore: 0.65,
-        compositeEwma: 0.60,
+        compositeEwma: 0.60, sentimentSynthesis: null,
         createdAt: Date.now(),
       });
 
@@ -61,7 +61,7 @@ describe('SignalSnapshotsRepo', () => {
         sentimentTrend: 0.02,
         priceVsSma50: 0.05,
         compositeScore: 0.65,
-        compositeEwma: 0.60,
+        compositeEwma: 0.60, sentimentSynthesis: null,
         createdAt: Date.now(),
       });
 
@@ -76,7 +76,7 @@ describe('SignalSnapshotsRepo', () => {
         sentimentTrend: -0.05,
         priceVsSma50: -0.10,
         compositeScore: 0.20,
-        compositeEwma: 0.30,
+        compositeEwma: 0.30, sentimentSynthesis: null,
         createdAt: Date.now(),
       });
 
@@ -102,7 +102,7 @@ describe('SignalSnapshotsRepo', () => {
         sentimentTrend: 0.01,
         priceVsSma50: 0.05,
         compositeScore: 0.65,
-        compositeEwma: 0.60,
+        compositeEwma: 0.60, sentimentSynthesis: null,
         createdAt: Date.now(),
       });
       repo.insert({
@@ -115,7 +115,7 @@ describe('SignalSnapshotsRepo', () => {
         sentimentTrend: 0.02,
         priceVsSma50: 0.08,
         compositeScore: 0.70,
-        compositeEwma: 0.65,
+        compositeEwma: 0.65, sentimentSynthesis: null,
         createdAt: Date.now(),
       });
       repo.insert({
@@ -128,7 +128,7 @@ describe('SignalSnapshotsRepo', () => {
         sentimentTrend: -0.01,
         priceVsSma50: -0.03,
         compositeScore: 0.40,
-        compositeEwma: 0.45,
+        compositeEwma: 0.45, sentimentSynthesis: null,
         createdAt: Date.now(),
       });
       // Snapshot with null sentiment - should be excluded
@@ -142,7 +142,7 @@ describe('SignalSnapshotsRepo', () => {
         sentimentTrend: null,
         priceVsSma50: 0.02,
         compositeScore: null,
-        compositeEwma: null,
+        compositeEwma: null, sentimentSynthesis: null,
         createdAt: Date.now(),
       });
     });

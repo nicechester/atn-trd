@@ -11,6 +11,7 @@ export interface SignalSnapshotRow {
   priceVsSma50: number | null;
   compositeScore: number | null;
   compositeEwma: number | null;
+  sentimentSynthesis: string | null;
   createdAt: number;
 }
 
@@ -25,8 +26,8 @@ export class SignalSnapshotsRepo {
     const result = this.db
       .prepare(
         `INSERT OR IGNORE INTO signal_snapshots (id, symbol, snapshot_date, price_cents, sentiment_score, sentiment_confidence,
-           sentiment_trend, price_vs_sma50, composite_score, composite_ewma, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           sentiment_trend, price_vs_sma50, composite_score, composite_ewma, sentiment_synthesis, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         row.id,
@@ -39,6 +40,7 @@ export class SignalSnapshotsRepo {
         row.priceVsSma50,
         row.compositeScore,
         row.compositeEwma,
+        row.sentimentSynthesis,
         row.createdAt
       );
     return result.changes > 0;
@@ -51,7 +53,7 @@ export class SignalSnapshotsRepo {
            sentiment_score as sentimentScore, sentiment_confidence as sentimentConfidence,
            sentiment_trend as sentimentTrend, price_vs_sma50 as priceVsSma50,
            composite_score as compositeScore, composite_ewma as compositeEwma,
-           created_at as createdAt
+           sentiment_synthesis as sentimentSynthesis, created_at as createdAt
          FROM signal_snapshots WHERE symbol = ? AND snapshot_date = ?`
       )
       .get(symbol, snapshotDate) as SignalSnapshotRow | undefined;
@@ -64,7 +66,7 @@ export class SignalSnapshotsRepo {
            sentiment_score as sentimentScore, sentiment_confidence as sentimentConfidence,
            sentiment_trend as sentimentTrend, price_vs_sma50 as priceVsSma50,
            composite_score as compositeScore, composite_ewma as compositeEwma,
-           created_at as createdAt
+           sentiment_synthesis as sentimentSynthesis, created_at as createdAt
          FROM signal_snapshots WHERE symbol = ? ORDER BY snapshot_date DESC LIMIT 1`
       )
       .get(symbol) as SignalSnapshotRow | undefined;
@@ -77,7 +79,7 @@ export class SignalSnapshotsRepo {
            sentiment_score as sentimentScore, sentiment_confidence as sentimentConfidence,
            sentiment_trend as sentimentTrend, price_vs_sma50 as priceVsSma50,
            composite_score as compositeScore, composite_ewma as compositeEwma,
-           created_at as createdAt
+           sentiment_synthesis as sentimentSynthesis, created_at as createdAt
          FROM signal_snapshots WHERE symbol = ? ORDER BY snapshot_date DESC LIMIT ?`
       )
       .all(symbol, limit) as SignalSnapshotRow[];
@@ -90,7 +92,7 @@ export class SignalSnapshotsRepo {
            sentiment_score as sentimentScore, sentiment_confidence as sentimentConfidence,
            sentiment_trend as sentimentTrend, price_vs_sma50 as priceVsSma50,
            composite_score as compositeScore, composite_ewma as compositeEwma,
-           created_at as createdAt
+           sentiment_synthesis as sentimentSynthesis, created_at as createdAt
          FROM signal_snapshots WHERE symbol = ? AND snapshot_date >= ? AND snapshot_date <= ?
          ORDER BY snapshot_date ASC`
       )
@@ -105,7 +107,7 @@ export class SignalSnapshotsRepo {
            sentiment_score as sentimentScore, sentiment_confidence as sentimentConfidence,
            sentiment_trend as sentimentTrend, price_vs_sma50 as priceVsSma50,
            composite_score as compositeScore, composite_ewma as compositeEwma,
-           created_at as createdAt
+           sentiment_synthesis as sentimentSynthesis, created_at as createdAt
          FROM signal_snapshots
          WHERE symbol = ?
          ORDER BY snapshot_date DESC LIMIT ?`
@@ -123,6 +125,20 @@ export class SignalSnapshotsRepo {
          ORDER BY snapshot_date DESC LIMIT ?`
       )
       .all(symbol, days) as Array<{ snapshotDate: string; sentimentScore: number }>;
+  }
+
+  /** Get all snapshots for a specific date */
+  listByDate(snapshotDate: string): SignalSnapshotRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, symbol, snapshot_date as snapshotDate, price_cents as priceCents,
+           sentiment_score as sentimentScore, sentiment_confidence as sentimentConfidence,
+           sentiment_trend as sentimentTrend, price_vs_sma50 as priceVsSma50,
+           composite_score as compositeScore, composite_ewma as compositeEwma,
+           sentiment_synthesis as sentimentSynthesis, created_at as createdAt
+         FROM signal_snapshots WHERE snapshot_date = ? ORDER BY symbol`
+      )
+      .all(snapshotDate) as SignalSnapshotRow[];
   }
 
   /**

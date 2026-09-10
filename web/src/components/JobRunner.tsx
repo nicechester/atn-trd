@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { JOB_REGISTRY, resolveExecutionOrder, type JobExecutionOrder } from '@atn-trd/shared';
-import { api, type TriggerRunSelectedRequest } from '../api/client';
+import { JOB_REGISTRY, resolveExecutionOrder } from '@atn-trd/shared';
+import { api } from '../api/client';
 import styles from './JobRunner.module.css';
 
 interface JobSelection {
@@ -24,7 +24,11 @@ interface JobResult {
   runId?: string;
 }
 
-export function JobRunner(): JSX.Element {
+interface JobRunnerProps {
+  onComplete?: () => void | Promise<void>;
+}
+
+export function JobRunner({ onComplete }: JobRunnerProps): JSX.Element {
   const [selection, setSelection] = useState<JobSelection>({});
   const [executionOrder, setExecutionOrder] = useState<ReturnType<typeof resolveExecutionOrder>>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -79,22 +83,21 @@ export function JobRunner(): JSX.Element {
 
       // Start streaming progress
       const eventSource = new EventSource('/api/runs/progress/stream');
-      let lastRunId: string | null = null;
-
       eventSource.onmessage = (event: MessageEvent<string>) => {
         try {
           const data = JSON.parse(event.data) as ProgressEvent;
           setProgress(prev => [...prev, data]);
-          lastRunId = data.runId;
 
           // Update results based on progress events
-          if (data.phase === 'job-start' && data.jobId && data.jobName) {
+          if (data.phase === 'job-start' && data.jobId) {
+            const jobId = data.jobId;
+            const jobName = data.jobName ?? jobId;
             setResults(prev => {
-              const existing = prev.findIndex(r => r.jobId === data.jobId);
-              const newResult = {
-                jobId: data.jobId!,
-                jobName: data.jobName!,
-                status: 'running' as const,
+              const existing = prev.findIndex(r => r.jobId === jobId);
+              const newResult: JobResult = {
+                jobId,
+                jobName,
+                status: 'running',
                 message: data.message,
               };
               if (existing >= 0) {
@@ -105,16 +108,18 @@ export function JobRunner(): JSX.Element {
               return [...prev, newResult];
             });
           } else if (data.phase === 'job-complete' && data.jobId) {
+            const jobId = data.jobId;
+            const fallbackName = data.jobName ?? jobId;
             setResults(prev => {
-              const existing = prev.findIndex(r => r.jobId === data.jobId);
+              const existing = prev.findIndex(r => r.jobId === jobId);
               const status = data.message.includes('failed') || data.message.includes('Error')
                 ? 'failed'
                 : data.message.includes('Skipped')
                   ? 'skipped'
                   : 'completed';
-              const newResult = {
-                jobId: data.jobId!,
-                jobName: prev[existing]?.jobName || data.jobName || data.jobId,
+              const newResult: JobResult = {
+                jobId,
+                jobName: prev[existing]?.jobName ?? fallbackName,
                 status,
                 message: data.message,
               };
@@ -135,8 +140,7 @@ export function JobRunner(): JSX.Element {
       };
 
       // Make API call
-      const req: TriggerRunSelectedRequest = { jobIds: selectedIds };
-      const response = await api.strategicJobs.triggerRunSelected(req);
+      const response = await api.strategicJobs.triggerRunSelected({ jobIds: selectedIds });
 
       if (!response.ok) {
         setError(response.error || 'Failed to trigger jobs');
@@ -155,6 +159,7 @@ export function JobRunner(): JSX.Element {
       }
 
       setIsRunning(false);
+      onComplete?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to run jobs');
       setIsRunning(false);

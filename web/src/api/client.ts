@@ -373,6 +373,32 @@ export interface RunCoverageData {
   sourceSummary: SourceSummaryData[];
 }
 
+export interface ScreenerSelectionRow {
+  id: string;
+  runId: string;
+  symbol: string;
+  rationale: string;
+  conviction: number;
+  selectedJson: string | null;
+  rejectedJson: string | null;
+  createdAt: number;
+}
+
+export interface SignalSnapshotRow {
+  id: string;
+  symbol: string;
+  snapshotDate: string;
+  priceCents: number | null;
+  sentimentScore: number | null;
+  sentimentConfidence: number | null;
+  sentimentTrend: number | null;
+  priceVsSma50: number | null;
+  compositeScore: number | null;
+  compositeEwma: number | null;
+  sentimentSynthesis: string | null;
+  createdAt: number;
+}
+
 export interface RunDetailData {
   run: AgentRunRow;
   assessments: AssessmentRow[];
@@ -381,6 +407,8 @@ export interface RunDetailData {
   rejections: RejectionRow[];
   messages: AgentMessageRow[];
   artifacts: ResearchArtifactRow[];
+  screenerSelections: ScreenerSelectionRow[];
+  signalSnapshots: SignalSnapshotRow[];
 }
 
 export interface PositionDetail {

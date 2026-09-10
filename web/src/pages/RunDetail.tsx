@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { runs as runsApi, type RunDetailData, type AgentRunRow, type DecisionRow, type AgentMessageRow, type ResearchArtifactRow, type RunCoverageData, type PlanReviewSummary, type SignalCollectionSummary, type WatchlistCurationSummary, type TrancheExecutionSummary } from '../api/client';
+import { runs as runsApi, type RunDetailData, type AgentRunRow, type DecisionRow, type AgentMessageRow, type ResearchArtifactRow, type RunCoverageData, type PlanReviewSummary, type SignalCollectionSummary, type WatchlistCurationSummary, type TrancheExecutionSummary, type ScreenerSelectionRow, type SignalSnapshotRow } from '../api/client';
 import { centsToUSD, formatTimestamp, formatDuration, formatQty } from '../lib/format';
 import { useToast } from '../context/ToastContext';
 import CoverageHeatmap from '../components/CoverageHeatmap';
@@ -106,7 +106,7 @@ function renderPlanReviewSummary(s: PlanReviewSummary) {
   );
 }
 
-function renderSignalCollectionSummary(s: SignalCollectionSummary) {
+function renderSignalCollectionSummary(s: SignalCollectionSummary, signalSnapshots: SignalSnapshotRow[]) {
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-md)' }}>
@@ -114,14 +114,36 @@ function renderSignalCollectionSummary(s: SignalCollectionSummary) {
         <div><div className={styles.fieldLabel}>Errors</div><div className={styles.fieldValue}>{s.errors}</div></div>
         {s.tokensUsed > 0 && <div><div className={styles.fieldLabel}>Tokens Used</div><div className={styles.fieldValue}>{s.tokensUsed.toLocaleString()}</div></div>}
       </div>
-      {s.symbols.length > 0 && (
-        <div><div className={styles.fieldLabel}>Symbols</div><div className={styles.fieldValue}>{s.symbols.join(', ')}</div></div>
+      {signalSnapshots.length > 0 && (
+        <div style={{ marginTop: 'var(--spacing-md)' }}>
+          <div className={styles.fieldLabel}>Signal Analysis</div>
+          {signalSnapshots.map(snap => (
+            <div key={snap.id} style={{ padding: 'var(--spacing-sm)', marginTop: 'var(--spacing-xs)', background: 'var(--color-bg-secondary)', borderRadius: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: '4px' }}>
+                <strong>{snap.symbol}</strong>
+                {snap.compositeEwma !== null && (
+                  <span style={{ fontSize: '0.75rem', color: snap.compositeEwma >= 0.5 ? 'var(--color-success)' : 'var(--color-error)' }}>
+                    score: {(snap.compositeEwma * 100).toFixed(0)}%
+                  </span>
+                )}
+                {snap.sentimentScore !== null && (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                    sentiment: {snap.sentimentScore >= 0 ? '+' : ''}{snap.sentimentScore.toFixed(2)}
+                  </span>
+                )}
+              </div>
+              {snap.sentimentSynthesis && (
+                <div style={{ fontSize: '0.875rem', fontStyle: 'italic' }}>{snap.sentimentSynthesis}</div>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
-function renderWatchlistCurationSummary(s: WatchlistCurationSummary) {
+function renderWatchlistCurationSummary(s: WatchlistCurationSummary, screenerSelections: ScreenerSelectionRow[]) {
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-md)' }}>
@@ -133,6 +155,20 @@ function renderWatchlistCurationSummary(s: WatchlistCurationSummary) {
       )}
       {s.symbolsUpdated.length > 0 && (
         <div><div className={styles.fieldLabel}>Updated</div><div className={styles.fieldValue}>{s.symbolsUpdated.join(', ')}</div></div>
+      )}
+      {screenerSelections.length > 0 && (
+        <div style={{ marginTop: 'var(--spacing-md)' }}>
+          <div className={styles.fieldLabel}>AI Selections</div>
+          {screenerSelections.map(sel => (
+            <div key={sel.id} style={{ padding: 'var(--spacing-sm)', marginTop: 'var(--spacing-xs)', background: 'var(--color-bg-secondary)', borderRadius: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: '4px' }}>
+                <strong>{sel.symbol}</strong>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>conviction: {Math.round(sel.conviction * 100)}%</span>
+              </div>
+              <div style={{ fontSize: '0.875rem' }}>{sel.rationale}</div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -197,7 +233,7 @@ export default function RunDetailPage() {
   if (loading) return <p>Loading…</p>;
   if (!detail) return <p>Run not found.</p>;
 
-  const { run, assessments, decisions, orders, messages, artifacts } = detail;
+  const { run, assessments, decisions, orders, messages, artifacts, screenerSelections, signalSnapshots } = detail;
   const jobType = inferJobType(run);
   const isStrategicRun = jobType !== 'trading_cycle';
 
@@ -307,8 +343,8 @@ export default function RunDetailPage() {
         <div className={styles.symbolCard} style={{ marginBottom: 'var(--spacing-lg)' }}>
           <div className={styles.fieldLabel}>Job Summary</div>
           {jobType === 'plan_review' && renderPlanReviewSummary(summary as PlanReviewSummary)}
-          {jobType === 'signal_collection' && renderSignalCollectionSummary(summary as SignalCollectionSummary)}
-          {jobType === 'watchlist_curation' && renderWatchlistCurationSummary(summary as WatchlistCurationSummary)}
+          {jobType === 'signal_collection' && renderSignalCollectionSummary(summary as SignalCollectionSummary, signalSnapshots)}
+          {jobType === 'watchlist_curation' && renderWatchlistCurationSummary(summary as WatchlistCurationSummary, screenerSelections)}
           {jobType === 'tranche_execution' && renderTrancheExecutionSummary(summary as TrancheExecutionSummary)}
         </div>
       )}
@@ -423,15 +459,15 @@ export default function RunDetailPage() {
       {/* Rejected Decisions - only for trading cycle runs */}
       {!isStrategicRun && <RejectedDecisions rejections={detail.rejections} />}
 
-      {/* Transcript — collapsed by default, only for trading cycle runs */}
-      {!isStrategicRun && (
+      {/* Transcript — collapsed by default, show for any run with messages */}
+      {messages.length > 0 && (
         <div className={styles.section}>
           <details>
             <summary>Transcript ({messages.length} messages)</summary>
             <div className={styles.transcript}>
               {Array.from(msgGroups.entries()).map(([key, msgs]) => (
                 <details key={key} open style={{ marginBottom: 'var(--spacing-md)' }}>
-                  <summary>{key === '__portfolio__' ? 'Portfolio Manager' : key}</summary>
+                  <summary>{key === '__portfolio__' ? 'Portfolio Manager' : key === 'screener' ? 'Screener Agent' : key}</summary>
                   {msgs.map(m => {
                     const isExpanded = expanded.has(m.id);
                     const content = m.content;
@@ -453,14 +489,13 @@ export default function RunDetailPage() {
                   })}
                 </details>
               ))}
-              {messages.length === 0 && <p className={styles.muted}>No messages.</p>}
             </div>
           </details>
         </div>
       )}
 
-      {/* Artifacts - only for trading cycle runs */}
-      {!isStrategicRun && (
+      {/* Artifacts - show for any run with artifacts */}
+      {artifacts.length > 0 && (
         <div className={styles.section}>
           <details>
             <summary>Research Artifacts ({artifacts.length})</summary>
@@ -487,7 +522,6 @@ export default function RunDetailPage() {
                 })}
               </div>
             ))}
-            {artifacts.length === 0 && <p className={styles.muted}>No artifacts.</p>}
           </details>
         </div>
       )}
