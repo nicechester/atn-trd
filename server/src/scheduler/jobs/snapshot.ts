@@ -31,7 +31,7 @@ export async function runSnapshotJob(db: Database.Database): Promise<void> {
 
   if (!isTradingDay(now)) {
     const runId = runsRepo.create({
-      trigger: 'snapshot',
+      trigger: 'scheduled',
       status: 'running',
       startedAt: Date.now(),
       finishedAt: null,
@@ -47,7 +47,7 @@ export async function runSnapshotJob(db: Database.Database): Promise<void> {
   }
 
   const runId = runsRepo.create({
-    trigger: 'snapshot',
+    trigger: 'scheduled',
     status: 'running',
     startedAt: Date.now(),
     finishedAt: null,

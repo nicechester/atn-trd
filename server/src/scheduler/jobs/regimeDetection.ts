@@ -21,7 +21,7 @@ export async function runRegimeDetectionJob(db: Database.Database): Promise<void
 
   if (!isTradingDay(now)) {
     const runId = runsRepo.create({
-      trigger: 'regime_detection',
+      trigger: 'scheduled',
       status: 'running',
       startedAt: Date.now(),
       finishedAt: null,
@@ -39,7 +39,7 @@ export async function runRegimeDetectionJob(db: Database.Database): Promise<void
   const settings = getSettings();
   if (!settings.regime.enabled) {
     const runId = runsRepo.create({
-      trigger: 'regime_detection',
+      trigger: 'scheduled',
       status: 'running',
       startedAt: Date.now(),
       finishedAt: null,
@@ -55,7 +55,7 @@ export async function runRegimeDetectionJob(db: Database.Database): Promise<void
   }
 
   const runId = runsRepo.create({
-    trigger: 'regime_detection',
+    trigger: 'scheduled',
     status: 'running',
     startedAt: Date.now(),
     finishedAt: null,
