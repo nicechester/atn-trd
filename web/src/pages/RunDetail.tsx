@@ -56,8 +56,9 @@ function roleBadge(role: AgentMessageRow['role'], s: Record<string, string>) {
 
 function renderPlanReviewSummary(s: PlanReviewSummary) {
   // Group skipped by type for better display
-  const watchlistSkipped = s.plansSkipped.filter(sk => !sk.reason.startsWith('position:'));
-  const positionSkipped = s.plansSkipped.filter(sk => sk.reason.startsWith('position:'));
+  const plansSkipped = s.plansSkipped || [];
+  const watchlistSkipped = plansSkipped.filter(sk => !sk.reason.startsWith('position:'));
+  const positionSkipped = plansSkipped.filter(sk => sk.reason.startsWith('position:'));
 
   return (
     <div>
@@ -390,7 +391,7 @@ export default function RunDetailPage() {
                 <div className={styles.muted} style={{ fontSize: '0.8rem', marginBottom: 'var(--spacing-sm)' }}>
                   Submitted: {formatTimestamp(o.submittedAt)}
                 </div>
-                {o.fills.length > 0 && (
+                {o.fills && o.fills.length > 0 && (
                   <table className={styles.fillsTable}>
                     <thead>
                       <tr>
