@@ -1,7 +1,26 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import Database from 'better-sqlite3';
-import { SignalSnapshotsRepo } from './signalSnapshotsRepo.js';
+import { SignalSnapshotsRepo, type SignalSnapshotRow } from './signalSnapshotsRepo.js';
+
+// Helper to create test snapshots with new fields defaulted to null
+function makeSnapshot(overrides: Partial<SignalSnapshotRow> & Pick<SignalSnapshotRow, 'id' | 'symbol' | 'snapshotDate' | 'createdAt'>): SignalSnapshotRow {
+  return {
+    priceCents: null,
+    sentimentScore: null,
+    sentimentConfidence: null,
+    sentimentTrend: null,
+    priceVsSma50: null,
+    ivPercentile: null,
+    putCallRatio: null,
+    valuationScore: null,
+    growthScore: null,
+    compositeScore: null,
+    compositeEwma: null,
+    sentimentSynthesis: null,
+    ...overrides,
+  };
+}
 
 describe('SignalSnapshotsRepo', () => {
   let db: Database.Database;
@@ -19,8 +38,13 @@ describe('SignalSnapshotsRepo', () => {
         sentiment_confidence REAL,
         sentiment_trend REAL,
         price_vs_sma50 REAL,
+        iv_percentile REAL,
+        put_call_ratio REAL,
+        valuation_score REAL,
+        growth_score REAL,
         composite_score REAL,
         composite_ewma REAL,
+        sentiment_synthesis TEXT,
         created_at INTEGER NOT NULL,
         UNIQUE(symbol, snapshot_date)
       )
@@ -30,7 +54,7 @@ describe('SignalSnapshotsRepo', () => {
 
   describe('insert', () => {
     it('inserts new snapshot and returns true', () => {
-      const result = repo.insert({
+      const result = repo.insert(makeSnapshot({
         id: 'snap-1',
         symbol: 'AAPL',
         snapshotDate: '2026-09-07',
@@ -40,9 +64,9 @@ describe('SignalSnapshotsRepo', () => {
         sentimentTrend: 0.02,
         priceVsSma50: 0.05,
         compositeScore: 0.65,
-        compositeEwma: 0.60, sentimentSynthesis: null,
+        compositeEwma: 0.60,
         createdAt: Date.now(),
-      });
+      }));
 
       assert.strictEqual(result, true);
       const saved = repo.get('AAPL', '2026-09-07');
@@ -51,7 +75,7 @@ describe('SignalSnapshotsRepo', () => {
 
     it('skips duplicate and returns false (immutability for IC measurement)', () => {
       // First insert
-      repo.insert({
+      repo.insert(makeSnapshot({
         id: 'snap-1',
         symbol: 'AAPL',
         snapshotDate: '2026-09-07',
@@ -61,12 +85,12 @@ describe('SignalSnapshotsRepo', () => {
         sentimentTrend: 0.02,
         priceVsSma50: 0.05,
         compositeScore: 0.65,
-        compositeEwma: 0.60, sentimentSynthesis: null,
+        compositeEwma: 0.60,
         createdAt: Date.now(),
-      });
+      }));
 
       // Second insert with different values - should be ignored
-      const result = repo.insert({
+      const result = repo.insert(makeSnapshot({
         id: 'snap-2',
         symbol: 'AAPL',
         snapshotDate: '2026-09-07',
@@ -76,9 +100,9 @@ describe('SignalSnapshotsRepo', () => {
         sentimentTrend: -0.05,
         priceVsSma50: -0.10,
         compositeScore: 0.20,
-        compositeEwma: 0.30, sentimentSynthesis: null,
+        compositeEwma: 0.30,
         createdAt: Date.now(),
-      });
+      }));
 
       assert.strictEqual(result, false);
 
@@ -92,7 +116,7 @@ describe('SignalSnapshotsRepo', () => {
   describe('listForIcMeasurement', () => {
     beforeEach(() => {
       // Insert test data
-      repo.insert({
+      repo.insert(makeSnapshot({
         id: 'snap-1',
         symbol: 'AAPL',
         snapshotDate: '2026-09-01',
@@ -102,10 +126,10 @@ describe('SignalSnapshotsRepo', () => {
         sentimentTrend: 0.01,
         priceVsSma50: 0.05,
         compositeScore: 0.65,
-        compositeEwma: 0.60, sentimentSynthesis: null,
+        compositeEwma: 0.60,
         createdAt: Date.now(),
-      });
-      repo.insert({
+      }));
+      repo.insert(makeSnapshot({
         id: 'snap-2',
         symbol: 'AAPL',
         snapshotDate: '2026-09-02',
@@ -115,10 +139,10 @@ describe('SignalSnapshotsRepo', () => {
         sentimentTrend: 0.02,
         priceVsSma50: 0.08,
         compositeScore: 0.70,
-        compositeEwma: 0.65, sentimentSynthesis: null,
+        compositeEwma: 0.65,
         createdAt: Date.now(),
-      });
-      repo.insert({
+      }));
+      repo.insert(makeSnapshot({
         id: 'snap-3',
         symbol: 'MSFT',
         snapshotDate: '2026-09-01',
@@ -128,23 +152,18 @@ describe('SignalSnapshotsRepo', () => {
         sentimentTrend: -0.01,
         priceVsSma50: -0.03,
         compositeScore: 0.40,
-        compositeEwma: 0.45, sentimentSynthesis: null,
+        compositeEwma: 0.45,
         createdAt: Date.now(),
-      });
+      }));
       // Snapshot with null sentiment - should be excluded
-      repo.insert({
+      repo.insert(makeSnapshot({
         id: 'snap-4',
         symbol: 'GOOG',
         snapshotDate: '2026-09-01',
         priceCents: 14000,
-        sentimentScore: null,
-        sentimentConfidence: null,
-        sentimentTrend: null,
         priceVsSma50: 0.02,
-        compositeScore: null,
-        compositeEwma: null, sentimentSynthesis: null,
         createdAt: Date.now(),
-      });
+      }));
     });
 
     it('returns snapshots with sentiment and price for IC calculation', () => {

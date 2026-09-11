@@ -340,6 +340,10 @@ CREATE TABLE IF NOT EXISTS signal_snapshots (
   sentiment_confidence REAL,
   sentiment_trend REAL,
   price_vs_sma50 REAL,
+  iv_percentile REAL,
+  put_call_ratio REAL,
+  valuation_score REAL,
+  growth_score REAL,
   composite_score REAL,
   composite_ewma REAL,
   created_at INTEGER NOT NULL,
@@ -550,4 +554,5 @@ INSERT INTO schema_migrations (version, applied_at) VALUES
   (23, strftime('%s', 'now') * 1000),
   (24, strftime('%s', 'now') * 1000),
   (25, strftime('%s', 'now') * 1000),
-  (26, strftime('%s', 'now') * 1000);
+  (26, strftime('%s', 'now') * 1000),
+  (27, strftime('%s', 'now') * 1000);

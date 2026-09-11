@@ -150,11 +150,27 @@ export const SettingsSchema = z.object({
     rollingWindowDays: z.number().int().min(7).max(30).default(14),
     ewmaAlpha: z.number().min(0.01).max(0.5).default(0.10),
     weights: z.object({
-      sentiment: z.number().min(0).max(1).default(0.4),
-      sentimentTrend: z.number().min(0).max(1).default(0.3),
-      priceMomentum: z.number().min(0).max(1).default(0.3),
+      sentiment: z.number().min(0).max(1).default(0.25),
+      sentimentTrend: z.number().min(0).max(1).default(0.15),
+      priceMomentum: z.number().min(0).max(1).default(0.15),
+      options: z.number().min(0).max(1).default(0.20),
+      fundamentals: z.number().min(0).max(1).default(0.25),
+    }).transform((w) => {
+      // Migration: if old weights (no options/fundamentals), redistribute
+      if (w.options === 0.20 && w.fundamentals === 0.25 && 
+          Math.abs(w.sentiment + w.sentimentTrend + w.priceMomentum - 1) < 0.01) {
+        // Old weights detected, redistribute to include new signals
+        return {
+          sentiment: 0.25,
+          sentimentTrend: 0.15,
+          priceMomentum: 0.15,
+          options: 0.20,
+          fundamentals: 0.25,
+        };
+      }
+      return w;
     }).refine((w) => {
-      const sum = w.sentiment + w.sentimentTrend + w.priceMomentum;
+      const sum = w.sentiment + w.sentimentTrend + w.priceMomentum + w.options + w.fundamentals;
       return Math.abs(sum - 1) <= 0.01;
     }, {
       message: 'Signal weights must sum to 1',
@@ -303,9 +319,11 @@ export const DEFAULT_SETTINGS: Settings = {
     rollingWindowDays: 14,
     ewmaAlpha: 0.10,
     weights: {
-      sentiment: 0.4,
-      sentimentTrend: 0.3,
-      priceMomentum: 0.3,
+      sentiment: 0.25,
+      sentimentTrend: 0.15,
+      priceMomentum: 0.15,
+      options: 0.20,
+      fundamentals: 0.25,
     },
   },
   regime: {
