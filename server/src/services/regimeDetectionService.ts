@@ -204,3 +204,37 @@ export function getCurrentRegime(marketRegimeRepo: MarketRegimeRepo): Regime {
   const latest = marketRegimeRepo.getLatest();
   return latest?.regime ?? 'RISK_ON';
 }
+
+/**
+ * Get current risk score (from latest stored value).
+ * Returns 0 if no data available.
+ */
+export function getCurrentRiskScore(marketRegimeRepo: MarketRegimeRepo): number {
+  const latest = marketRegimeRepo.getLatest();
+  return latest?.riskScore ?? 0;
+}
+
+/**
+ * Compute buy threshold adjustment based on macro conditions.
+ * Returns a value to ADD to the base buy threshold.
+ * Higher risk score = higher threshold (more selective).
+ */
+export function computeBuyThresholdAdjustment(riskScore: number): number {
+  // At risk score 0 (healthy macro): no adjustment
+  // At risk score 0.25 (neutral): +0.05 threshold
+  // At risk score 0.50+ (risk-off): +0.10 threshold
+  if (riskScore >= 0.50) return 0.10;
+  if (riskScore >= 0.25) return 0.05;
+  return 0;
+}
+
+/**
+ * Compute position size multiplier based on macro conditions.
+ * Returns a value between 0.5 and 1.0 to multiply base position size.
+ */
+export function computePositionSizeMultiplier(riskScore: number): number {
+  // At risk score 0: full size (1.0)
+  // At risk score 0.50+: half size (0.5)
+  // Linear interpolation between
+  return Math.max(0.5, 1 - riskScore);
+}

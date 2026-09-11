@@ -17,7 +17,7 @@ import { WatchlistRepo } from '../../repos/watchlistRepo.js';
 import { PositionsRepo } from '../../repos/positionsRepo.js';
 import { RunsRepo, type RunTrigger } from '../../repos/runsRepo.js';
 import { createPlan, type StrategicPlanDeps } from '../../services/strategicPlanService.js';
-import { getCurrentRegime } from '../../services/regimeDetectionService.js';
+import { getCurrentRegime, getCurrentRiskScore, computeBuyThresholdAdjustment, computePositionSizeMultiplier } from '../../services/regimeDetectionService.js';
 import { getSettings } from '../../config/settingsService.js';
 
 const log = logger.child({ component: 'plan-review-job' });
@@ -40,12 +40,13 @@ function computeTargetAllocation(
   portfolioValueCents: number,
   priceCents: number,
   conviction: number,
-  maxPositionWeight: number
+  maxPositionWeight: number,
+  sizeMultiplier: number = 1.0
 ): { targetShares?: number; targetBudgetCents?: number } {
   const baseWeight = 0.05;
   const convictionMultiplier = 0.5 + conviction;
   const targetWeight = Math.min(baseWeight * convictionMultiplier, maxPositionWeight / 100);
-  const targetValueCents = portfolioValueCents * targetWeight;
+  const targetValueCents = portfolioValueCents * targetWeight * sizeMultiplier;
 
   if (priceCents >= CHUNKY_STOCK_THRESHOLD_CENTS) {
     return { targetBudgetCents: Math.round(targetValueCents) };
@@ -120,12 +121,28 @@ export async function runPlanReviewJob(
 
     // Check regime
     const regime = getCurrentRegime(marketRegimeRepo);
+    const riskScore = getCurrentRiskScore(marketRegimeRepo);
     summary.regime = regime;
 
     if (regime === 'RISK_OFF' && settings.execution.requireRegimeCheck) {
       runsRepo.setSkipped(runId, 'RISK_OFF regime - no new ACCUMULATE plans');
       runsRepo.updateSummary(runId, JSON.stringify(summary));
       return summary;
+    }
+
+    // Compute macro-adjusted thresholds
+    const buyThresholdAdjustment = computeBuyThresholdAdjustment(riskScore);
+    const adjustedBuyThreshold = Math.min(0.95, settings.signals.buyThreshold + buyThresholdAdjustment);
+    const positionSizeMultiplier = computePositionSizeMultiplier(riskScore);
+
+    if (buyThresholdAdjustment > 0) {
+      log.info('macro-adjusted buy threshold', {
+        baseBuyThreshold: settings.signals.buyThreshold,
+        adjustment: buyThresholdAdjustment,
+        adjustedBuyThreshold,
+        riskScore,
+        positionSizeMultiplier,
+      });
     }
 
     const portfolio = portfolioRepo.read();
@@ -162,11 +179,11 @@ export async function runPlanReviewJob(
         continue;
       }
 
-      // Check buy threshold
-      if (score < settings.signals.buyThreshold) {
+      // Check buy threshold (macro-adjusted)
+      if (score < adjustedBuyThreshold) {
         summary.plansSkipped.push({
           symbol: item.symbol,
-          reason: `score ${score.toFixed(2)} < threshold ${settings.signals.buyThreshold}`,
+          reason: `score ${score.toFixed(2)} < threshold ${adjustedBuyThreshold.toFixed(2)}${buyThresholdAdjustment > 0 ? ` (macro +${buyThresholdAdjustment.toFixed(2)})` : ''}`,
         });
         continue;
       }
@@ -177,12 +194,13 @@ export async function runPlanReviewJob(
         continue;
       }
 
-      const conviction = Math.min(1, (score - settings.signals.buyThreshold) / (1 - settings.signals.buyThreshold));
+      const conviction = Math.min(1, (score - adjustedBuyThreshold) / (1 - adjustedBuyThreshold));
       const allocation = computeTargetAllocation(
         portfolio.cashCents,
         price.adjCloseCents,
         conviction,
-        settings.risk.maxPositionWeightPercent
+        settings.risk.maxPositionWeightPercent,
+        positionSizeMultiplier
       );
 
       // Skip if allocation too small
