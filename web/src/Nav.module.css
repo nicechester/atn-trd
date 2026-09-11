@@ -20,7 +20,8 @@
 }
 
 .hamburger:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-bg-hover);
+  border-color: var(--color-primary);
 }
 
 .backdrop {
@@ -42,6 +43,7 @@
   height: 100vh;
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
   z-index: 1001;
   transition: left 0.3s ease-in-out;
   overflow-y: auto;
@@ -60,47 +62,55 @@
 
 .logo {
   font-weight: 700;
+  font-size: 1.1rem;
   padding: var(--spacing-md) var(--spacing-sm);
   color: var(--color-text);
   display: block;
   margin-bottom: var(--spacing-md);
   margin-top: var(--spacing-xl);
+  letter-spacing: -0.02em;
 }
 
 .link {
-  display: block;
+  display: flex;
+  align-items: center;
   padding: var(--spacing-sm);
+  padding-left: var(--spacing-md);
   border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
   color: var(--color-text-muted);
   text-decoration: none;
   margin-bottom: var(--spacing-xs);
   min-height: var(--touch-target-min);
-  display: flex;
-  align-items: center;
-  transition: background 0.2s, color 0.2s;
+  transition: all 0.2s ease-out;
 }
 
 .link:hover {
-  background: rgba(79, 142, 247, 0.05);
+  background: var(--color-bg-hover);
   color: var(--color-text);
+  border-left-color: var(--color-primary);
 }
 
 .activeLink {
   display: flex;
   align-items: center;
   padding: var(--spacing-sm);
+  padding-left: var(--spacing-md);
   border-radius: var(--radius-sm);
-  background: rgba(79, 142, 247, 0.1);
+  border-left: 2px solid var(--color-primary);
+  background: rgba(var(--color-primary-rgb, 79, 142, 247), 0.05);
   color: var(--color-primary);
   text-decoration: none;
   margin-bottom: var(--spacing-xs);
   min-height: var(--touch-target-min);
   font-weight: 500;
+  transition: all 0.2s ease-out;
 }
 
 .link[aria-current="page"] {
-  background: rgba(79, 142, 247, 0.1);
+  background: rgba(var(--color-primary-rgb, 79, 142, 247), 0.05);
   color: var(--color-primary);
+  border-left-color: var(--color-primary);
 }
 
 .spacer {
@@ -139,11 +149,13 @@
   color: var(--color-text-muted);
   cursor: pointer;
   font-size: 0.875rem;
-  transition: background 0.2s;
+  transition: all 0.2s ease-out;
 }
 
 .logoutBtn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-bg-hover);
+  border-color: var(--color-primary);
+  color: var(--color-text);
 }
 
 .themeToggleWrapper {
@@ -169,6 +181,7 @@
     max-width: none;
     height: 100vh;
     border-right: 1px solid var(--color-border);
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.08);
     transition: none;
   }
 
