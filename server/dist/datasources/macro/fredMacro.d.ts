@@ -14,7 +14,7 @@ export declare const FRED_BASE_URL = "https://api.stlouisfed.org/fred/";
 /** Cheap, always-populated series used by the Settings "Test" button. */
 export declare const HEALTH_CHECK_SERIES = "GDP";
 /** Curated default series (doc 02). */
-export declare const DEFAULT_SERIES_IDS: readonly ["DGS10", "DGS2", "T10Y2Y", "CPIAUCSL", "UNRATE", "FEDFUNDS", "VIXCLS", "UMCSENT"];
+export declare const DEFAULT_SERIES_IDS: readonly ["DGS10", "DGS2", "T10Y2Y", "CPIAUCSL", "UNRATE", "FEDFUNDS", "VIXCLS", "UMCSENT", "BAMLH0A0HYM2"];
 /**
  * Display labels for the curated series. FRED's observations endpoint does not
  * return titles and fetching `/fred/series` per id would double the request

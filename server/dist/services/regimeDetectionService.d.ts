@@ -11,6 +11,8 @@ export interface RegimeIndicators {
     vix: number | null;
     yieldCurve: number | null;
     breadth: number | null;
+    creditSpread: number | null;
+    consumerSentiment: number | null;
 }
 export interface RegimeDetectionDeps {
     marketRegimeRepo: MarketRegimeRepo;

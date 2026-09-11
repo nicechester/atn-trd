@@ -34,6 +34,7 @@ export const DEFAULT_SERIES_IDS = [
   'FEDFUNDS',
   'VIXCLS',
   'UMCSENT',
+  'BAMLH0A0HYM2',  // ICE BofA US High Yield Index Option-Adjusted Spread
 ] as const;
 
 /**
@@ -51,6 +52,7 @@ export const SERIES_LABELS: Record<string, string> = {
   VIXCLS: 'CBOE Volatility Index',
   UMCSENT: 'Consumer Sentiment (U. Michigan)',
   GDP: 'Gross Domestic Product',
+  BAMLH0A0HYM2: 'High Yield Credit Spread',
 };
 
 /** Observations to pull per series: enough to skip FRED's "." placeholders. */

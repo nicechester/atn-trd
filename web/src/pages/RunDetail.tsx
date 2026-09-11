@@ -7,25 +7,30 @@ import CoverageHeatmap from '../components/CoverageHeatmap';
 import { RejectedDecisions } from '../components/RejectedDecisions';
 import styles from './RunDetail.module.css';
 
-type JobType = 'trading_cycle' | 'signal_collection' | 'plan_review' | 'tranche_execution' | 'watchlist_curation';
+type JobType = 'trading_cycle' | 'signal_collection' | 'regime_detection' | 'plan_review' | 'tranche_execution' | 'watchlist_curation' | 'snapshot';
 
 const JOB_TYPE_LABELS: Record<JobType, string> = {
   trading_cycle: 'Trading Cycle',
   signal_collection: 'Signal Collection',
+  regime_detection: 'Regime Detection',
   plan_review: 'Plan Review',
   tranche_execution: 'Tranche Execution',
   watchlist_curation: 'Watchlist Curation',
+  snapshot: 'Portfolio Snapshot',
 };
 
 function inferJobType(run: AgentRunRow): JobType {
   if (run.trigger === 'signal_collection') return 'signal_collection';
+  if (run.trigger === 'regime_detection') return 'regime_detection';
   if (run.trigger === 'plan_review') return 'plan_review';
   if (run.trigger === 'tranche_execution') return 'tranche_execution';
   if (run.trigger === 'watchlist_curation') return 'watchlist_curation';
+  if (run.trigger === 'snapshot') return 'snapshot';
   if (run.summaryJson) {
     try {
       const summary = JSON.parse(run.summaryJson);
       if ('symbolsUpdated' in summary && 'symbols' in summary && !('regime' in summary)) return 'signal_collection';
+      if ('regime' in summary && 'riskScore' in summary && !('plansCreated' in summary)) return 'regime_detection';
       if ('plansCreated' in summary || 'watchlistCount' in summary) return 'plan_review';
       if ('tranchesExecuted' in summary) return 'tranche_execution';
       if ('symbolsAdded' in summary) return 'watchlist_curation';
@@ -220,6 +225,65 @@ function renderTrancheExecutionSummary(s: TrancheExecutionSummary) {
   );
 }
 
+interface RegimeDetectionSummary {
+  regime: string;
+  riskScore: number;
+  indicators: {
+    vix: number | null;
+    yieldCurve: number | null;
+    breadth: number | null;
+    creditSpread: number | null;
+    consumerSentiment: number | null;
+  };
+  confirmedStreak: number;
+}
+
+function renderRegimeDetectionSummary(s: RegimeDetectionSummary) {
+  const regimeColor = s.regime === 'RISK_ON' ? 'var(--color-success)' : 
+                      s.regime === 'RISK_OFF' ? 'var(--color-error)' : 'var(--color-warning)';
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-md)' }}>
+        <div>
+          <div className={styles.fieldLabel}>Regime</div>
+          <div className={styles.fieldValue} style={{ color: regimeColor, fontWeight: 600 }}>{s.regime}</div>
+        </div>
+        <div>
+          <div className={styles.fieldLabel}>Risk Score</div>
+          <div className={styles.fieldValue}>{(s.riskScore * 100).toFixed(0)}%</div>
+        </div>
+        <div>
+          <div className={styles.fieldLabel}>Confirmed Streak</div>
+          <div className={styles.fieldValue}>{s.confirmedStreak} day{s.confirmedStreak !== 1 ? 's' : ''}</div>
+        </div>
+      </div>
+      <div className={styles.fieldLabel} style={{ marginBottom: 'var(--spacing-sm)' }}>Macro Indicators</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'var(--spacing-sm)', background: 'var(--color-bg-secondary)', padding: 'var(--spacing-sm)', borderRadius: '4px' }}>
+        <div style={{ fontSize: '0.875rem' }}>
+          <span style={{ color: 'var(--color-text-muted)' }}>VIX:</span>{' '}
+          <strong>{s.indicators.vix !== null ? s.indicators.vix.toFixed(2) : '—'}</strong>
+        </div>
+        <div style={{ fontSize: '0.875rem' }}>
+          <span style={{ color: 'var(--color-text-muted)' }}>Yield Curve:</span>{' '}
+          <strong>{s.indicators.yieldCurve !== null ? `${s.indicators.yieldCurve.toFixed(2)}%` : '—'}</strong>
+        </div>
+        <div style={{ fontSize: '0.875rem' }}>
+          <span style={{ color: 'var(--color-text-muted)' }}>Credit Spread:</span>{' '}
+          <strong>{s.indicators.creditSpread !== null ? `${s.indicators.creditSpread.toFixed(2)}%` : '—'}</strong>
+        </div>
+        <div style={{ fontSize: '0.875rem' }}>
+          <span style={{ color: 'var(--color-text-muted)' }}>Consumer Sentiment:</span>{' '}
+          <strong>{s.indicators.consumerSentiment !== null ? s.indicators.consumerSentiment.toFixed(1) : '—'}</strong>
+        </div>
+        <div style={{ fontSize: '0.875rem' }}>
+          <span style={{ color: 'var(--color-text-muted)' }}>Breadth:</span>{' '}
+          <strong>{s.indicators.breadth !== null ? `${(s.indicators.breadth * 100).toFixed(0)}%` : '—'}</strong>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function RunDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [detail, setDetail] = useState<RunDetailData | null>(null);
@@ -260,7 +324,7 @@ export default function RunDetailPage() {
   let tokenUsage: Record<string, unknown> | null = null;
   try { if (run.tokenUsageJson) tokenUsage = JSON.parse(run.tokenUsageJson); } catch {}
 
-  let summary: PlanReviewSummary | SignalCollectionSummary | WatchlistCurationSummary | TrancheExecutionSummary | null = null;
+  let summary: PlanReviewSummary | SignalCollectionSummary | RegimeDetectionSummary | WatchlistCurationSummary | TrancheExecutionSummary | null = null;
   try { if (run.summaryJson) summary = JSON.parse(run.summaryJson); } catch {}
 
   // Group messages by symbol
@@ -364,6 +428,7 @@ export default function RunDetailPage() {
           <div className={styles.fieldLabel}>Job Summary</div>
           {jobType === 'plan_review' && renderPlanReviewSummary(summary as PlanReviewSummary)}
           {jobType === 'signal_collection' && renderSignalCollectionSummary(summary as SignalCollectionSummary, signalSnapshots)}
+          {jobType === 'regime_detection' && renderRegimeDetectionSummary(summary as RegimeDetectionSummary)}
           {jobType === 'watchlist_curation' && renderWatchlistCurationSummary(summary as WatchlistCurationSummary, screenerSelections)}
           {jobType === 'tranche_execution' && renderTrancheExecutionSummary(summary as TrancheExecutionSummary)}
         </div>

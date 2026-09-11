@@ -38,6 +38,7 @@ import { resolveApiKey } from '../llm/openaiChatModel.js';
 import { logger } from '../lib/logger.js';
 import { runSnapshotJob } from '../scheduler/jobs/snapshot.js';
 import { runSignalCollectionJob } from '../scheduler/jobs/signalCollection.js';
+import { runRegimeDetectionJob } from '../scheduler/jobs/regimeDetection.js';
 import { runPlanReviewJob } from '../scheduler/jobs/planReviewJob.js';
 import { runTrancheExecutorJob } from '../scheduler/jobs/trancheExecutor.js';
 import { runWatchlistCuration, backfillSectors } from '../services/watchlistCurationService.js';
@@ -382,6 +383,10 @@ export async function triggerRunSelectedHandler(
         if (job.id === 'signal-collection') {
           await runSignalCollectionJob(db, 'signal_collection');
           const latestRun = runsRepo.listByTrigger('signal_collection', 1)[0];
+          jobRunId = latestRun?.id;
+        } else if (job.id === 'regime-detection') {
+          await runRegimeDetectionJob(db, 'regime_detection');
+          const latestRun = runsRepo.listByTrigger('regime_detection', 1)[0];
           jobRunId = latestRun?.id;
         } else if (job.id === 'plan-review') {
           await runPlanReviewJob(db, 'plan_review');

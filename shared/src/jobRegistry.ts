@@ -25,11 +25,18 @@ export const JOB_REGISTRY: Record<string, Job> = {
     dependencies: [],
     estimatedRuntimeSeconds: 120,
   },
+  'regime-detection': {
+    id: 'regime-detection',
+    label: 'Regime Detection',
+    description: 'Detect market regime from macro indicators (VIX, yield curve, credit spreads)',
+    dependencies: [],
+    estimatedRuntimeSeconds: 30,
+  },
   'plan-review': {
     id: 'plan-review',
     label: 'Plan Review',
     description: 'Review trading plans and generate portfolio decisions',
-    dependencies: ['signal-collection'], // Needs fresh signals
+    dependencies: ['signal-collection', 'regime-detection'], // Needs fresh signals and regime
     estimatedRuntimeSeconds: 180,
   },
   'tranche-execution': {

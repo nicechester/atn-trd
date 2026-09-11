@@ -17,6 +17,8 @@ export interface RegimeIndicators {
   vix: number | null;
   yieldCurve: number | null;  // 10Y - 2Y spread
   breadth: number | null;     // % stocks above 200 SMA (0-1)
+  creditSpread: number | null; // High yield spread (BAMLH0A0HYM2)
+  consumerSentiment: number | null; // U. Michigan sentiment
 }
 
 export interface RegimeDetectionDeps {
@@ -40,23 +42,48 @@ function computeRiskScore(indicators: RegimeIndicators, settings: Settings): num
   const { regime: regimeSettings } = settings;
   let score = 0;
 
+  // VIX contribution (0-0.30)
   if (indicators.vix !== null) {
     if (indicators.vix > regimeSettings.vixExtremeThreshold) {
-      score += 0.50;  // VIX extreme (>35 default)
+      score += 0.30;  // VIX extreme (>35 default)
     } else if (indicators.vix > regimeSettings.vixRiskOffThreshold) {
-      score += 0.30;  // VIX elevated (>25 default)
+      score += 0.20;  // VIX elevated (>25 default)
     }
   }
 
+  // Yield curve contribution (0-0.20)
   if (indicators.yieldCurve !== null && regimeSettings.yieldCurveEnabled) {
-    if (indicators.yieldCurve < 0) {
-      score += 0.25;  // Inverted yield curve
+    if (indicators.yieldCurve < -0.5) {
+      score += 0.20;  // Deeply inverted
+    } else if (indicators.yieldCurve < 0) {
+      score += 0.15;  // Inverted yield curve
     }
   }
 
+  // Credit spread contribution (0-0.25)
+  // Normal HY spread ~3-4%, elevated >5%, stressed >6%
+  if (indicators.creditSpread !== null) {
+    if (indicators.creditSpread > 6) {
+      score += 0.25;  // Credit stress
+    } else if (indicators.creditSpread > 5) {
+      score += 0.15;  // Elevated spreads
+    }
+  }
+
+  // Consumer sentiment contribution (0-0.15)
+  // Low sentiment (<60) can be contrarian bullish, but extreme lows (<50) signal real fear
+  if (indicators.consumerSentiment !== null) {
+    if (indicators.consumerSentiment < 50) {
+      score += 0.15;  // Extreme pessimism
+    } else if (indicators.consumerSentiment < 60) {
+      score += 0.05;  // Below average sentiment
+    }
+  }
+
+  // Breadth contribution (0-0.10)
   if (indicators.breadth !== null) {
     if (indicators.breadth < regimeSettings.breadthThreshold) {
-      score += 0.25;  // Poor market breadth (<40% default)
+      score += 0.10;  // Poor market breadth (<40% default)
     }
   }
 
@@ -80,10 +107,12 @@ async function fetchIndicators(macroSource: MacroDataSource): Promise<RegimeIndi
     vix: null,
     yieldCurve: null,
     breadth: null,
+    creditSpread: null,
+    consumerSentiment: null,
   };
 
   try {
-    const result = await macroSource.fetch({ seriesIds: ['VIXCLS', 'T10Y2Y'] });
+    const result = await macroSource.fetch({ seriesIds: ['VIXCLS', 'T10Y2Y', 'BAMLH0A0HYM2', 'UMCSENT'] });
 
     for (const series of result.data.series) {
       if (series.seriesId === 'VIXCLS' && series.latest) {
@@ -91,6 +120,12 @@ async function fetchIndicators(macroSource: MacroDataSource): Promise<RegimeIndi
       }
       if (series.seriesId === 'T10Y2Y' && series.latest) {
         indicators.yieldCurve = series.latest.value;
+      }
+      if (series.seriesId === 'BAMLH0A0HYM2' && series.latest) {
+        indicators.creditSpread = series.latest.value;
+      }
+      if (series.seriesId === 'UMCSENT' && series.latest) {
+        indicators.consumerSentiment = series.latest.value;
       }
     }
   } catch (err) {
@@ -116,7 +151,7 @@ export async function detectRegime(deps: RegimeDetectionDeps): Promise<RegimeRes
     return {
       regime: 'RISK_ON',
       riskScore: 0,
-      indicators: { vix: null, yieldCurve: null, breadth: null },
+      indicators: { vix: null, yieldCurve: null, breadth: null, creditSpread: null, consumerSentiment: null },
       confirmedStreak: 0,
     };
   }
