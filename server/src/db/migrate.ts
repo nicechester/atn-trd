@@ -9,7 +9,22 @@ export interface Migration {
 }
 
 export function runMigrations(db: Database.Database, migrationsDir: string): void {
-  // Create schema_migrations table if it doesn't exist
+  const isFreshDb = isFreshDatabase(db);
+
+  if (isFreshDb) {
+    // Fresh database: use complete schema.sql
+    const schemaPath = path.join(migrationsDir, '..', 'schema.sql');
+    if (fs.existsSync(schemaPath)) {
+      console.log('Fresh database detected, applying complete schema...');
+      const schemaSql = fs.readFileSync(schemaPath, 'utf-8');
+      db.exec(schemaSql);
+      console.log('✓ Schema applied');
+      return;
+    }
+    // Fall through to migrations if schema.sql doesn't exist
+  }
+
+  // Existing database: run incremental migrations
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY,
@@ -17,16 +32,13 @@ export function runMigrations(db: Database.Database, migrationsDir: string): voi
     )
   `);
 
-  // Get all migration files
   const migrations = loadMigrations(migrationsDir);
 
-  // Get applied versions
   const appliedStmt = db.prepare('SELECT version FROM schema_migrations ORDER BY version');
   const applied = new Set(
     (appliedStmt.all() as Array<{ version: number }>).map((row) => row.version)
   );
 
-  // Run pending migrations
   for (const migration of migrations) {
     if (!applied.has(migration.version)) {
       console.log(`Running migration ${migration.version}: ${migration.name}`);
@@ -34,7 +46,6 @@ export function runMigrations(db: Database.Database, migrationsDir: string): voi
       try {
         db.exec(migration.sql);
 
-        // Record migration
         const insertStmt = db.prepare(
           'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)'
         );
@@ -49,6 +60,17 @@ export function runMigrations(db: Database.Database, migrationsDir: string): voi
   }
 
   console.log('Migrations complete');
+}
+
+function isFreshDatabase(db: Database.Database): boolean {
+  try {
+    const result = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+    ).get();
+    return !result;
+  } catch {
+    return true;
+  }
 }
 
 function loadMigrations(migrationsDir: string): Migration[] {
