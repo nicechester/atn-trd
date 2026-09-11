@@ -63,10 +63,10 @@ describe('data source registry', () => {
     assert.deepEqual(list.map((d) => d.id), ['news', 'fundamentals', 'macro', 'options']);
     assert.deepEqual(
       list.map((d) => d.provider),
-      ['finnhub', 'yahoo', 'fred', 'yahoo']
+      ['alpaca', 'yahoo', 'fred', 'yahoo']
     );
     assert.deepEqual(list.map((d) => d.name), [
-      'finnhub-news',
+      'alpaca-news',
       'yahoo-fundamentals',
       'fred-macro',
       'yahoo-options',
@@ -88,8 +88,9 @@ describe('data source registry', () => {
 
     const bySecret = Object.fromEntries(registry.list().map((d) => [d.id, d.secretName]));
 
+    // alpaca news uses broker credentials, not a separate key
     assert.deepEqual(bySecret, {
-      news: 'FINNHUB_API_KEY',
+      news: null,
       fundamentals: null,
       macro: 'FRED_API_KEY',
       options: null,
@@ -133,7 +134,7 @@ describe('data source registry', () => {
     registry.get('news');
     registry.describe('news');
 
-    assert.deepEqual(created, ['news:finnhub']);
+    assert.deepEqual(created, ['news:alpaca']);
   });
 
   it('runs a real health check through the connector', async () => {

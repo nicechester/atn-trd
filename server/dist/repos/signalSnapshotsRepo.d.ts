@@ -8,8 +8,13 @@ export interface SignalSnapshotRow {
     sentimentConfidence: number | null;
     sentimentTrend: number | null;
     priceVsSma50: number | null;
+    ivPercentile: number | null;
+    putCallRatio: number | null;
+    valuationScore: number | null;
+    growthScore: number | null;
     compositeScore: number | null;
     compositeEwma: number | null;
+    sentimentSynthesis: string | null;
     createdAt: number;
 }
 export declare class SignalSnapshotsRepo {
@@ -24,13 +29,13 @@ export declare class SignalSnapshotsRepo {
     getLatest(symbol: string): SignalSnapshotRow | undefined;
     listBySymbol(symbol: string, limit?: number): SignalSnapshotRow[];
     listByDateRange(symbol: string, fromDate: string, toDate: string): SignalSnapshotRow[];
-    /** Get recent N snapshots to check consecutive days below threshold */
     getRecentSnapshots(symbol: string, days: number): SignalSnapshotRow[];
     /** Get previous N days of sentiment scores for trend calculation */
     getRecentSentiment(symbol: string, days: number): Array<{
         snapshotDate: string;
         sentimentScore: number;
     }>;
+    listByDate(snapshotDate: string): SignalSnapshotRow[];
     /**
      * Get all snapshots for IC measurement.
      * Returns snapshots with both sentiment and price for forward return calculation.

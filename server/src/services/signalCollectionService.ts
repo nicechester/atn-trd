@@ -11,9 +11,12 @@ import { logger } from '../lib/logger.js';
 import type { SignalSnapshotsRepo, SignalSnapshotRow } from '../repos/signalSnapshotsRepo.js';
 import type { PricesRepo, PriceBarRow } from '../repos/pricesRepo.js';
 import type { WatchlistRepo } from '../repos/watchlistRepo.js';
+import type { PositionsRepo } from '../repos/positionsRepo.js';
 import { scoreFinBERT } from './finbertService.js';
 import { synthesizeSentiment } from './signalSynthesisService.js';
 import type { NewsDataSource, NewsArticle } from '../datasources/news/index.js';
+import type { OptionsDataSource } from '../datasources/options/index.js';
+import type { FundamentalsDataSource } from '../datasources/fundamentals/index.js';
 
 const log = logger.child({ component: 'signal-collection' });
 
@@ -21,7 +24,10 @@ export interface SignalCollectionDeps {
   signalSnapshotsRepo: SignalSnapshotsRepo;
   pricesRepo: PricesRepo;
   watchlistRepo: WatchlistRepo;
+  positionsRepo: PositionsRepo;
   newsSource: NewsDataSource;
+  optionsSource: OptionsDataSource;
+  fundamentalsSource: FundamentalsDataSource;
   getSettings: () => Settings;
 }
 
@@ -81,13 +87,17 @@ function computeCompositeScore(
   sentimentScore: number | null,
   sentimentTrend: number | null,
   priceVsSma50: number | null,
-  weights: { sentiment: number; sentimentTrend: number; priceMomentum: number }
+  optionsScore: number | null,
+  fundamentalsScore: number | null,
+  weights: { sentiment: number; sentimentTrend: number; priceMomentum: number; options: number; fundamentals: number }
 ): number | null {
-  // Need at least sentiment to compute
-  if (sentimentScore === null) return null;
+  let score = 0;
+  let totalWeight = 0;
 
-  let score = weights.sentiment * sentimentScore;
-  let totalWeight = weights.sentiment;
+  if (sentimentScore !== null) {
+    score += weights.sentiment * sentimentScore;
+    totalWeight += weights.sentiment;
+  }
 
   if (sentimentTrend !== null) {
     // Normalize trend to -1 to 1 range (assume ±0.1 per day is extreme)
@@ -103,6 +113,16 @@ function computeCompositeScore(
     totalWeight += weights.priceMomentum;
   }
 
+  if (optionsScore !== null) {
+    score += weights.options * optionsScore;
+    totalWeight += weights.options;
+  }
+
+  if (fundamentalsScore !== null) {
+    score += weights.fundamentals * fundamentalsScore;
+    totalWeight += weights.fundamentals;
+  }
+
   if (totalWeight <= 0) return null;
 
   // Raw score is in [-1, 1] range
@@ -111,6 +131,90 @@ function computeCompositeScore(
   // Rescale to [0, 1] so buyThreshold: 0.70 is reachable
   // -1 → 0.0, 0 → 0.5, +0.4 → 0.7, +1 → 1.0
   return (rawScore + 1) / 2;
+}
+
+/**
+ * Compute options-based signal score.
+ * Uses IV percentile and put/call ratio.
+ * Returns score in [-1, 1] range.
+ */
+function computeOptionsScore(ivPercentile: number | null, putCallRatio: number | null): number | null {
+  if (ivPercentile === null && putCallRatio === null) return null;
+
+  let score = 0;
+  let count = 0;
+
+  // IV percentile: low IV = bullish (cheap options), high IV = bearish (expensive/fear)
+  if (ivPercentile !== null) {
+    // 0.2 IV percentile → +0.6, 0.5 → 0, 0.8 → -0.6
+    score += (0.5 - ivPercentile) * 1.2;
+    count++;
+  }
+
+  // Put/call ratio: high ratio = bearish sentiment, low = bullish
+  // Typical range 0.5-1.5, neutral around 0.8-1.0
+  if (putCallRatio !== null) {
+    // 0.5 → +0.5, 1.0 → 0, 1.5 → -0.5
+    const normalizedPcr = Math.max(-1, Math.min(1, (1.0 - putCallRatio) * 2));
+    score += normalizedPcr * 0.5;
+    count++;
+  }
+
+  return count > 0 ? Math.max(-1, Math.min(1, score / count)) : null;
+}
+
+/**
+ * Compute fundamentals-based signal score.
+ * Uses valuation (PE, PEG) and growth metrics.
+ * Returns score in [-1, 1] range.
+ */
+function computeFundamentalsScore(
+  trailingPE: number | null,
+  forwardPE: number | null,
+  pegRatio: number | null,
+  revenueGrowth: number | null,
+  earningsGrowth: number | null
+): { valuationScore: number | null; growthScore: number | null } {
+  let valuationScore: number | null = null;
+  let growthScore: number | null = null;
+
+  // Valuation score: lower PE/PEG = more attractive
+  const valuationSignals: number[] = [];
+  
+  if (forwardPE !== null && forwardPE > 0) {
+    // Forward PE: 10 → +0.5, 20 → 0, 40 → -0.5
+    valuationSignals.push(Math.max(-1, Math.min(1, (20 - forwardPE) / 20)));
+  } else if (trailingPE !== null && trailingPE > 0) {
+    valuationSignals.push(Math.max(-1, Math.min(1, (25 - trailingPE) / 25)));
+  }
+
+  if (pegRatio !== null && pegRatio > 0) {
+    // PEG: 0.5 → +0.5, 1.0 → 0, 2.0 → -0.5
+    valuationSignals.push(Math.max(-1, Math.min(1, (1 - pegRatio))));
+  }
+
+  if (valuationSignals.length > 0) {
+    valuationScore = valuationSignals.reduce((a, b) => a + b, 0) / valuationSignals.length;
+  }
+
+  // Growth score: higher growth = more attractive
+  const growthSignals: number[] = [];
+
+  if (revenueGrowth !== null) {
+    // Revenue growth: 0% → 0, 20% → +0.5, -20% → -0.5
+    growthSignals.push(Math.max(-1, Math.min(1, revenueGrowth * 2.5)));
+  }
+
+  if (earningsGrowth !== null) {
+    // Earnings growth: 0% → 0, 30% → +0.5, -30% → -0.5
+    growthSignals.push(Math.max(-1, Math.min(1, earningsGrowth * 1.67)));
+  }
+
+  if (growthSignals.length > 0) {
+    growthScore = growthSignals.reduce((a, b) => a + b, 0) / growthSignals.length;
+  }
+
+  return { valuationScore, growthScore };
 }
 
 /**
@@ -130,7 +234,7 @@ async function collectSymbolSignals(
   snapshotDate: string,
   deps: SignalCollectionDeps
 ): Promise<CollectionResult> {
-  const { signalSnapshotsRepo, pricesRepo, newsSource, getSettings } = deps;
+  const { signalSnapshotsRepo, pricesRepo, newsSource, optionsSource, fundamentalsSource, getSettings } = deps;
   const settings = getSettings();
 
   // Check if snapshot already exists (skip expensive LLM/FinBERT calls)
@@ -191,15 +295,69 @@ async function collectSymbolSignals(
     const prices = pricesRepo.listBySymbol(symbol, 60);
     const priceVsSma50 = computePriceVsSma50(prices);
 
-    // 5. Compute composite score
+    // 5. Get options data
+    let ivPercentile: number | null = null;
+    let putCallRatio: number | null = null;
+
+    try {
+      const optionsResult = await optionsSource.fetch({ symbol });
+      const metrics = optionsResult.data.metrics;
+      
+      // IV percentile: use average of nearest OTM call/put IV
+      // In production, would compare to 52-week IV range
+      const callIv = metrics.nearestOtmCallIv;
+      const putIv = metrics.nearestOtmPutIv;
+      if (callIv !== null || putIv !== null) {
+        const avgIv = (callIv ?? putIv ?? 0 + (putIv ?? callIv ?? 0)) / 2;
+        // Normalize: assume 0.15-0.80 is typical range
+        ivPercentile = Math.max(0, Math.min(1, (avgIv - 0.15) / 0.65));
+      }
+      
+      putCallRatio = metrics.putCallOpenInterestRatio;
+    } catch (err) {
+      log.debug('failed to get options data', { symbol, error: err instanceof Error ? err.message : String(err) });
+    }
+
+    // 6. Get fundamentals data
+    let valuationScore: number | null = null;
+    let growthScore: number | null = null;
+
+    try {
+      const fundResult = await fundamentalsSource.fetch({ symbol });
+      const fund = fundResult.data;
+      
+      const scores = computeFundamentalsScore(
+        fund.trailingPE,
+        fund.forwardPE,
+        fund.pegRatio,
+        fund.revenueGrowth,
+        fund.earningsGrowth
+      );
+      valuationScore = scores.valuationScore;
+      growthScore = scores.growthScore;
+    } catch (err) {
+      log.debug('failed to get fundamentals data', { symbol, error: err instanceof Error ? err.message : String(err) });
+    }
+
+    // 7. Compute options score (combined IV + put/call)
+    const optionsScore = computeOptionsScore(ivPercentile, putCallRatio);
+
+    // 8. Compute fundamentals score (combined valuation + growth)
+    const fundamentalsScoreCombined = (valuationScore !== null || growthScore !== null)
+      ? ((valuationScore ?? 0) + (growthScore ?? 0)) / ((valuationScore !== null ? 1 : 0) + (growthScore !== null ? 1 : 0))
+      : null;
+
+    // 9. Compute composite score
     const compositeScore = computeCompositeScore(
       sentimentScore,
       sentimentTrend,
       priceVsSma50,
+      optionsScore,
+      fundamentalsScoreCombined,
       settings.signals.weights
     );
 
-    // 6. Compute EWMA
+    // 10. Compute EWMA
     const previousSnapshot = signalSnapshotsRepo.getLatest(symbol);
     const compositeEwma = computeEwma(
       compositeScore,
@@ -207,7 +365,7 @@ async function collectSymbolSignals(
       settings.signals.ewmaAlpha
     );
 
-    // 7. Store snapshot
+    // 11. Store snapshot
     const snapshot: SignalSnapshotRow = {
       id: randomUUID(),
       symbol,
@@ -217,6 +375,10 @@ async function collectSymbolSignals(
       sentimentConfidence,
       sentimentTrend,
       priceVsSma50,
+      ivPercentile,
+      putCallRatio,
+      valuationScore,
+      growthScore,
       compositeScore,
       compositeEwma,
       sentimentSynthesis,
@@ -229,6 +391,8 @@ async function collectSymbolSignals(
       symbol,
       snapshotDate,
       sentimentScore,
+      optionsScore,
+      fundamentalsScoreCombined,
       compositeScore,
       compositeEwma,
     });
@@ -245,7 +409,7 @@ async function collectSymbolSignals(
  * Does NOT make any trading decisions.
  */
 export async function runSignalCollection(deps: SignalCollectionDeps): Promise<CollectionResult[]> {
-  const { watchlistRepo, getSettings } = deps;
+  const { watchlistRepo, positionsRepo, getSettings } = deps;
   const settings = getSettings();
 
   if (!settings.signals.enabled) {
@@ -255,10 +419,12 @@ export async function runSignalCollection(deps: SignalCollectionDeps): Promise<C
 
   const snapshotDate = new Date().toISOString().split('T')[0];
   const watchlist = watchlistRepo.list().filter(w => w.enabled);
-  const allSymbols = watchlist.map(w => w.symbol);
+  const watchlistSymbols = watchlist.map(w => w.symbol);
+  const positionSymbols = positionsRepo.list().map(p => p.symbol);
+  const allSymbols = [...new Set([...watchlistSymbols, ...positionSymbols])];
 
   if (allSymbols.length === 0) {
-    log.info('no symbols in watchlist');
+    log.info('no symbols in watchlist or positions');
     return [];
   }
 

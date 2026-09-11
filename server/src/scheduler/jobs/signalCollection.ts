@@ -11,9 +11,12 @@ import { runSignalCollection } from '../../services/signalCollectionService.js';
 import { SignalSnapshotsRepo } from '../../repos/signalSnapshotsRepo.js';
 import { PricesRepo } from '../../repos/pricesRepo.js';
 import { WatchlistRepo } from '../../repos/watchlistRepo.js';
+import { PositionsRepo } from '../../repos/positionsRepo.js';
 import { RunsRepo, type RunTrigger } from '../../repos/runsRepo.js';
 import { dataSourceRegistry } from '../../datasources/registry.js';
 import type { NewsDataSource } from '../../datasources/news/index.js';
+import type { OptionsDataSource } from '../../datasources/options/index.js';
+import type { FundamentalsDataSource } from '../../datasources/fundamentals/index.js';
 import { getSettings } from '../../config/settingsService.js';
 
 const log = logger.child({ component: 'signal-collection-job' });
@@ -69,13 +72,19 @@ export async function runSignalCollectionJob(
     const signalSnapshotsRepo = new SignalSnapshotsRepo(db);
     const pricesRepo = new PricesRepo(db);
     const watchlistRepo = new WatchlistRepo(db);
+    const positionsRepo = new PositionsRepo(db);
     const newsSource = dataSourceRegistry.get('news') as unknown as NewsDataSource;
+    const optionsSource = dataSourceRegistry.get('options') as unknown as OptionsDataSource;
+    const fundamentalsSource = dataSourceRegistry.get('fundamentals') as unknown as FundamentalsDataSource;
 
     const results = await runSignalCollection({
       signalSnapshotsRepo,
       pricesRepo,
       watchlistRepo,
+      positionsRepo,
       newsSource,
+      optionsSource,
+      fundamentalsSource,
       getSettings,
     });
 

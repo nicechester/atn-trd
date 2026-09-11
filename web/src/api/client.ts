@@ -393,6 +393,10 @@ export interface SignalSnapshotRow {
   sentimentConfidence: number | null;
   sentimentTrend: number | null;
   priceVsSma50: number | null;
+  ivPercentile: number | null;
+  putCallRatio: number | null;
+  valuationScore: number | null;
+  growthScore: number | null;
   compositeScore: number | null;
   compositeEwma: number | null;
   sentimentSynthesis: string | null;
