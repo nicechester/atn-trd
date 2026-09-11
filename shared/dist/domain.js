@@ -78,7 +78,7 @@ export const PositionSchema = z.object({
 // Agent Run: one complete trading decision cycle
 export const AgentRunSchema = z.object({
     id: z.string().uuid().optional(),
-    trigger: z.enum(['scheduled', 'manual']),
+    trigger: z.enum(['scheduled', 'manual', 'regime_detection', 'snapshot']),
     status: z.enum(['running', 'succeeded', 'failed', 'skipped']).default('running'),
     startedAt: z.number().int(),
     finishedAt: z.number().int().optional(),

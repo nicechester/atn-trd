@@ -60,10 +60,10 @@ export class AlpacaBroker implements Broker {
     return positions
       .filter((pos: any) => parseFloat(String(pos.qty)) !== 0)
       .map((pos: any) => {
-        // The SDK may return avg_entry_price as a string or number; normalize to number
-        const avgEntryPrice = typeof pos.avg_entry_price === 'string'
-          ? parseFloat(pos.avg_entry_price)
-          : (pos.avg_entry_price ?? 0);
+        // The SDK returns avgEntryPrice (camelCase) as a string; normalize to number
+        const avgEntryPrice = typeof pos.avgEntryPrice === 'string'
+          ? parseFloat(pos.avgEntryPrice)
+          : (pos.avgEntryPrice ?? 0);
 
         return {
           symbol: pos.symbol,

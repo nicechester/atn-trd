@@ -231,7 +231,7 @@ export const scheduler = {
 };
 
 // Runs
-export type RunTrigger = 'scheduled' | 'manual' | 'signal_collection' | 'plan_review' | 'tranche_execution' | 'watchlist_curation';
+export type RunTrigger = 'scheduled' | 'manual' | 'signal_collection' | 'plan_review' | 'tranche_execution' | 'watchlist_curation' | 'regime_detection' | 'snapshot';
 
 export interface AgentRunRow {
   id: string;

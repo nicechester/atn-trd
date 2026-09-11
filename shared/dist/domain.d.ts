@@ -231,7 +231,7 @@ export declare const PositionSchema: z.ZodObject<{
 export type Position = z.infer<typeof PositionSchema>;
 export declare const AgentRunSchema: z.ZodObject<{
     id: z.ZodOptional<z.ZodString>;
-    trigger: z.ZodEnum<["scheduled", "manual"]>;
+    trigger: z.ZodEnum<["scheduled", "manual", "regime_detection", "snapshot"]>;
     status: z.ZodDefault<z.ZodEnum<["running", "succeeded", "failed", "skipped"]>>;
     startedAt: z.ZodNumber;
     finishedAt: z.ZodOptional<z.ZodNumber>;
@@ -252,7 +252,7 @@ export declare const AgentRunSchema: z.ZodObject<{
     createdAt: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     status: "running" | "succeeded" | "failed" | "skipped";
-    trigger: "manual" | "scheduled";
+    trigger: "manual" | "scheduled" | "regime_detection" | "snapshot";
     startedAt: number;
     model?: string | undefined;
     id?: string | undefined;
@@ -266,7 +266,7 @@ export declare const AgentRunSchema: z.ZodObject<{
     } | undefined;
     skipReason?: string | undefined;
 }, {
-    trigger: "manual" | "scheduled";
+    trigger: "manual" | "scheduled" | "regime_detection" | "snapshot";
     startedAt: number;
     status?: "running" | "succeeded" | "failed" | "skipped" | undefined;
     model?: string | undefined;
