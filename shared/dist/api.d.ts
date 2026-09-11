@@ -446,23 +446,45 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             cancelThreshold: z.ZodDefault<z.ZodNumber>;
             rollingWindowDays: z.ZodDefault<z.ZodNumber>;
             ewmaAlpha: z.ZodDefault<z.ZodNumber>;
-            weights: z.ZodDefault<z.ZodEffects<z.ZodObject<{
+            weights: z.ZodDefault<z.ZodEffects<z.ZodEffects<z.ZodObject<{
                 sentiment: z.ZodDefault<z.ZodNumber>;
                 sentimentTrend: z.ZodDefault<z.ZodNumber>;
                 priceMomentum: z.ZodDefault<z.ZodNumber>;
+                options: z.ZodDefault<z.ZodNumber>;
+                fundamentals: z.ZodDefault<z.ZodNumber>;
             }, "strip", z.ZodTypeAny, {
+                options: number;
+                fundamentals: number;
                 sentiment: number;
                 sentimentTrend: number;
                 priceMomentum: number;
             }, {
+                options?: number | undefined;
+                fundamentals?: number | undefined;
                 sentiment?: number | undefined;
                 sentimentTrend?: number | undefined;
                 priceMomentum?: number | undefined;
             }>, {
+                options: number;
+                fundamentals: number;
                 sentiment: number;
                 sentimentTrend: number;
                 priceMomentum: number;
             }, {
+                options?: number | undefined;
+                fundamentals?: number | undefined;
+                sentiment?: number | undefined;
+                sentimentTrend?: number | undefined;
+                priceMomentum?: number | undefined;
+            }>, {
+                options: number;
+                fundamentals: number;
+                sentiment: number;
+                sentimentTrend: number;
+                priceMomentum: number;
+            }, {
+                options?: number | undefined;
+                fundamentals?: number | undefined;
                 sentiment?: number | undefined;
                 sentimentTrend?: number | undefined;
                 priceMomentum?: number | undefined;
@@ -477,6 +499,8 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             rollingWindowDays: number;
             ewmaAlpha: number;
             weights: {
+                options: number;
+                fundamentals: number;
                 sentiment: number;
                 sentimentTrend: number;
                 priceMomentum: number;
@@ -491,6 +515,8 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             rollingWindowDays?: number | undefined;
             ewmaAlpha?: number | undefined;
             weights?: {
+                options?: number | undefined;
+                fundamentals?: number | undefined;
                 sentiment?: number | undefined;
                 sentimentTrend?: number | undefined;
                 priceMomentum?: number | undefined;
@@ -704,6 +730,8 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             rollingWindowDays: number;
             ewmaAlpha: number;
             weights: {
+                options: number;
+                fundamentals: number;
                 sentiment: number;
                 sentimentTrend: number;
                 priceMomentum: number;
@@ -863,6 +891,8 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             rollingWindowDays?: number | undefined;
             ewmaAlpha?: number | undefined;
             weights?: {
+                options?: number | undefined;
+                fundamentals?: number | undefined;
                 sentiment?: number | undefined;
                 sentimentTrend?: number | undefined;
                 priceMomentum?: number | undefined;
@@ -1025,6 +1055,8 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             rollingWindowDays: number;
             ewmaAlpha: number;
             weights: {
+                options: number;
+                fundamentals: number;
                 sentiment: number;
                 sentimentTrend: number;
                 priceMomentum: number;
@@ -1187,6 +1219,8 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             rollingWindowDays?: number | undefined;
             ewmaAlpha?: number | undefined;
             weights?: {
+                options?: number | undefined;
+                fundamentals?: number | undefined;
                 sentiment?: number | undefined;
                 sentimentTrend?: number | undefined;
                 priceMomentum?: number | undefined;

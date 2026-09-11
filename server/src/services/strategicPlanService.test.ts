@@ -4,7 +4,7 @@ import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate.js';
 import { StrategicPlansRepo } from '../repos/strategicPlansRepo.js';
 import { PlanTranchesRepo } from '../repos/planTranchesRepo.js';
-import { SignalSnapshotsRepo } from '../repos/signalSnapshotsRepo.js';
+import { SignalSnapshotsRepo, type SignalSnapshotRow } from '../repos/signalSnapshotsRepo.js';
 import { MarketRegimeRepo } from '../repos/marketRegimeRepo.js';
 import { PortfolioRepo } from '../repos/portfolioRepo.js';
 import { PricesRepo } from '../repos/pricesRepo.js';
@@ -27,6 +27,25 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const migrationsDir = path.join(__dirname, '../db/migrations');
+
+// Helper to create test snapshots with new fields defaulted to null
+function makeSnapshot(overrides: Partial<SignalSnapshotRow> & Pick<SignalSnapshotRow, 'id' | 'symbol' | 'snapshotDate' | 'createdAt'>): SignalSnapshotRow {
+  return {
+    priceCents: null,
+    sentimentScore: null,
+    sentimentConfidence: null,
+    sentimentTrend: null,
+    priceVsSma50: null,
+    ivPercentile: null,
+    putCallRatio: null,
+    valuationScore: null,
+    growthScore: null,
+    compositeScore: null,
+    compositeEwma: null,
+    sentimentSynthesis: null,
+    ...overrides,
+  };
+}
 
 function createDeps(db: Database.Database, settingsOverride?: Partial<Settings>): StrategicPlanDeps {
   const settings: Settings = { ...DEFAULT_SETTINGS, ...settingsOverride };
@@ -170,7 +189,7 @@ describe('StrategicPlanService', () => {
       const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 100 });
 
       // Add signal with score above pause threshold
-      deps.signalSnapshotsRepo.insert({
+      deps.signalSnapshotsRepo.insert(makeSnapshot({
         id: 'sig1',
         symbol: 'AAPL',
         snapshotDate: new Date().toISOString().split('T')[0],
@@ -180,9 +199,9 @@ describe('StrategicPlanService', () => {
         sentimentTrend: 0.1,
         priceVsSma50: 0.05,
         compositeScore: 0.70,
-        compositeEwma: 0.70, sentimentSynthesis: null,
+        compositeEwma: 0.70,
         createdAt: Date.now(),
-      });
+      }));
 
       const result = shouldExecuteTranche(deps, plan);
       assert.equal(result.execute, true);
@@ -196,7 +215,7 @@ describe('StrategicPlanService', () => {
       const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 100 });
 
       // Add signal with score below pause threshold but above cancel
-      deps.signalSnapshotsRepo.insert({
+      deps.signalSnapshotsRepo.insert(makeSnapshot({
         id: 'sig1',
         symbol: 'AAPL',
         snapshotDate: new Date().toISOString().split('T')[0],
@@ -206,9 +225,9 @@ describe('StrategicPlanService', () => {
         sentimentTrend: -0.1,
         priceVsSma50: -0.05,
         compositeScore: 0.55,
-        compositeEwma: 0.55, sentimentSynthesis: null,
+        compositeEwma: 0.55,
         createdAt: Date.now(),
-      });
+      }));
 
       const result = shouldExecuteTranche(deps, plan);
       assert.equal(result.execute, false);
@@ -223,7 +242,7 @@ describe('StrategicPlanService', () => {
       const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 100 });
 
       // Add signal with score below cancel threshold
-      deps.signalSnapshotsRepo.insert({
+      deps.signalSnapshotsRepo.insert(makeSnapshot({
         id: 'sig1',
         symbol: 'AAPL',
         snapshotDate: new Date().toISOString().split('T')[0],
@@ -233,9 +252,9 @@ describe('StrategicPlanService', () => {
         sentimentTrend: -0.2,
         priceVsSma50: -0.1,
         compositeScore: 0.40,
-        compositeEwma: 0.40, sentimentSynthesis: null,
+        compositeEwma: 0.40,
         createdAt: Date.now(),
-      });
+      }));
 
       const result = shouldExecuteTranche(deps, plan);
       assert.equal(result.execute, false);
@@ -264,7 +283,7 @@ describe('StrategicPlanService', () => {
       assert.equal(updated?.tranchesExecuted, 1);
     });
 
-    it('returns null when insufficient cash for chunky stock', () => {
+    it('returns null when insufficient cash for chunky stock', async () => {
       const deps = createDeps(db);
       const plan = createPlan(deps, {
         symbol: 'BRK.A',
@@ -273,7 +292,7 @@ describe('StrategicPlanService', () => {
       });
 
       // Price is $600,000, only $500 available
-      const result = executeTranche(deps, plan, 60000000, 50000);
+      const result = await executeTranche(deps, plan, 60000000, 50000);
 
       assert.equal(result, null);
     });
@@ -392,18 +411,18 @@ describe('StrategicPlanService', () => {
       });
 
       // Add signals (TSLA has lower score)
-      deps.signalSnapshotsRepo.insert({
+      deps.signalSnapshotsRepo.insert(makeSnapshot({
         id: 's1', symbol: 'AAPL', snapshotDate: new Date().toISOString().split('T')[0],
         priceCents: 15000, sentimentScore: 0.7, sentimentConfidence: 0.8,
-        sentimentTrend: 0.1, priceVsSma50: 0.05, compositeScore: 0.70, compositeEwma: 0.70, sentimentSynthesis: null,
+        sentimentTrend: 0.1, priceVsSma50: 0.05, compositeScore: 0.70, compositeEwma: 0.70,
         createdAt: Date.now(),
-      });
-      deps.signalSnapshotsRepo.insert({
+      }));
+      deps.signalSnapshotsRepo.insert(makeSnapshot({
         id: 's2', symbol: 'TSLA', snapshotDate: new Date().toISOString().split('T')[0],
         priceCents: 20000, sentimentScore: 0.3, sentimentConfidence: 0.6,
-        sentimentTrend: -0.1, priceVsSma50: -0.05, compositeScore: 0.30, compositeEwma: 0.30, sentimentSynthesis: null,
+        sentimentTrend: -0.1, priceVsSma50: -0.05, compositeScore: 0.30, compositeEwma: 0.30,
         createdAt: Date.now(),
-      });
+      }));
 
       const result = createAutoTrimPlans(deps);
 

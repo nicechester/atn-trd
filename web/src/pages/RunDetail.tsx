@@ -117,9 +117,18 @@ function renderSignalCollectionSummary(s: SignalCollectionSummary, signalSnapsho
       {signalSnapshots.length > 0 && (
         <div style={{ marginTop: 'var(--spacing-md)' }}>
           <div className={styles.fieldLabel}>Signal Analysis</div>
-          {signalSnapshots.map(snap => (
+          {signalSnapshots.map(snap => {
+            // Compute options score from IV percentile and put/call ratio (same logic as server)
+            const optionsScore = (snap.ivPercentile !== null || snap.putCallRatio !== null)
+              ? ((snap.ivPercentile ?? 0) * 0.6 + (snap.putCallRatio !== null ? (1 - Math.min(snap.putCallRatio, 2) / 2) : 0) * 0.4)
+              : null;
+            // Compute fundamentals score from valuation and growth
+            const fundamentalsScore = (snap.valuationScore !== null || snap.growthScore !== null)
+              ? ((snap.valuationScore ?? 0) + (snap.growthScore ?? 0)) / 2
+              : null;
+            return (
             <div key={snap.id} style={{ padding: 'var(--spacing-sm)', marginTop: 'var(--spacing-xs)', background: 'var(--color-bg-secondary)', borderRadius: '4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: '4px', flexWrap: 'wrap' }}>
                 <strong>{snap.symbol}</strong>
                 {snap.compositeEwma !== null && (
                   <span style={{ fontSize: '0.75rem', color: snap.compositeEwma >= 0.5 ? 'var(--color-success)' : 'var(--color-error)' }}>
@@ -131,12 +140,23 @@ function renderSignalCollectionSummary(s: SignalCollectionSummary, signalSnapsho
                     sentiment: {snap.sentimentScore >= 0 ? '+' : ''}{snap.sentimentScore.toFixed(2)}
                   </span>
                 )}
+                {optionsScore !== null && (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                    options: {optionsScore >= 0 ? '+' : ''}{optionsScore.toFixed(2)}
+                  </span>
+                )}
+                {fundamentalsScore !== null && (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                    fundamentals: {fundamentalsScore >= 0 ? '+' : ''}{fundamentalsScore.toFixed(2)}
+                  </span>
+                )}
               </div>
               {snap.sentimentSynthesis && (
                 <div style={{ fontSize: '0.875rem', fontStyle: 'italic' }}>{snap.sentimentSynthesis}</div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

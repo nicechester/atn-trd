@@ -9,6 +9,10 @@ export interface SignalSnapshotRow {
   sentimentConfidence: number | null;
   sentimentTrend: number | null;
   priceVsSma50: number | null;
+  ivPercentile: number | null;      // 0-1, current IV vs 52-week range
+  putCallRatio: number | null;      // put/call open interest ratio
+  valuationScore: number | null;    // -1 to 1, PE/PEG vs sector
+  growthScore: number | null;       // -1 to 1, revenue/earnings growth
   compositeScore: number | null;
   compositeEwma: number | null;
   sentimentSynthesis: string | null;
@@ -26,8 +30,9 @@ export class SignalSnapshotsRepo {
     const result = this.db
       .prepare(
         `INSERT OR IGNORE INTO signal_snapshots (id, symbol, snapshot_date, price_cents, sentiment_score, sentiment_confidence,
-           sentiment_trend, price_vs_sma50, composite_score, composite_ewma, sentiment_synthesis, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           sentiment_trend, price_vs_sma50, iv_percentile, put_call_ratio, valuation_score, growth_score,
+           composite_score, composite_ewma, sentiment_synthesis, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         row.id,
@@ -38,6 +43,10 @@ export class SignalSnapshotsRepo {
         row.sentimentConfidence,
         row.sentimentTrend,
         row.priceVsSma50,
+        row.ivPercentile,
+        row.putCallRatio,
+        row.valuationScore,
+        row.growthScore,
         row.compositeScore,
         row.compositeEwma,
         row.sentimentSynthesis,
@@ -52,6 +61,8 @@ export class SignalSnapshotsRepo {
         `SELECT id, symbol, snapshot_date as snapshotDate, price_cents as priceCents,
            sentiment_score as sentimentScore, sentiment_confidence as sentimentConfidence,
            sentiment_trend as sentimentTrend, price_vs_sma50 as priceVsSma50,
+           iv_percentile as ivPercentile, put_call_ratio as putCallRatio,
+           valuation_score as valuationScore, growth_score as growthScore,
            composite_score as compositeScore, composite_ewma as compositeEwma,
            sentiment_synthesis as sentimentSynthesis, created_at as createdAt
          FROM signal_snapshots WHERE symbol = ? AND snapshot_date = ?`
@@ -65,6 +76,8 @@ export class SignalSnapshotsRepo {
         `SELECT id, symbol, snapshot_date as snapshotDate, price_cents as priceCents,
            sentiment_score as sentimentScore, sentiment_confidence as sentimentConfidence,
            sentiment_trend as sentimentTrend, price_vs_sma50 as priceVsSma50,
+           iv_percentile as ivPercentile, put_call_ratio as putCallRatio,
+           valuation_score as valuationScore, growth_score as growthScore,
            composite_score as compositeScore, composite_ewma as compositeEwma,
            sentiment_synthesis as sentimentSynthesis, created_at as createdAt
          FROM signal_snapshots WHERE symbol = ? ORDER BY snapshot_date DESC LIMIT 1`
@@ -78,6 +91,8 @@ export class SignalSnapshotsRepo {
         `SELECT id, symbol, snapshot_date as snapshotDate, price_cents as priceCents,
            sentiment_score as sentimentScore, sentiment_confidence as sentimentConfidence,
            sentiment_trend as sentimentTrend, price_vs_sma50 as priceVsSma50,
+           iv_percentile as ivPercentile, put_call_ratio as putCallRatio,
+           valuation_score as valuationScore, growth_score as growthScore,
            composite_score as compositeScore, composite_ewma as compositeEwma,
            sentiment_synthesis as sentimentSynthesis, created_at as createdAt
          FROM signal_snapshots WHERE symbol = ? ORDER BY snapshot_date DESC LIMIT ?`
@@ -91,6 +106,8 @@ export class SignalSnapshotsRepo {
         `SELECT id, symbol, snapshot_date as snapshotDate, price_cents as priceCents,
            sentiment_score as sentimentScore, sentiment_confidence as sentimentConfidence,
            sentiment_trend as sentimentTrend, price_vs_sma50 as priceVsSma50,
+           iv_percentile as ivPercentile, put_call_ratio as putCallRatio,
+           valuation_score as valuationScore, growth_score as growthScore,
            composite_score as compositeScore, composite_ewma as compositeEwma,
            sentiment_synthesis as sentimentSynthesis, created_at as createdAt
          FROM signal_snapshots WHERE symbol = ? AND snapshot_date >= ? AND snapshot_date <= ?
@@ -99,13 +116,14 @@ export class SignalSnapshotsRepo {
       .all(symbol, fromDate, toDate) as SignalSnapshotRow[];
   }
 
-  /** Get recent N snapshots to check consecutive days below threshold */
   getRecentSnapshots(symbol: string, days: number): SignalSnapshotRow[] {
     return this.db
       .prepare(
         `SELECT id, symbol, snapshot_date as snapshotDate, price_cents as priceCents,
            sentiment_score as sentimentScore, sentiment_confidence as sentimentConfidence,
            sentiment_trend as sentimentTrend, price_vs_sma50 as priceVsSma50,
+           iv_percentile as ivPercentile, put_call_ratio as putCallRatio,
+           valuation_score as valuationScore, growth_score as growthScore,
            composite_score as compositeScore, composite_ewma as compositeEwma,
            sentiment_synthesis as sentimentSynthesis, created_at as createdAt
          FROM signal_snapshots
@@ -127,13 +145,14 @@ export class SignalSnapshotsRepo {
       .all(symbol, days) as Array<{ snapshotDate: string; sentimentScore: number }>;
   }
 
-  /** Get all snapshots for a specific date */
   listByDate(snapshotDate: string): SignalSnapshotRow[] {
     return this.db
       .prepare(
         `SELECT id, symbol, snapshot_date as snapshotDate, price_cents as priceCents,
            sentiment_score as sentimentScore, sentiment_confidence as sentimentConfidence,
            sentiment_trend as sentimentTrend, price_vs_sma50 as priceVsSma50,
+           iv_percentile as ivPercentile, put_call_ratio as putCallRatio,
+           valuation_score as valuationScore, growth_score as growthScore,
            composite_score as compositeScore, composite_ewma as compositeEwma,
            sentiment_synthesis as sentimentSynthesis, created_at as createdAt
          FROM signal_snapshots WHERE snapshot_date = ? ORDER BY symbol`

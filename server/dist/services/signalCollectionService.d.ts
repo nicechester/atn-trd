@@ -8,12 +8,18 @@ import type { Settings } from '@atn-trd/shared';
 import type { SignalSnapshotsRepo } from '../repos/signalSnapshotsRepo.js';
 import type { PricesRepo } from '../repos/pricesRepo.js';
 import type { WatchlistRepo } from '../repos/watchlistRepo.js';
+import type { PositionsRepo } from '../repos/positionsRepo.js';
 import type { NewsDataSource } from '../datasources/news/index.js';
+import type { OptionsDataSource } from '../datasources/options/index.js';
+import type { FundamentalsDataSource } from '../datasources/fundamentals/index.js';
 export interface SignalCollectionDeps {
     signalSnapshotsRepo: SignalSnapshotsRepo;
     pricesRepo: PricesRepo;
     watchlistRepo: WatchlistRepo;
+    positionsRepo: PositionsRepo;
     newsSource: NewsDataSource;
+    optionsSource: OptionsDataSource;
+    fundamentalsSource: FundamentalsDataSource;
     getSettings: () => Settings;
 }
 export interface CollectionResult {

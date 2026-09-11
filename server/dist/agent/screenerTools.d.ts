@@ -1,4 +1,3 @@
-import { DynamicStructuredTool } from '@langchain/core/tools';
 import type { YahooSectorPerformance } from '../datasources/sectors/index.js';
 import type { FundamentalsDataSource } from '../datasources/fundamentals/index.js';
 import type { OptionsDataSource } from '../datasources/options/index.js';
@@ -9,5 +8,4 @@ export interface ScreenerToolsDeps {
     optionsSource: OptionsDataSource;
     cache: RunCache;
 }
-export declare function createScreenerTools(deps: ScreenerToolsDeps): DynamicStructuredTool[];
 //# sourceMappingURL=screenerTools.d.ts.map

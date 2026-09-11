@@ -3,113 +3,118 @@ import assert from 'node:assert/strict';
 import { AlpacaBroker, AlpacaBrokerConfig } from './alpacaBroker.js';
 
 /**
- * Mock Alpaca client for testing.
+ * Mock Alpaca client for testing (matches SDK v3 nested structure).
  */
-class MockAlpacaClient {
-  async getAccount() {
-    return {
-      cash: '10000.00',
-      portfolio_value: '15000.00',
-      buying_power: '20000.00',
-    };
-  }
-
-  async getPositions() {
-    return [
-      {
-        symbol: 'AAPL',
-        qty: 10.5,
-        avg_entry_price: '150.50',
-        side: 'long',
-        market_value: '1580.25',
+function createMockAlpacaClient() {
+  return {
+    trading: {
+      account: {
+        async getAccount() {
+          return {
+            cash: '10000.00',
+            portfolio_value: '15000.00',
+            buying_power: '20000.00',
+          };
+        },
       },
-      {
-        symbol: 'EMPTY',
-        qty: 0,
-        avg_entry_price: '100.00',
-        side: 'long',
-        market_value: '0',
+      positions: {
+        async getAllOpenPositions() {
+          return [
+            {
+              symbol: 'AAPL',
+              qty: '10.5',
+              avgEntryPrice: '150.50',
+              side: 'long',
+              market_value: '1580.25',
+            },
+            {
+              symbol: 'EMPTY',
+              qty: '0',
+              avgEntryPrice: '100.00',
+              side: 'long',
+              market_value: '0',
+            },
+          ] as any;
+        },
       },
-    ] as any;
-  }
-
-  async createOrder(params: any) {
-    return {
-      id: 'order-123',
-      client_order_id: params.client_order_id,
-      symbol: params.symbol,
-      qty: params.qty,
-      side: params.side,
-      type: params.type,
-      time_in_force: params.time_in_force,
-      limit_price: params.limit_price ?? null,
-      filled_avg_price: null,
-      status: 'new',
-      filled_qty: '0',
-      created_at: new Date('2026-08-18T12:00:00Z'),
-      updated_at: new Date('2026-08-18T12:00:00Z'),
-    } as any;
-  }
-
-  async getOrder(orderId: string) {
-    if (orderId === 'not-found') {
-      throw new Error('Order not found');
-    }
-    return {
-      id: orderId,
-      client_order_id: 'client-123',
-      symbol: 'AAPL',
-      qty: 10,
-      side: 'buy',
-      type: 'market',
-      time_in_force: 'day',
-      limit_price: null,
-      filled_avg_price: '150.00',
-      status: 'filled',
-      filled_qty: '10',
-      created_at: new Date('2026-08-18T12:00:00Z'),
-      updated_at: new Date('2026-08-18T12:01:00Z'),
-    } as any;
-  }
-
-  async getOrders(_params?: any) {
-    return [
-      {
-        id: 'order-456',
-        client_order_id: 'client-456',
-        symbol: 'TSLA',
-        qty: 5,
-        side: 'sell',
-        type: 'limit',
-        time_in_force: 'gtc',
-        limit_price: '250.00',
-        filled_avg_price: null,
-        status: 'partially_filled',
-        filled_qty: '2',
-        created_at: new Date('2026-08-18T11:00:00Z'),
-        updated_at: new Date('2026-08-18T11:30:00Z'),
+      orders: {
+        async submit(params: any) {
+          return {
+            id: 'order-123',
+            client_order_id: params.clientOrderId,
+            symbol: params.symbol,
+            qty: params.qty,
+            side: params.side,
+            type: params.type,
+            time_in_force: params.timeInForce,
+            limit_price: params.limitPrice ?? null,
+            filled_avg_price: null,
+            status: 'new',
+            filled_qty: '0',
+            created_at: new Date('2026-08-18T12:00:00Z'),
+            updated_at: new Date('2026-08-18T12:00:00Z'),
+          } as any;
+        },
+        async getOrderByOrderID({ orderId }: { orderId: string }) {
+          if (orderId === 'not-found') {
+            throw new Error('Order not found');
+          }
+          return {
+            id: orderId,
+            client_order_id: 'client-123',
+            symbol: 'AAPL',
+            qty: 10,
+            side: 'buy',
+            type: 'market',
+            time_in_force: 'day',
+            limit_price: null,
+            filled_avg_price: '150.00',
+            status: 'filled',
+            filled_qty: '10',
+            created_at: new Date('2026-08-18T12:00:00Z'),
+            updated_at: new Date('2026-08-18T12:01:00Z'),
+          } as any;
+        },
+        async getAllOrders(_params?: any) {
+          return [
+            {
+              id: 'order-456',
+              client_order_id: 'client-456',
+              symbol: 'TSLA',
+              qty: 5,
+              side: 'sell',
+              type: 'limit',
+              time_in_force: 'gtc',
+              limit_price: '250.00',
+              filled_avg_price: null,
+              status: 'partially_filled',
+              filled_qty: '2',
+              created_at: new Date('2026-08-18T11:00:00Z'),
+              updated_at: new Date('2026-08-18T11:30:00Z'),
+            },
+          ] as any;
+        },
+        async deleteOrderByOrderID({ orderId }: { orderId: string }): Promise<void> {
+          if (orderId === 'fail') {
+            throw new Error('Cannot cancel order');
+          }
+        },
       },
-    ] as any;
-  }
-
-  async cancelOrder(orderId: string): Promise<void> {
-    if (orderId === 'fail') {
-      throw new Error('Cannot cancel order');
-    }
-    // Success
-  }
-
-  async getClock() {
-    return {
-      is_open: true,
-      next_open: new Date('2026-08-19T09:30:00Z'),
-      next_close: new Date('2026-08-18T16:00:00Z'),
-    };
-  }
+      clock: {
+        async clock() {
+          return {
+            is_open: true,
+            next_open: new Date('2026-08-19T09:30:00Z'),
+            next_close: new Date('2026-08-18T16:00:00Z'),
+          };
+        },
+      },
+    },
+  };
 }
 
 describe('AlpacaBroker', () => {
-  function createBroker(client = new MockAlpacaClient()): AlpacaBroker {
+  function createBroker(client = createMockAlpacaClient()): AlpacaBroker {
     const config: AlpacaBrokerConfig = {
       apiKey: 'test-key',
       apiSecret: 'test-secret',
@@ -163,7 +168,7 @@ describe('AlpacaBroker', () => {
     });
 
     it('handles string avg_entry_price from SDK', async () => {
-      const client = new MockAlpacaClient();
+      const client = createMockAlpacaClient();
       const broker = createBroker(client);
       const positions = await broker.getPositions();
       // Verify the average cost was correctly converted
@@ -174,18 +179,18 @@ describe('AlpacaBroker', () => {
 
   describe('submitOrder', () => {
     it('submits market order without limit price', async () => {
-      const client = new MockAlpacaClient();
+      const client = createMockAlpacaClient();
       let capturedParams: any;
-      client.createOrder = async (params) => {
+      client.trading.orders.submit = async (params) => {
         capturedParams = params;
         return {
           id: 'order-123',
-          client_order_id: params.client_order_id,
+          client_order_id: params.clientOrderId,
           symbol: params.symbol,
           qty: params.qty,
           side: params.side,
           type: params.type,
-          time_in_force: params.time_in_force,
+          time_in_force: params.timeInForce,
           limit_price: null,
           filled_avg_price: null,
           status: 'new',
@@ -206,24 +211,24 @@ describe('AlpacaBroker', () => {
       });
 
       assert.equal(capturedParams.type, 'market');
-      assert.equal(capturedParams.limit_price, undefined);
+      assert.equal(capturedParams.limitPrice, undefined);
       assert.equal(order.symbol, 'AAPL');
     });
 
     it('submits limit order with limit price', async () => {
-      const client = new MockAlpacaClient();
+      const client = createMockAlpacaClient();
       let capturedParams: any;
-      client.createOrder = async (params) => {
+      client.trading.orders.submit = async (params) => {
         capturedParams = params;
         return {
           id: 'order-123',
-          client_order_id: params.client_order_id,
+          client_order_id: params.clientOrderId,
           symbol: params.symbol,
           qty: params.qty,
           side: params.side,
           type: params.type,
-          time_in_force: params.time_in_force,
-          limit_price: params.limit_price,
+          time_in_force: params.timeInForce,
+          limit_price: params.limitPrice,
           filled_avg_price: null,
           status: 'new',
           filled_qty: '0',
@@ -243,7 +248,7 @@ describe('AlpacaBroker', () => {
         tif: 'day',
       });
 
-      assert.equal(capturedParams.limit_price, 150.50);
+      assert.equal(capturedParams.limitPrice, 150.50);
       assert.equal(order.type, 'limit');
     });
 
@@ -262,8 +267,8 @@ describe('AlpacaBroker', () => {
     });
 
     it('throws on API error', async () => {
-      const client = new MockAlpacaClient();
-      client.createOrder = async () => {
+      const client = createMockAlpacaClient();
+      client.trading.orders.submit = async () => {
         throw new Error('API Error');
       };
 
@@ -313,8 +318,8 @@ describe('AlpacaBroker', () => {
     });
 
     it('returns empty array on error', async () => {
-      const client = new MockAlpacaClient();
-      client.getOrders = async () => {
+      const client = createMockAlpacaClient();
+      client.trading.orders.getAllOrders = async () => {
         throw new Error('API Error');
       };
 
@@ -325,9 +330,9 @@ describe('AlpacaBroker', () => {
     });
 
     it('handles date conversion for since parameter', async () => {
-      const client = new MockAlpacaClient();
+      const client = createMockAlpacaClient();
       let capturedParams: any;
-      client.getOrders = async (params) => {
+      client.trading.orders.getAllOrders = async (params) => {
         capturedParams = params;
         return [];
       };
@@ -341,10 +346,10 @@ describe('AlpacaBroker', () => {
 
   describe('cancelOrder', () => {
     it('cancels order successfully', async () => {
-      const client = new MockAlpacaClient();
+      const client = createMockAlpacaClient();
       let cancelledId: string | undefined;
-      client.cancelOrder = async (id) => {
-        cancelledId = id;
+      client.trading.orders.deleteOrderByOrderID = async ({ orderId }) => {
+        cancelledId = orderId;
       };
 
       const broker = createBroker(client);
@@ -383,8 +388,8 @@ describe('AlpacaBroker', () => {
 
   describe('mapAlpacaOrderStatus', () => {
     it('maps new to pending', async () => {
-      const client = new MockAlpacaClient();
-      client.getOrder = async () => ({
+      const client = createMockAlpacaClient();
+      client.trading.orders.getOrderByOrderID = async () => ({
         id: 'order-123',
         status: 'new',
         symbol: 'AAPL',
@@ -407,8 +412,8 @@ describe('AlpacaBroker', () => {
     });
 
     it('maps pending_new to pending', async () => {
-      const client = new MockAlpacaClient();
-      client.getOrder = async () => ({
+      const client = createMockAlpacaClient();
+      client.trading.orders.getOrderByOrderID = async () => ({
         id: 'order-123',
         status: 'pending_new',
         symbol: 'AAPL',
@@ -431,8 +436,8 @@ describe('AlpacaBroker', () => {
     });
 
     it('maps accepted to accepted', async () => {
-      const client = new MockAlpacaClient();
-      client.getOrder = async () => ({
+      const client = createMockAlpacaClient();
+      client.trading.orders.getOrderByOrderID = async () => ({
         id: 'order-123',
         status: 'accepted',
         symbol: 'AAPL',
@@ -455,8 +460,8 @@ describe('AlpacaBroker', () => {
     });
 
     it('maps partially_filled to partially_filled', async () => {
-      const client = new MockAlpacaClient();
-      client.getOrder = async () => ({
+      const client = createMockAlpacaClient();
+      client.trading.orders.getOrderByOrderID = async () => ({
         id: 'order-123',
         status: 'partially_filled',
         symbol: 'AAPL',
@@ -479,8 +484,8 @@ describe('AlpacaBroker', () => {
     });
 
     it('maps filled to filled', async () => {
-      const client = new MockAlpacaClient();
-      client.getOrder = async () => ({
+      const client = createMockAlpacaClient();
+      client.trading.orders.getOrderByOrderID = async () => ({
         id: 'order-123',
         status: 'filled',
         symbol: 'AAPL',
@@ -503,8 +508,8 @@ describe('AlpacaBroker', () => {
     });
 
     it('maps canceled to canceled', async () => {
-      const client = new MockAlpacaClient();
-      client.getOrder = async () => ({
+      const client = createMockAlpacaClient();
+      client.trading.orders.getOrderByOrderID = async () => ({
         id: 'order-123',
         status: 'canceled',
         symbol: 'AAPL',
@@ -527,8 +532,8 @@ describe('AlpacaBroker', () => {
     });
 
     it('maps rejected to rejected', async () => {
-      const client = new MockAlpacaClient();
-      client.getOrder = async () => ({
+      const client = createMockAlpacaClient();
+      client.trading.orders.getOrderByOrderID = async () => ({
         id: 'order-123',
         status: 'rejected',
         symbol: 'AAPL',
@@ -551,8 +556,8 @@ describe('AlpacaBroker', () => {
     });
 
     it('maps expired to expired', async () => {
-      const client = new MockAlpacaClient();
-      client.getOrder = async () => ({
+      const client = createMockAlpacaClient();
+      client.trading.orders.getOrderByOrderID = async () => ({
         id: 'order-123',
         status: 'expired',
         symbol: 'AAPL',
