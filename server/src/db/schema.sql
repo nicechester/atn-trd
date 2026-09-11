@@ -51,7 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
 
 CREATE TABLE IF NOT EXISTS agent_runs (
   id TEXT PRIMARY KEY,
-  trigger TEXT NOT NULL CHECK(trigger IN ('scheduled', 'manual', 'signal_collection', 'plan_review', 'tranche_execution', 'watchlist_curation')),
+  trigger TEXT NOT NULL CHECK(trigger IN ('scheduled', 'manual', 'signal_collection', 'plan_review', 'tranche_execution', 'watchlist_curation', 'regime_detection', 'snapshot')),
   status TEXT NOT NULL CHECK(status IN ('running', 'succeeded', 'failed', 'skipped')),
   started_at INTEGER NOT NULL,
   finished_at INTEGER,
@@ -549,4 +549,5 @@ INSERT INTO schema_migrations (version, applied_at) VALUES
   (22, strftime('%s', 'now') * 1000),
   (23, strftime('%s', 'now') * 1000),
   (24, strftime('%s', 'now') * 1000),
-  (25, strftime('%s', 'now') * 1000);
+  (25, strftime('%s', 'now') * 1000),
+  (26, strftime('%s', 'now') * 1000);

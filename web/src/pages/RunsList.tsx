@@ -9,12 +9,14 @@ const JOB_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'all', label: 'All Jobs' },
   { value: 'trading_cycle', label: 'Trading Cycle' },
   { value: 'signal_collection', label: 'Signal Collection' },
+  { value: 'regime_detection', label: 'Regime Detection' },
+  { value: 'snapshot', label: 'Snapshot' },
   { value: 'plan_review', label: 'Plan Review' },
   { value: 'watchlist_curation', label: 'Watchlist Curation' },
   { value: 'tranche_execution', label: 'Tranche Execution' },
 ];
 
-type JobType = 'trading_cycle' | 'signal_collection' | 'plan_review' | 'tranche_execution' | 'watchlist_curation';
+type JobType = 'trading_cycle' | 'signal_collection' | 'plan_review' | 'tranche_execution' | 'watchlist_curation' | 'regime_detection' | 'snapshot';
 
 const JOB_TYPE_LABELS: Record<JobType, string> = {
   trading_cycle: 'Trading Cycle',
@@ -22,6 +24,8 @@ const JOB_TYPE_LABELS: Record<JobType, string> = {
   plan_review: 'Plan Review',
   tranche_execution: 'Tranche Execution',
   watchlist_curation: 'Watchlist Curation',
+  regime_detection: 'Regime Detection',
+  snapshot: 'Snapshot',
 };
 
 function inferJobType(run: AgentRunRow): JobType {
@@ -30,6 +34,8 @@ function inferJobType(run: AgentRunRow): JobType {
   if (run.trigger === 'plan_review') return 'plan_review';
   if (run.trigger === 'tranche_execution') return 'tranche_execution';
   if (run.trigger === 'watchlist_curation') return 'watchlist_curation';
+  if (run.trigger === 'regime_detection') return 'regime_detection';
+  if (run.trigger === 'snapshot') return 'snapshot';
   
   // For manual/scheduled, infer from summaryJson
   if (run.summaryJson) {
