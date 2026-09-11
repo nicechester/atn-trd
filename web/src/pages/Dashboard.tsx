@@ -5,7 +5,7 @@ import type { AgentRunRow, Portfolio } from '../api/client';
 import { Card } from '../components/Card';
 import LlmUsagePane from '../components/LlmUsagePane';
 import { DailyActivityLog } from '../components/DailyActivityLog';
-import { JobRunner } from '../components/JobRunner';
+import { JobRunnerCompact } from '../components/JobRunnerCompact';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import { centsToUSD, formatTimestamp } from '../lib/format';
@@ -164,25 +164,22 @@ export default function DashboardPage(): JSX.Element {
           }
         </Card>
 
-        <div className={styles.fullWidth}>
-          <Card title="Job Execution">
-            {canWrite ? (
-              <JobRunner onComplete={async () => {
-                // Refresh last run after job execution
-                try {
-                  const runsRes = await api.runs.list(1, 0);
-                  if (runsRes.data.length > 0) {
-                    setState(prev => prev ? { ...prev, lastRun: runsRes.data[0] } : null);
-                  }
-                } catch (err) {
-                  console.error('Failed to refresh last run', err);
+        <Card title="Run Job">
+          {canWrite ? (
+            <JobRunnerCompact onComplete={async () => {
+              try {
+                const runsRes = await api.runs.list(1, 0);
+                if (runsRes.data.length > 0) {
+                  setState(prev => prev ? { ...prev, lastRun: runsRes.data[0] } : null);
                 }
-              }} />
-            ) : (
-              <p className={styles.muted}>Read-only access</p>
-            )}
-          </Card>
-        </div>
+              } catch (err) {
+                console.error('Failed to refresh last run', err);
+              }
+            }} />
+          ) : (
+            <p className={styles.muted}>Read-only access</p>
+          )}
+        </Card>
 
         <div className={styles.fullWidth}>
           <DailyActivityLog />
