@@ -226,7 +226,7 @@ export default function SettingsStrategic(): JSX.Element {
           </div>
           <div className={styles.field}>
             <label className={styles.label}>Sell Threshold</label>
-            <input className={styles.input} type="number" min={-0.8} max={-0.3} step={0.01}
+            <input className={styles.input} type="number" min={0.1} max={0.4} step={0.01}
               value={form.sellThreshold} onChange={e => setForm({ ...form, sellThreshold: +e.target.value })} />
             <span className={styles.hint}>Trigger sell when score drops below</span>
           </div>
