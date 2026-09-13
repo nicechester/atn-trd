@@ -17,7 +17,6 @@ import { settingsEvents } from '../config/settingsService.js';
 import { getLlmLimits } from '@atn-trd/shared';
 import { logger } from '../lib/logger.js';
 import { runSnapshotJob } from './jobs/snapshot.js';
-import { isTradingDay } from './marketCalendar.js';
 import { runSignalCollectionJob } from './jobs/signalCollection.js';
 import { runRegimeDetectionJob } from './jobs/regimeDetection.js';
 import { runWeeklyPlannerJob } from './jobs/weeklyPlanner.js';
@@ -100,12 +99,6 @@ function registerAllJobs(): void {
 
   try {
     activeJob = new Cron(cron, { timezone, protect: true }, async () => {
-      // Skip on holidays
-      if (!isTradingDay(new Date())) {
-        log.info('trading cycle skipped (not a trading day)');
-        return;
-      }
-
       // Skip if strategic execution is enabled (use plan-based trading instead)
       const currentSettings = getSettings();
       if (currentSettings.execution.enabled) {

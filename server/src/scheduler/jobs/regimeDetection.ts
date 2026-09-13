@@ -4,7 +4,7 @@
  */
 
 import type Database from 'better-sqlite3';
-import { isTradingDay } from '../marketCalendar.js';
+
 import { logger } from '../../lib/logger.js';
 import { detectRegime } from '../../services/regimeDetectionService.js';
 import { MarketRegimeRepo } from '../../repos/marketRegimeRepo.js';
@@ -16,25 +16,7 @@ import { getSettings } from '../../config/settingsService.js';
 const log = logger.child({ component: 'regime-detection-job' });
 
 export async function runRegimeDetectionJob(db: Database.Database): Promise<void> {
-  const now = new Date();
   const runsRepo = new RunsRepo(db);
-
-  if (!isTradingDay(now)) {
-    const runId = runsRepo.create({
-      trigger: 'regime_detection',
-      status: 'running',
-      startedAt: Date.now(),
-      finishedAt: null,
-      model: null,
-      settingsSnapshot: JSON.stringify({}),
-      error: null,
-      tokenUsageJson: null,
-      skipReason: null,
-      summaryJson: null,
-    });
-    runsRepo.setSkipped(runId, 'not a trading day');
-    return;
-  }
 
   const settings = getSettings();
   if (!settings.regime.enabled) {

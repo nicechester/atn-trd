@@ -19,7 +19,6 @@ import { runAnalystAgent } from '../agent/analystAgent.js';
 import { prefetchForSymbol } from '../agent/tools.js';
 import type { PortfolioConstraints } from '../agent/portfolioManagerAgent.js';
 import { createRiskService, type RiskConstraints } from './riskService.js';
-import { isTradingDay } from '../scheduler/marketCalendar.js';
 import { logger } from '../lib/logger.js';
 import { emitProgress } from './runProgress.js';
 import type { OrderRequest } from '../brokers/types.js';
@@ -327,23 +326,6 @@ class TradingCycleServiceImpl implements TradingCycleService {
         summaryJson: null,
       });
       this.deps.runsRepo.setSkipped(id, 'trading is disabled');
-      return;
-    }
-
-    if (trigger !== 'manual' && !isTradingDay(new Date())) {
-      const id = this.deps.runsRepo.create({
-        trigger,
-        status: 'running',
-        startedAt: Date.now(),
-        finishedAt: null,
-        model: settings.llm.model,
-        settingsSnapshot: JSON.stringify(settings),
-        error: null,
-        tokenUsageJson: null,
-        skipReason: null,
-        summaryJson: null,
-      });
-      this.deps.runsRepo.setSkipped(id, 'not a trading day');
       return;
     }
 
