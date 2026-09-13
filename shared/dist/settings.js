@@ -93,6 +93,13 @@ export const SettingsSchema = z.object({
         message: 'Cron expression fires too frequently for minIntervalHours',
         path: ['cron'],
     }).default({}),
+    jobSchedules: z.object({
+        signalCollection: z.string().default('0 16 * * 1-5'),
+        regimeDetection: z.string().default('5 16 * * 1-5'),
+        weeklyPlanner: z.string().default('10 16 * * 1'),
+        trancheExecutor: z.string().default('15 16 * * 1-5'),
+        snapshot: z.string().default('30 16 * * 1-5'),
+    }).default({}),
     risk: z.object({
         maxPositionWeightPercent: z.number().min(0).max(100).default(20),
         maxConcurrentPositions: z.number().int().min(1).default(10),
@@ -253,6 +260,13 @@ export const DEFAULT_SETTINGS = {
         timezone: 'America/New_York',
         cron: '50 16 * * 1-5',
         minIntervalHours: 12,
+    },
+    jobSchedules: {
+        signalCollection: '0 16 * * 1-5',
+        regimeDetection: '5 16 * * 1-5',
+        weeklyPlanner: '10 16 * * 1',
+        trancheExecutor: '15 16 * * 1-5',
+        snapshot: '30 16 * * 1-5',
     },
     risk: {
         maxPositionWeightPercent: 20,

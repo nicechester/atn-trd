@@ -409,6 +409,25 @@ export declare const SettingsSchema: z.ZodObject<{
         cron?: string | undefined;
         minIntervalHours?: number | undefined;
     }>>;
+    jobSchedules: z.ZodDefault<z.ZodObject<{
+        signalCollection: z.ZodDefault<z.ZodString>;
+        regimeDetection: z.ZodDefault<z.ZodString>;
+        weeklyPlanner: z.ZodDefault<z.ZodString>;
+        trancheExecutor: z.ZodDefault<z.ZodString>;
+        snapshot: z.ZodDefault<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        signalCollection: string;
+        regimeDetection: string;
+        weeklyPlanner: string;
+        trancheExecutor: string;
+        snapshot: string;
+    }, {
+        signalCollection?: string | undefined;
+        regimeDetection?: string | undefined;
+        weeklyPlanner?: string | undefined;
+        trancheExecutor?: string | undefined;
+        snapshot?: string | undefined;
+    }>>;
     risk: z.ZodDefault<z.ZodObject<{
         maxPositionWeightPercent: z.ZodDefault<z.ZodNumber>;
         maxConcurrentPositions: z.ZodDefault<z.ZodNumber>;
@@ -781,6 +800,13 @@ export declare const SettingsSchema: z.ZodObject<{
         cron: string;
         minIntervalHours: number;
     };
+    jobSchedules: {
+        signalCollection: string;
+        regimeDetection: string;
+        weeklyPlanner: string;
+        trancheExecutor: string;
+        snapshot: string;
+    };
     risk: {
         maxPositionWeightPercent: number;
         maxConcurrentPositions: number;
@@ -941,6 +967,13 @@ export declare const SettingsSchema: z.ZodObject<{
         timezone?: string | undefined;
         cron?: string | undefined;
         minIntervalHours?: number | undefined;
+    } | undefined;
+    jobSchedules?: {
+        signalCollection?: string | undefined;
+        regimeDetection?: string | undefined;
+        weeklyPlanner?: string | undefined;
+        trancheExecutor?: string | undefined;
+        snapshot?: string | undefined;
     } | undefined;
     risk?: {
         maxPositionWeightPercent?: number | undefined;

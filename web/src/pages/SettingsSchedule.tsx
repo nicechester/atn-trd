@@ -106,6 +106,15 @@ function parseMonth(month: string): string {
   return monthNames[month] ? `in ${monthNames[month]}` : `in month ${month}`;
 }
 
+// Map job names to settings keys
+const JOB_SETTINGS_MAP: Record<string, string> = {
+  'Signal Collection': 'signalCollection',
+  'Regime Detection': 'regimeDetection',
+  'Weekly Planner': 'weeklyPlanner',
+  'Tranche Executor': 'trancheExecutor',
+  'Snapshot': 'snapshot',
+};
+
 export default function SettingsSchedule(): JSX.Element {
   const { addToast } = useToast();
   const [jobs, setJobs] = useState<JobSchedule[]>([]);
@@ -171,19 +180,22 @@ export default function SettingsSchedule(): JSX.Element {
     
     setSaving(true);
     try {
-      // TODO: Backend needs to support per-job cron settings
-      // For now, only Watchlist Curator and Trading Cycle are configurable
       if (selectedJob === 'Watchlist Curator') {
         await api.settings.patch({ watchlist: { curatorCron: cron || '' } });
       } else if (selectedJob === 'Trading Cycle') {
         if (cron) {
           await api.settings.patch({ schedule: { cron } });
         }
-        // Note: Disabling Trading Cycle is done via trading.enabled, not here
       } else {
-        addToast('Custom schedules for this job coming soon', 'error');
-        setSaving(false);
-        return;
+        // Handle other jobs via jobSchedules
+        const settingsKey = JOB_SETTINGS_MAP[selectedJob];
+        if (settingsKey && cron) {
+          await api.settings.patch({ jobSchedules: { [settingsKey]: cron } });
+        } else if (!settingsKey) {
+          addToast('Unknown job type', 'error');
+          setSaving(false);
+          return;
+        }
       }
 
       addToast(`${selectedJob} schedule saved`, 'success');
