@@ -232,56 +232,61 @@ function registerAllJobs(): void {
     activeJob = null;
   }
 
-  // Snapshot job (16:30 ET daily on trading days)
+  // Snapshot job (configurable, default 16:30 ET daily on trading days)
+  const snapshotCron = settings.jobSchedules?.snapshot || '30 16 * * 1-5';
   try {
-    snapshotCronJob = new Cron('30 16 * * 1-5', { timezone: 'America/New_York', protect: true }, async () => {
+    snapshotCronJob = new Cron(snapshotCron, { timezone: 'America/New_York', protect: true }, async () => {
       await runSnapshotJob(db);
     });
-    log.info('snapshot job registered', { cron: '30 16 * * 1-5', nextRun: snapshotCronJob.nextRun()?.toISOString() ?? null });
+    log.info('snapshot job registered', { cron: snapshotCron, nextRun: snapshotCronJob.nextRun()?.toISOString() ?? null });
   } catch (err) {
     log.error('failed to register snapshot job', { error: err instanceof Error ? err.message : String(err) });
     snapshotCronJob = null;
   }
 
-  // Signal collection job (16:00 ET on trading days)
+  // Signal collection job (configurable, default 16:00 ET on trading days)
+  const signalCron = settings.jobSchedules?.signalCollection || '0 16 * * 1-5';
   try {
-    signalCollectionJob = new Cron('0 16 * * 1-5', { timezone: 'America/New_York', protect: true }, async () => {
+    signalCollectionJob = new Cron(signalCron, { timezone: 'America/New_York', protect: true }, async () => {
       await runSignalCollectionJob(db);
     });
-    log.info('signal-collection job registered', { cron: '0 16 * * 1-5' });
+    log.info('signal-collection job registered', { cron: signalCron });
   } catch (err) {
     log.error('failed to register signal-collection job', { error: err instanceof Error ? err.message : String(err) });
     signalCollectionJob = null;
   }
 
-  // Regime detection job (16:05 ET on trading days)
+  // Regime detection job (configurable, default 16:05 ET on trading days)
+  const regimeCron = settings.jobSchedules?.regimeDetection || '5 16 * * 1-5';
   try {
-    regimeDetectionJob = new Cron('5 16 * * 1-5', { timezone: 'America/New_York', protect: true }, async () => {
+    regimeDetectionJob = new Cron(regimeCron, { timezone: 'America/New_York', protect: true }, async () => {
       await runRegimeDetectionJob(db);
     });
-    log.info('regime-detection job registered', { cron: '5 16 * * 1-5' });
+    log.info('regime-detection job registered', { cron: regimeCron });
   } catch (err) {
     log.error('failed to register regime-detection job', { error: err instanceof Error ? err.message : String(err) });
     regimeDetectionJob = null;
   }
 
-  // Weekly planner job (Mondays at 16:10 ET)
+  // Weekly planner job (configurable, default Mondays at 16:10 ET)
+  const plannerCron = settings.jobSchedules?.weeklyPlanner || '10 16 * * 1';
   try {
-    weeklyPlannerJob = new Cron('10 16 * * 1', { timezone: 'America/New_York', protect: true }, async () => {
+    weeklyPlannerJob = new Cron(plannerCron, { timezone: 'America/New_York', protect: true }, async () => {
       await runWeeklyPlannerJob(db);
     });
-    log.info('weekly-planner job registered', { cron: '10 16 * * 1' });
+    log.info('weekly-planner job registered', { cron: plannerCron });
   } catch (err) {
     log.error('failed to register weekly-planner job', { error: err instanceof Error ? err.message : String(err) });
     weeklyPlannerJob = null;
   }
 
-  // Tranche executor job (16:15 ET on trading days)
+  // Tranche executor job (configurable, default 16:15 ET on trading days)
+  const trancheCron = settings.jobSchedules?.trancheExecutor || '15 16 * * 1-5';
   try {
-    trancheExecutorJob = new Cron('15 16 * * 1-5', { timezone: 'America/New_York', protect: true }, async () => {
+    trancheExecutorJob = new Cron(trancheCron, { timezone: 'America/New_York', protect: true }, async () => {
       await runTrancheExecutorJob(db);
     });
-    log.info('tranche-executor job registered', { cron: '15 16 * * 1-5' });
+    log.info('tranche-executor job registered', { cron: trancheCron });
   } catch (err) {
     log.error('failed to register tranche-executor job', { error: err instanceof Error ? err.message : String(err) });
     trancheExecutorJob = null;
@@ -342,39 +347,44 @@ export interface JobSchedule {
 /** Return schedule info for all registered jobs. */
 export function getJobSchedules(): JobSchedule[] {
   const settings = getSettings();
+  const jobSchedules = settings.jobSchedules || {};
   const jobs: JobSchedule[] = [];
 
+  const signalCron = jobSchedules.signalCollection || '0 16 * * 1-5';
   if (signalCollectionJob) {
     jobs.push({
       name: 'Signal Collection',
-      cron: '0 16 * * 1-5',
+      cron: signalCron,
       nextRun: signalCollectionJob.nextRun()?.toISOString() ?? null,
       enabled: settings.signals.enabled,
     });
   }
 
+  const regimeCron = jobSchedules.regimeDetection || '5 16 * * 1-5';
   if (regimeDetectionJob) {
     jobs.push({
       name: 'Regime Detection',
-      cron: '5 16 * * 1-5',
+      cron: regimeCron,
       nextRun: regimeDetectionJob.nextRun()?.toISOString() ?? null,
       enabled: settings.regime.enabled,
     });
   }
 
+  const plannerCron = jobSchedules.weeklyPlanner || '10 16 * * 1';
   if (weeklyPlannerJob) {
     jobs.push({
       name: 'Weekly Planner',
-      cron: '10 16 * * 1',
+      cron: plannerCron,
       nextRun: weeklyPlannerJob.nextRun()?.toISOString() ?? null,
       enabled: settings.execution.enabled,
     });
   }
 
+  const trancheCron = jobSchedules.trancheExecutor || '15 16 * * 1-5';
   if (trancheExecutorJob) {
     jobs.push({
       name: 'Tranche Executor',
-      cron: '15 16 * * 1-5',
+      cron: trancheCron,
       nextRun: trancheExecutorJob.nextRun()?.toISOString() ?? null,
       enabled: settings.execution.enabled,
     });
@@ -390,10 +400,11 @@ export function getJobSchedules(): JobSchedule[] {
     enabled: curatorEnabled,
   });
 
+  const snapshotCron = jobSchedules.snapshot || '30 16 * * 1-5';
   if (snapshotCronJob) {
     jobs.push({
       name: 'Snapshot',
-      cron: '30 16 * * 1-5',
+      cron: snapshotCron,
       nextRun: snapshotCronJob.nextRun()?.toISOString() ?? null,
       enabled: true, // Always enabled
     });
