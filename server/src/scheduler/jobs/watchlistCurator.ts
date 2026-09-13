@@ -9,17 +9,10 @@ import type Database from 'better-sqlite3';
 import { logger } from '../../lib/logger.js';
 import { getSettings } from '../../config/settingsService.js';
 import { runWatchlistCuration } from '../../services/watchlistCurationService.js';
-import { isTradingDay } from '../marketCalendar.js';
 
 const log = logger.child({ component: 'watchlist-curator-job' });
 
 export async function runWatchlistCuratorJob(db: Database.Database): Promise<void> {
-  // Skip on non-trading days
-  if (!isTradingDay(new Date())) {
-    log.info('watchlist curator skipped (not a trading day)');
-    return;
-  }
-
   const settings = getSettings();
 
   // Skip if not in dynamic mode

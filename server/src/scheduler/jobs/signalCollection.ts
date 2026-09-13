@@ -5,7 +5,7 @@
  */
 
 import type Database from 'better-sqlite3';
-import { isTradingDay } from '../marketCalendar.js';
+
 import { logger } from '../../lib/logger.js';
 import { runSignalCollection } from '../../services/signalCollectionService.js';
 import { SignalSnapshotsRepo } from '../../repos/signalSnapshotsRepo.js';
@@ -32,7 +32,6 @@ export async function runSignalCollectionJob(
   db: Database.Database,
   trigger: RunTrigger = 'signal_collection'
 ): Promise<SignalCollectionSummary> {
-  const now = new Date();
   const settings = getSettings();
   const runsRepo = new RunsRepo(db);
 
@@ -59,11 +58,6 @@ export async function runSignalCollectionJob(
   });
 
   try {
-    if (!isTradingDay(now) && trigger !== 'manual') {
-      runsRepo.setSkipped(runId, 'not a trading day');
-      return summary;
-    }
-
     if (!settings.signals.enabled) {
       runsRepo.setSkipped(runId, 'signal collection disabled');
       return summary;

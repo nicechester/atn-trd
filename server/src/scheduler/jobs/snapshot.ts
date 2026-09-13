@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { isTradingDay } from '../marketCalendar.js';
+
 import { logger } from '../../lib/logger.js';
 import { SnapshotServiceImpl } from '../../services/snapshotService.js';
 import { PortfolioServiceImpl } from '../../services/portfolioService.js';
@@ -26,25 +26,7 @@ function computeCorrectDirection(direction: string, return5d: number): number {
  * Skips non-trading days.
  */
 export async function runSnapshotJob(db: Database.Database): Promise<void> {
-  const now = new Date();
   const runsRepo = new RunsRepo(db);
-
-  if (!isTradingDay(now)) {
-    const runId = runsRepo.create({
-      trigger: 'snapshot',
-      status: 'running',
-      startedAt: Date.now(),
-      finishedAt: null,
-      model: null,
-      settingsSnapshot: JSON.stringify({}),
-      error: null,
-      tokenUsageJson: null,
-      skipReason: null,
-      summaryJson: null,
-    });
-    runsRepo.setSkipped(runId, 'not a trading day');
-    return;
-  }
 
   const runId = runsRepo.create({
     trigger: 'snapshot',

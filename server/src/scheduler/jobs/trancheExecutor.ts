@@ -5,7 +5,7 @@
  */
 
 import type Database from 'better-sqlite3';
-import { isTradingDay } from '../marketCalendar.js';
+
 import { logger } from '../../lib/logger.js';
 import { SignalSnapshotsRepo } from '../../repos/signalSnapshotsRepo.js';
 import { StrategicPlansRepo } from '../../repos/strategicPlansRepo.js';
@@ -51,7 +51,6 @@ export async function runTrancheExecutorJob(
   db: Database.Database,
   trigger: RunTrigger = 'tranche_execution'
 ): Promise<TrancheExecutionSummary> {
-  const now = new Date();
   const settings = getSettings();
   const runsRepo = new RunsRepo(db);
 
@@ -82,11 +81,6 @@ export async function runTrancheExecutorJob(
   });
 
   try {
-    if (!isTradingDay(now) && trigger !== 'manual') {
-      runsRepo.setSkipped(runId, 'not a trading day');
-      return summary;
-    }
-
     if (!settings.execution.enabled) {
       runsRepo.setSkipped(runId, 'execution disabled');
       return summary;
