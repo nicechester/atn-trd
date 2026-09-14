@@ -88,6 +88,11 @@ export interface MacroPayload {
 export interface MacroQuery {
   /** Defaults to `DEFAULT_SERIES_IDS`. */
   seriesIds?: string[];
+  /**
+   * ALFRED vintage mode: fetch data as it was known on this date.
+   * Format: YYYY-MM-DD. When set, returns point-in-time values.
+   */
+  asOfDate?: string;
 }
 
 export interface FredObservationRaw {
@@ -155,7 +160,7 @@ export class FredMacroDataSource extends BaseDataSource<MacroQuery, DataSourceRe
     const seriesIds = this.resolveSeriesIds(query.seriesIds);
 
     const settled = await Promise.allSettled(
-      seriesIds.map((id) => this.fetchSeries(key, id, ctx))
+      seriesIds.map((id) => this.fetchSeries(key, id, ctx, query.asOfDate))
     );
 
     const series: MacroSeries[] = [];
@@ -218,12 +223,18 @@ export class FredMacroDataSource extends BaseDataSource<MacroQuery, DataSourceRe
   private async fetchSeries(
     key: string,
     seriesId: string,
-    ctx?: FetchContext
+    ctx?: FetchContext,
+    asOfDate?: string
   ): Promise<{ series: MacroSeries; raw: FredObservationsResponse }> {
-    const path =
+    let path =
       `series/observations?series_id=${encodeURIComponent(seriesId)}` +
       `&api_key=${encodeURIComponent(key)}&file_type=json` +
       `&sort_order=desc&limit=${OBSERVATION_LIMIT}`;
+
+    // ALFRED vintage mode: get data as it was known on asOfDate
+    if (asOfDate) {
+      path += `&realtime_start=${asOfDate}&realtime_end=${asOfDate}`;    
+    }
 
     let body: FredObservationsResponse;
     try {
@@ -320,5 +331,23 @@ export class FredMacroDataSource extends BaseDataSource<MacroQuery, DataSourceRe
     return latest
       ? `Fetched ${series.label ?? series.seriesId}: ${latest.value} (${latest.date})`
       : `Fetched ${series.seriesId}`;
+  }
+
+  /**
+   * Get a single observation as it was known on a specific date (ALFRED vintage).
+   * Useful for backtesting to avoid look-ahead bias.
+   *
+   * @param seriesId - FRED series ID (e.g., 'UNRATE', 'CPIAUCSL')
+   * @param asOfDate - Date to query vintage data for (YYYY-MM-DD)
+   * @returns The most recent observation available as of that date, or null
+   */
+  async getVintageObservation(
+    seriesId: string,
+    asOfDate: string,
+    ctx?: FetchContext
+  ): Promise<MacroObservation | null> {
+    const result = await this.fetch({ seriesIds: [seriesId], asOfDate }, ctx);
+    const series = result.data.series.find((s) => s.seriesId === seriesId);
+    return series?.latest ?? null;
   }
 }

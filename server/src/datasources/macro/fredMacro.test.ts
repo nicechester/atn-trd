@@ -240,4 +240,40 @@ describe('FredMacroDataSource', () => {
     assert.equal(health.configured, true);
     assert.match(health.detail, /HTTP 503/);
   });
+
+  it('fetches vintage data with asOfDate (ALFRED mode)', async () => {
+    const { source, urls } = harness(
+      {
+        UNRATE: () =>
+          jsonResponse(observations([
+            ['2022-12-01', '3.5'],
+            ['2022-11-01', '3.6'],
+          ], '2023-01-15')),
+      },
+      { defaultSeriesIds: ['UNRATE'] }
+    );
+
+    const result = await source.fetch({ asOfDate: '2023-01-15' });
+
+    assert.match(urls[0]!, /realtime_start=2023-01-15/);
+    assert.match(urls[0]!, /realtime_end=2023-01-15/);
+    assert.deepEqual(result.data.series[0]!.latest, { date: '2022-12-01', value: 3.5 });
+  });
+
+  it('getVintageObservation returns single observation for a date', async () => {
+    const { source } = harness(
+      {
+        CPIAUCSL: () =>
+          jsonResponse(observations([
+            ['2023-01-01', '299.170'],
+            ['2022-12-01', '298.012'],
+          ], '2023-02-14')),
+      },
+      { defaultSeriesIds: ['CPIAUCSL'] }
+    );
+
+    const obs = await source.getVintageObservation('CPIAUCSL', '2023-02-14');
+
+    assert.deepEqual(obs, { date: '2023-01-01', value: 299.17 });
+  });
 });
