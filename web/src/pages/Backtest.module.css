@@ -1,10 +1,10 @@
 .description {
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   margin-bottom: 1.5rem;
 }
 
 .muted {
-  color: var(--text-muted);
+  color: var(--color-text-muted);
 }
 
 .table {
@@ -17,17 +17,17 @@
 .table td {
   padding: 0.75rem;
   text-align: left;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .table th {
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   font-size: 0.875rem;
 }
 
 .link {
-  color: var(--primary);
+  color: var(--color-primary);
   text-decoration: none;
 }
 
@@ -44,37 +44,37 @@
 
 .status.running {
   background: var(--warning-bg);
-  color: var(--warning);
+  color: var(--color-warning);
 }
 
 .status.succeeded {
   background: var(--success-bg);
-  color: var(--success);
+  color: var(--color-success);
 }
 
 .status.failed {
   background: var(--error-bg);
-  color: var(--error);
+  color: var(--color-error);
 }
 
 .backLink {
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   text-decoration: none;
   font-size: 0.875rem;
 }
 
 .backLink:hover {
-  color: var(--text);
+  color: var(--color-text);
 }
 
 .dateRange {
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   margin-bottom: 1.5rem;
 }
 
 .errorBox {
   background: var(--error-bg);
-  color: var(--error);
+  color: var(--color-error);
   padding: 1rem;
   border-radius: 8px;
   margin-bottom: 1.5rem;
@@ -82,7 +82,7 @@
 
 .runningBox {
   background: var(--warning-bg);
-  color: var(--warning);
+  color: var(--color-warning);
   padding: 1rem;
   border-radius: 8px;
   margin-bottom: 1.5rem;
@@ -94,7 +94,7 @@
 .spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid var(--warning);
+  border: 2px solid var(--color-warning);
   border-top-color: transparent;
   border-radius: 50%;
   animation: spin 1s linear infinite;
@@ -112,15 +112,15 @@
 }
 
 .metricCard {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 1rem;
 }
 
 .metricLabel {
   font-size: 0.75rem;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   margin-bottom: 0.25rem;
 }
 
@@ -130,11 +130,11 @@
 }
 
 .positive {
-  color: var(--success);
+  color: var(--color-success);
 }
 
 .negative {
-  color: var(--error);
+  color: var(--color-error);
 }
 
 .chartSection {
@@ -152,8 +152,8 @@
 }
 
 .chart {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
@@ -171,7 +171,7 @@
 }
 
 .zeroLine {
-  stroke: var(--border);
+  stroke: var(--color-border);
   stroke-width: 1;
   stroke-dasharray: 2 2;
 }
@@ -188,7 +188,7 @@
 
 .legendText {
   font-size: 0.75rem;
-  fill: var(--text);
+  fill: var(--color-text);
 }
 
 .legend {
@@ -203,7 +203,7 @@
   align-items: center;
   gap: 0.5rem;
   font-size: 0.875rem;
-  color: var(--text);
+  color: var(--color-text);
 }
 
 .legendLineStrategy {
@@ -228,25 +228,30 @@
 }
 
 .buy {
-  color: var(--success);
+  color: var(--color-success);
 }
 
 .sell {
-  color: var(--error);
+  color: var(--color-error);
 }
 
 .showMoreBtn {
   margin-top: 1rem;
   padding: 0.5rem 1rem;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   cursor: pointer;
-  color: var(--text);
+  color: var(--color-text);
 }
 
 .showMoreBtn:hover {
-  background: var(--border);
+  background: var(--color-border);
+}
+
+.attributionSection {
+  margin-bottom: 3rem;
+  padding-bottom: 2rem;
 }
 
 .attributionSection h3 {
@@ -258,16 +263,22 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.5rem;
+  min-height: 44px;
+}
+
+.header h1 {
+  margin: 0;
 }
 
 .newBtn {
   padding: 0.5rem 1rem;
-  background: var(--primary);
+  background: #2563eb;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-weight: 500;
+  flex-shrink: 0;
 }
 
 .newBtn:hover {
@@ -275,8 +286,8 @@
 }
 
 .form {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
@@ -290,7 +301,7 @@
   display: block;
   margin-bottom: 0.25rem;
   font-size: 0.875rem;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
 }
 
 .formRow input[type="text"],
@@ -299,10 +310,10 @@
   width: 100%;
   max-width: 300px;
   padding: 0.5rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 .formRow input[type="checkbox"] {
@@ -311,7 +322,7 @@
 
 .submitBtn {
   padding: 0.75rem 1.5rem;
-  background: var(--primary);
+  background: var(--color-primary);
   color: white;
   border: none;
   border-radius: 4px;

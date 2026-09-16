@@ -632,6 +632,9 @@ export const backtest = {
   list(): Promise<{ runs: BacktestRun[] }> {
     return request<{ runs: BacktestRun[] }>('/backtest');
   },
+  getDateRange(): Promise<{ minDate: string; maxDate: string; note: string }> {
+    return request('/backtest/date-range');
+  },
   get(id: string): Promise<{ run: BacktestRun; metrics: BacktestMetrics | null; equityCurve?: BacktestEquityPoint[]; trades?: BacktestTrade[] }> {
     return request(`/backtest/${encodeURIComponent(id)}`);
   },

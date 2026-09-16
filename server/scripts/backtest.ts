@@ -12,6 +12,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { FnspidDataSource } from '../src/datasources/fnspid/index.js';
 import { BacktestRunner, type BacktestConfig, type BacktestDeps } from '../src/backtest/runner.js';
+import { runSignalBasedTradingLogic, preloadPriceHistory, type SignalProvider } from '../src/backtest/tradingLogic.js';
 import { DEFAULT_SETTINGS, type Settings } from '@atn-trd/shared';
 import { runMigrations } from '../src/db/migrate.js';
 
@@ -28,6 +29,7 @@ interface BacktestArgs {
   fnspidDb: string;
   atnDb: string;
   interval: number;
+  backtestId?: string;
 }
 
 function parseArguments(): BacktestArgs {
@@ -40,6 +42,7 @@ function parseArguments(): BacktestArgs {
       'fnspid-db': { type: 'string', default: DEFAULT_FNSPID_DB },
       'atn-db': { type: 'string', default: DEFAULT_ATN_DB },
       interval: { type: 'string', default: '7' },
+      'backtest-id': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -59,6 +62,7 @@ Options:
   --fnspid-db       Path to fnspid.db (default: ${DEFAULT_FNSPID_DB})
   --atn-db          Path to atn.db (default: ${DEFAULT_ATN_DB})
   --interval        Trading interval in days (default: 7 = weekly)
+  --backtest-id     Use existing backtest record (for API-triggered runs)
   -h, --help        Show this help message
 `);
     process.exit(values.help ? 0 : 1);
@@ -72,47 +76,24 @@ Options:
     fnspidDb: values['fnspid-db'] ?? DEFAULT_FNSPID_DB,
     atnDb: values['atn-db'] ?? DEFAULT_ATN_DB,
     interval: parseInt(values.interval ?? '7', 10),
+    backtestId: values['backtest-id'] ?? process.env.BACKTEST_ID,
   };
 }
 
-/**
- * Compute composite score from FNSPID sentiment + price momentum.
- * Simplified version of signalCollectionService logic.
- */
-function computeCompositeScore(
-  sentimentScore: number | null,
-  priceVsSma50: number | null,
-  weights: { sentiment: number; priceMomentum: number }
-): number | null {
-  let score = 0;
-  let totalWeight = 0;
-
-  if (sentimentScore !== null) {
-    score += weights.sentiment * sentimentScore;
-    totalWeight += weights.sentiment;
-  }
-
-  if (priceVsSma50 !== null) {
-    const normalizedMomentum = Math.max(-1, Math.min(1, priceVsSma50 * 5));
-    score += weights.priceMomentum * normalizedMomentum;
-    totalWeight += weights.priceMomentum;
-  }
-
-  if (totalWeight <= 0) return null;
-
-  const rawScore = score / totalWeight;
-  return (rawScore + 1) / 2; // Rescale to [0, 1]
-}
-
-/**
- * Compute price vs 50-day SMA.
- */
-function computePriceVsSma50(prices: Array<{ adjCloseCents: number }>): number | null {
-  if (prices.length < 50) return null;
-  const currentPrice = prices[prices.length - 1].adjCloseCents;
-  const sma50 = prices.slice(-50).reduce((sum, p) => sum + p.adjCloseCents, 0) / 50;
-  if (sma50 === 0) return null;
-  return (currentPrice - sma50) / sma50;
+/** Adapt FnspidDataSource to SignalProvider interface */
+function createFnspidSignalProvider(fnspid: FnspidDataSource): SignalProvider {
+  return {
+    getSentiment(symbol: string, date: string): number | null {
+      const sentiment = fnspid.getSentimentAsOf(symbol, date);
+      return sentiment?.sentimentScore ?? null;
+    },
+    getPrice(symbol: string, date: string) {
+      return fnspid.getPrice(symbol, date);
+    },
+    getPriceRange(symbol: string, startDate: string, endDate: string) {
+      return fnspid.getPriceRange(symbol, startDate, endDate);
+    },
+  };
 }
 
 async function main() {
@@ -167,118 +148,21 @@ async function main() {
     },
   };
 
-  // Price history cache for SMA calculation - pre-load 60 days before start
-  const priceHistory: Map<string, Array<{ date: string; adjCloseCents: number }>> = new Map();
-  
-  // Pre-load price history for SMA calculation
-  const preloadStart = new Date(args.start);
-  preloadStart.setDate(preloadStart.getDate() - 70); // 70 days before to ensure 50+ trading days
-  const preloadStartStr = preloadStart.toISOString().split('T')[0];
-  
-  console.log(`Pre-loading price history from ${preloadStartStr}...`);
-  for (const symbol of allSymbols) {
-    const prices = fnspid.getPriceRange(symbol, preloadStartStr, args.start);
-    if (prices.length > 0) {
-      priceHistory.set(symbol, prices.map(p => ({ date: p.date, adjCloseCents: p.adjCloseCents })));
-      console.log(`  ${symbol}: ${prices.length} days pre-loaded`);
-    }
+  // Create signal provider and pre-load price history
+  const signalProvider = createFnspidSignalProvider(fnspid);
+  console.log(`Pre-loading price history...`);
+  const priceHistory = preloadPriceHistory(signalProvider, allSymbols, args.start);
+  for (const [symbol, prices] of priceHistory) {
+    console.log(`  ${symbol}: ${prices.length} days pre-loaded`);
   }
 
-  // Trading logic using FNSPID data
-  const runTradingLogic: BacktestDeps['runTradingLogic'] = async ({ date, symbols, broker }) => {
-    const positions = broker.getPositionsSnapshot();
-    const cashCents = broker.getCashCents();
-
-    // Collect signals for each symbol
-    const signals: Array<{ symbol: string; score: number }> = [];
-
-    for (const symbol of symbols) {
-      if (symbol === 'SPY') continue; // Skip benchmark
-
-      // Get sentiment
-      const sentiment = fnspid.getSentimentAsOf(symbol, date);
-      const sentimentScore = sentiment?.sentimentScore ?? null;
-
-      // Get price history for SMA
-      let history = priceHistory.get(symbol);
-      if (!history) {
-        history = [];
-        priceHistory.set(symbol, history);
-      }
-
-      const price = fnspid.getPrice(symbol, date);
-      if (price) {
-        history.push({ date, adjCloseCents: price.adjCloseCents });
-        if (history.length > 60) history.shift(); // Keep last 60 days
-      }
-
-      const priceVsSma50 = computePriceVsSma50(history);
-      const compositeScore = computeCompositeScore(sentimentScore, priceVsSma50, {
-        sentiment: settings.signals.weights.sentiment,
-        priceMomentum: settings.signals.weights.priceMomentum,
-      });
-
-      if (compositeScore !== null && compositeScore >= settings.signals.buyThreshold) {
-        signals.push({ symbol, score: compositeScore });
-      }
-    }
-
-    // Sort by score descending
-    signals.sort((a, b) => b.score - a.score);
-
-    // Simple allocation: equal weight among top signals
-    const maxPositions = 5;
-    const targetSymbols = signals.slice(0, maxPositions).map(s => s.symbol);
-
-    // Buy signals we don't have
-    for (const symbol of targetSymbols) {
-      if (positions[symbol]) continue; // Already have position
-
-      const price = fnspid.getPrice(symbol, date);
-      if (!price || price.openCents <= 0) continue;
-
-      const allocationCents = Math.floor(cashCents / (maxPositions - Object.keys(positions).length));
-      const qty = Math.floor(allocationCents / price.openCents);
-
-      if (qty > 0) {
-        await broker.submitOrder({
-          clientOrderId: `bt-${date}-${symbol}`,
-          symbol,
-          side: 'buy',
-          qty,
-          type: 'market',
-          tif: 'day',
-        });
-      }
-    }
-
-    // Sell positions that dropped below threshold
-    for (const symbol of Object.keys(positions)) {
-      if (symbol === 'SPY') continue;
-
-      const sentiment = fnspid.getSentimentAsOf(symbol, date);
-      const sentimentScore = sentiment?.sentimentScore ?? null;
-      const history = priceHistory.get(symbol) ?? [];
-      const priceVsSma50 = computePriceVsSma50(history);
-      const compositeScore = computeCompositeScore(sentimentScore, priceVsSma50, {
-        sentiment: settings.signals.weights.sentiment,
-        priceMomentum: settings.signals.weights.priceMomentum,
-      });
-
-      if (compositeScore !== null && compositeScore < settings.signals.sellThreshold) {
-        const qty = positions[symbol];
-        if (qty > 0) {
-          await broker.submitOrder({
-            clientOrderId: `bt-${date}-${symbol}-sell`,
-            symbol,
-            side: 'sell',
-            qty,
-            type: 'market',
-            tif: 'day',
-          });
-        }
-      }
-    }
+  // Trading logic using shared module
+  const runTradingLogic: BacktestDeps['runTradingLogic'] = async (params) => {
+    await runSignalBasedTradingLogic({
+      ...params,
+      signalProvider,
+      priceHistory,
+    });
   };
 
   // Create backtest deps
@@ -293,7 +177,8 @@ async function main() {
   // Run backtest
   const runner = new BacktestRunner(deps);
   const config: BacktestConfig = {
-    name: `CLI Backtest ${args.start} to ${args.end}`,
+    backtestId: args.backtestId,
+    name: args.backtestId ? undefined : `CLI Backtest ${args.start} to ${args.end}`,
     startDate: args.start,
     endDate: args.end,
     symbols: allSymbols,

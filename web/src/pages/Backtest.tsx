@@ -378,6 +378,7 @@ function NewBacktestForm({ onCreated }: { onCreated: () => void }) {
   const { addToast } = useToast();
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [dateRange, setDateRange] = useState<{ minDate: string; maxDate: string } | null>(null);
 
   // Form state
   const [name, setName] = useState('');
@@ -390,6 +391,20 @@ function NewBacktestForm({ onCreated }: { onCreated: () => void }) {
   useEffect(() => {
     watchlistApi.list().then(res => {
       setWatchlist(res.data.filter(w => w.enabled));
+    }).catch(() => {});
+
+    // Load available date range
+    backtestApi.getDateRange().then(range => {
+      setDateRange(range);
+      // Set default dates to last 6 months of available data
+      const end = new Date(range.maxDate);
+      const start = new Date(range.maxDate);
+      start.setMonth(start.getMonth() - 6);
+      if (start < new Date(range.minDate)) {
+        start.setTime(new Date(range.minDate).getTime());
+      }
+      setStartDate(start.toISOString().slice(0, 10));
+      setEndDate(end.toISOString().slice(0, 10));
     }).catch(() => {});
   }, []);
 
@@ -437,12 +452,26 @@ function NewBacktestForm({ onCreated }: { onCreated: () => void }) {
         <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="My Backtest" />
       </div>
       <div className={styles.formRow}>
-        <label>Start Date</label>
-        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required />
+        <label>Start Date {dateRange && <span className={styles.muted}>(data available: {dateRange.minDate} to {dateRange.maxDate})</span>}</label>
+        <input 
+          type="date" 
+          value={startDate} 
+          onChange={e => setStartDate(e.target.value)} 
+          min={dateRange?.minDate} 
+          max={dateRange?.maxDate}
+          required 
+        />
       </div>
       <div className={styles.formRow}>
         <label>End Date</label>
-        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required />
+        <input 
+          type="date" 
+          value={endDate} 
+          onChange={e => setEndDate(e.target.value)} 
+          min={dateRange?.minDate} 
+          max={dateRange?.maxDate}
+          required 
+        />
       </div>
       <div className={styles.formRow}>
         <label>Starting Cash ($)</label>

@@ -89,24 +89,32 @@ export class BacktestRunner {
     });
 
     try {
-      // Get initial benchmark price
-      const initialBenchmark = await this.deps.getBenchmarkPrice(config.startDate);
+      // Find first trading day with benchmark data for normalization
+      let initialBenchmarkPrice: number | null = null;
+      let benchmarkStartDate = config.startDate;
+      for (let i = 0; i < 10; i++) { // Try up to 10 days to find data
+        initialBenchmarkPrice = await this.deps.getBenchmarkPrice(benchmarkStartDate);
+        if (initialBenchmarkPrice) break;
+        benchmarkStartDate = nextTradingDateStr(benchmarkStartDate);
+      }
 
-      // Record initial snapshot
       const initialValue = await broker.getPortfolioValue(config.startDate);
+
+      // Record initial snapshot (benchmark starts at same value as portfolio)
       this.repo.createSnapshot({
         backtestId,
         asOfDate: config.startDate,
         cashCents: broker.getCashCents(),
         positions: broker.getPositionsSnapshot(),
         totalValueCents: initialValue,
-        benchmarkValueCents: initialBenchmark ?? undefined,
+        benchmarkValueCents: initialValue, // Normalized to match starting portfolio
       });
 
       // Iterate through each trading day (start after initial snapshot)
       let currentDate = nextTradingDateStr(config.startDate);
       let daysSinceLastTrade = 0;
       const tradingInterval = config.tradingIntervalDays ?? 7; // Default: weekly
+      let lastBenchmarkPrice = initialBenchmarkPrice; // Track last known benchmark price for holidays
 
       while (currentDate <= config.endDate) {
         if (isTradingDayStr(currentDate)) {
@@ -142,7 +150,19 @@ export class BacktestRunner {
 
           // Record end-of-day snapshot
           const portfolioValue = await broker.getPortfolioValue(currentDate);
-          const benchmarkPrice = await this.deps.getBenchmarkPrice(currentDate);
+          const currentBenchmarkPrice = await this.deps.getBenchmarkPrice(currentDate);
+
+          // Update last known benchmark price if we got data
+          if (currentBenchmarkPrice) {
+            lastBenchmarkPrice = currentBenchmarkPrice;
+          }
+
+          // Normalize benchmark: if SPY went from $370 to $400, and we started with $100k,
+          // benchmark value = $100k * (400/370). Use last known price on holidays.
+          const benchmarkPriceToUse = currentBenchmarkPrice ?? lastBenchmarkPrice;
+          const normalizedBenchmark = initialBenchmarkPrice && benchmarkPriceToUse
+            ? Math.round(initialValue * (benchmarkPriceToUse / initialBenchmarkPrice))
+            : undefined;
 
           this.repo.createSnapshot({
             backtestId,
@@ -150,7 +170,7 @@ export class BacktestRunner {
             cashCents: broker.getCashCents(),
             positions: broker.getPositionsSnapshot(),
             totalValueCents: portfolioValue,
-            benchmarkValueCents: benchmarkPrice ?? undefined,
+            benchmarkValueCents: normalizedBenchmark,
           });
 
           log.debug('backtest day complete', {
