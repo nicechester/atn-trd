@@ -89,11 +89,13 @@ function BacktestList() {
 }
 
 function BacktestDetail({ id }: { id: string }) {
+  const navigate = useNavigate();
   const [run, setRun] = useState<BacktestRun | null>(null);
   const [metrics, setMetrics] = useState<BacktestMetrics | null>(null);
   const [equity, setEquity] = useState<BacktestEquityPoint[]>([]);
   const [trades, setTrades] = useState<BacktestTrade[]>([]);
   const [loading, setLoading] = useState(true);
+  const [rerunning, setRerunning] = useState(false);
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -127,12 +129,43 @@ function BacktestDetail({ id }: { id: string }) {
     }
   }
 
+  async function handleRunAgain() {
+    if (!run) return;
+    setRerunning(true);
+    try {
+      const result = await backtestApi.create({
+        name: run.name ? `${run.name} (rerun)` : undefined,
+        startDate: run.startDate,
+        endDate: run.endDate,
+        symbols: run.symbols,
+      });
+      addToast('Backtest started', 'success');
+      navigate(`/backtest/${result.backtestId}`);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to start backtest', 'error');
+    } finally {
+      setRerunning(false);
+    }
+  }
+
   if (loading) return <p>Loading…</p>;
   if (!run) return <p>Backtest not found</p>;
 
   return (
     <div>
-      <Link to="/backtest" className={styles.backLink}>← Back to Backtests</Link>
+      <div className={styles.detailHeader}>
+        <Link to="/backtest" className={styles.backLink}>← Back to Backtests</Link>
+        {run.status !== 'running' && (
+          <div className={styles.detailActions}>
+            <button onClick={handleRunAgain} disabled={rerunning} className={styles.runAgainBtn}>
+              {rerunning ? 'Starting...' : '↻ Run Again'}
+            </button>
+            <button onClick={() => window.print()} className={styles.printBtn}>
+              🖨 Print
+            </button>
+          </div>
+        )}
+      </div>
       <h1>{run.name || `Backtest ${run.id.slice(0, 8)}`}</h1>
       <p className={styles.dateRange}>{run.startDate} → {run.endDate}</p>
 
@@ -147,6 +180,9 @@ function BacktestDetail({ id }: { id: string }) {
       )}
 
       {metrics && <MetricsPanel metrics={metrics} />}
+      {run.settingsSnapshot && Object.keys(run.settingsSnapshot).length > 0 && (
+        <SettingsPanel settings={run.settingsSnapshot} />
+      )}
       {equity.length > 0 && <EquityChart equity={equity} />}
       {trades.length > 0 && <TradesTable trades={trades} />}
       {metrics?.perSymbol && <SymbolAttribution perSymbol={metrics.perSymbol} />}
@@ -194,6 +230,69 @@ function MetricsPanel({ metrics }: { metrics: BacktestMetrics }) {
         <div className={styles.metricLabel}>Total Trades</div>
         <div className={styles.metricValue}>{metrics.totalTrades}</div>
       </div>
+    </div>
+  );
+}
+
+function SettingsPanel({ settings }: { settings: Record<string, unknown> }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Extract key settings for display
+  const signals = settings.signals as Record<string, unknown> | undefined;
+  const weights = signals?.weights as Record<string, number> | undefined;
+  const risk = settings.risk as Record<string, unknown> | undefined;
+
+  const buyThreshold = signals?.buyThreshold as number | undefined;
+  const sellThreshold = signals?.sellThreshold as number | undefined;
+  const maxPositions = risk?.maxConcurrentPositions as number | undefined;
+  const maxPositionWeight = risk?.maxPositionWeightPercent as number | undefined;
+
+  const hasKeySettings = weights || buyThreshold !== undefined;
+
+  const content = hasKeySettings ? (
+    <div className={styles.settingsGrid}>
+      {weights && (
+        <div className={styles.settingsGroup}>
+          <h4>Signal Weights</h4>
+          <ul>
+            {Object.entries(weights)
+              .filter(([, val]) => val > 0)
+              .map(([key, val]) => (
+                <li key={key}>{key}: {(val * 100).toFixed(0)}%</li>
+              ))}
+          </ul>
+        </div>
+      )}
+      <div className={styles.settingsGroup}>
+        <h4>Thresholds</h4>
+        <ul>
+          <li>Buy: {buyThreshold ?? '—'}</li>
+          <li>Sell: {sellThreshold ?? '—'}</li>
+        </ul>
+      </div>
+      {(maxPositions || maxPositionWeight) && (
+        <div className={styles.settingsGroup}>
+          <h4>Risk Limits</h4>
+          <ul>
+            {maxPositions && <li>Max positions: {maxPositions}</li>}
+            {maxPositionWeight && <li>Max position weight: {maxPositionWeight}%</li>}
+          </ul>
+        </div>
+      )}
+    </div>
+  ) : (
+    <pre className={styles.settingsJson}>{JSON.stringify(settings, null, 2)}</pre>
+  );
+
+  return (
+    <div className={styles.settingsSection}>
+      <h3 onClick={() => setExpanded(!expanded)} style={{ cursor: 'pointer' }} className={styles.settingsToggle}>
+        Strategy Settings {expanded ? '▼' : '▶'}
+      </h3>
+      {/* Screen: show based on expanded state */}
+      {expanded && <div className={styles.settingsContent}>{content}</div>}
+      {/* Print: always show */}
+      <div className={styles.settingsContentPrint}>{content}</div>
     </div>
   );
 }
@@ -304,7 +403,8 @@ function TradesTable({ trades }: { trades: BacktestTrade[] }) {
   return (
     <div className={styles.tradesSection}>
       <h3>Trades ({trades.length})</h3>
-      <table className={styles.table}>
+      {/* Screen: paginated */}
+      <table className={`${styles.table} ${styles.screenOnly}`}>
         <thead>
           <tr>
             <th>Date</th>
@@ -316,6 +416,29 @@ function TradesTable({ trades }: { trades: BacktestTrade[] }) {
         </thead>
         <tbody>
           {displayTrades.map((t, i) => (
+            <tr key={i}>
+              <td>{t.date}</td>
+              <td>{t.symbol}</td>
+              <td className={t.side === 'buy' ? styles.buy : styles.sell}>{t.side}</td>
+              <td>{Number.isInteger(t.qty) ? t.qty : t.qty.toFixed(2)}</td>
+              <td>${t.price.toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {/* Print: all trades */}
+      <table className={`${styles.table} ${styles.printOnly}`}>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Symbol</th>
+            <th>Side</th>
+            <th>Quantity</th>
+            <th>Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          {trades.map((t, i) => (
             <tr key={i}>
               <td>{t.date}</td>
               <td>{t.symbol}</td>

@@ -15,6 +15,7 @@ import { BacktestRunner, type BacktestConfig, type BacktestDeps } from '../src/b
 import { runSignalBasedTradingLogic, preloadPriceHistory, type SignalProvider } from '../src/backtest/tradingLogic.js';
 import { DEFAULT_SETTINGS, type Settings } from '@atn-trd/shared';
 import { runMigrations } from '../src/db/migrate.js';
+import { SettingsRepo } from '../src/repos/settingsRepo.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -133,20 +134,48 @@ async function main() {
   // Ensure SPY is included for benchmark
   const allSymbols = args.symbols.includes('SPY') ? args.symbols : [...args.symbols, 'SPY'];
 
-  // Settings with simplified weights (no options/fundamentals in FNSPID)
-  const settings: Settings = {
-    ...DEFAULT_SETTINGS,
-    signals: {
-      ...DEFAULT_SETTINGS.signals,
-      weights: {
-        sentiment: 0.6,
-        sentimentTrend: 0.1,
-        priceMomentum: 0.3,
-        options: 0,
-        fundamentals: 0,
+  // Load settings from database, fall back to defaults
+  const settingsRepo = new SettingsRepo(atnDb);
+  const savedSettings = settingsRepo.read();
+  let settings: Settings;
+  
+  if (savedSettings) {
+    const parsed = JSON.parse(savedSettings.doc) as Settings;
+    // Override weights for backtest (no options/fundamentals in FNSPID)
+    settings = {
+      ...parsed,
+      signals: {
+        ...parsed.signals,
+        weights: {
+          sentiment: 0.6,
+          sentimentTrend: 0.1,
+          priceMomentum: 0.3,
+          options: 0,
+          fundamentals: 0,
+        },
       },
-    },
-  };
+    };
+    console.log('Loaded settings from database');
+    console.log(`  Buy threshold: ${settings.signals.buyThreshold}`);
+    console.log(`  Sell threshold: ${settings.signals.sellThreshold}`);
+  } else {
+    // Fallback to defaults with simplified weights
+    settings = {
+      ...DEFAULT_SETTINGS,
+      signals: {
+        ...DEFAULT_SETTINGS.signals,
+        weights: {
+          sentiment: 0.6,
+          sentimentTrend: 0.1,
+          priceMomentum: 0.3,
+          options: 0,
+          fundamentals: 0,
+        },
+      },
+    };
+    console.log('Using default settings');
+  }
+  console.log();
 
   // Create signal provider and pre-load price history
   const signalProvider = createFnspidSignalProvider(fnspid);

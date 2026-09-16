@@ -594,6 +594,7 @@ export interface BacktestRun {
   startDate: string;
   endDate: string;
   symbols: string[];
+  settingsSnapshot: Record<string, unknown> | null;
   status: 'running' | 'succeeded' | 'failed';
   startedAt: number;
   finishedAt: number | null;

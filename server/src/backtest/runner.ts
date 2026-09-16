@@ -76,6 +76,11 @@ export class BacktestRunner {
       settingsSnapshot: JSON.stringify(this.deps.settings),
     });
 
+    // If using existing record, update the settings snapshot
+    if (config.backtestId) {
+      this.repo.updateSettingsSnapshot(backtestId, JSON.stringify(this.deps.settings));
+    }
+
     log.info('starting backtest', {
       backtestId,
       startDate: config.startDate,

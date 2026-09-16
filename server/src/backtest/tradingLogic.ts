@@ -71,11 +71,20 @@ export async function runSignalBasedTradingLogic(params: TradingLogicParams): Pr
   const positionsArray = broker.getPositionsSnapshot();
   const positions = new Map(positionsArray.map(p => [p.symbol, p.qty]));
   const cashCents = broker.getCashCents();
+  const portfolioValue = cashCents + positionsArray.reduce((sum, p) => {
+    const price = signalProvider.getPrice(p.symbol, date);
+    return sum + (price ? p.qty * price.closeCents : 0);
+  }, 0);
 
   const weights = {
     sentiment: settings.signals.weights.sentiment,
     priceMomentum: settings.signals.weights.priceMomentum,
   };
+
+  // Use risk settings
+  const maxPositions = settings.risk.maxConcurrentPositions;
+  const maxPositionWeightPercent = settings.risk.maxPositionWeightPercent;
+  const maxPositionCents = Math.floor(portfolioValue * (maxPositionWeightPercent / 100));
 
   // Collect signals for each symbol
   const signals: Array<{ symbol: string; score: number }> = [];
@@ -110,9 +119,9 @@ export async function runSignalBasedTradingLogic(params: TradingLogicParams): Pr
   // Sort by score descending
   signals.sort((a, b) => b.score - a.score);
 
-  // Simple allocation: equal weight among top signals
-  const maxPositions = 5;
-  const targetSymbols = signals.slice(0, maxPositions).map(s => s.symbol);
+  // Buy signals we don't have (respect maxPositions)
+  const availableSlots = maxPositions - positions.size;
+  const targetSymbols = signals.slice(0, availableSlots).map(s => s.symbol);
 
   // Buy signals we don't have
   for (const symbol of targetSymbols) {
@@ -121,8 +130,9 @@ export async function runSignalBasedTradingLogic(params: TradingLogicParams): Pr
     const price = signalProvider.getPrice(symbol, date);
     if (!price || price.openCents <= 0) continue;
 
-    const positionCount = positions.size;
-    const allocationCents = Math.floor(cashCents / (maxPositions - positionCount));
+    // Position size: min of (equal allocation, max position weight)
+    const equalAllocation = Math.floor(cashCents / Math.max(1, availableSlots));
+    const allocationCents = Math.min(equalAllocation, maxPositionCents);
     const qty = Math.floor(allocationCents / price.openCents);
 
     if (qty > 0) {

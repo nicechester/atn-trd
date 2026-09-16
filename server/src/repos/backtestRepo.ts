@@ -76,6 +76,12 @@ export class BacktestRepo {
     `).run(status, Date.now(), error ?? null, id);
   }
 
+  updateSettingsSnapshot(id: string, settingsSnapshot: string): void {
+    this.db.prepare(`
+      UPDATE backtest_runs SET settings_snapshot = ? WHERE id = ?
+    `).run(settingsSnapshot, id);
+  }
+
   getRun(id: string): BacktestRunRow | null {
     const row = this.db.prepare(`
       SELECT id, name, start_date, end_date, symbols_json, settings_snapshot, status, started_at, finished_at, error

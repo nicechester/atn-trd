@@ -67,6 +67,102 @@
   color: var(--color-text);
 }
 
+.detailHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.detailActions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.runAgainBtn,
+.printBtn {
+  padding: 0.5rem 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--color-text);
+  font-size: 0.875rem;
+}
+
+.runAgainBtn:hover,
+.printBtn:hover {
+  background: var(--color-border);
+}
+
+.runAgainBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media print {
+  .detailHeader,
+  .showMoreBtn,
+  .settingsToggle,
+  .screenOnly {
+    display: none !important;
+  }
+
+  .settingsContent {
+    display: none !important;
+  }
+
+  .settingsContentPrint,
+  .printOnly {
+    display: block !important;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 1rem;
+  }
+
+  .printOnly {
+    display: table !important;
+  }
+
+  .settingsSection h3 {
+    margin-bottom: 0.5rem;
+  }
+
+  .tradesSection,
+  .attributionSection {
+    page-break-inside: avoid;
+  }
+
+  .table {
+    font-size: 0.75rem;
+  }
+
+  .table th,
+  .table td {
+    color: #000 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .buy {
+    color: #16a34a !important;
+  }
+
+  .sell {
+    color: #dc2626 !important;
+  }
+
+  .positive {
+    color: #16a34a !important;
+  }
+
+  .negative {
+    color: #dc2626 !important;
+  }
+}
+
 .dateRange {
   color: var(--color-text-muted);
   margin-bottom: 1.5rem;
@@ -258,6 +354,60 @@
   margin-bottom: 1rem;
 }
 
+.settingsSection {
+  margin-bottom: 2rem;
+}
+
+.settingsSection h3 {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  color: var(--color-text-muted);
+}
+
+.settingsContent {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.settingsContentPrint {
+  display: none;
+}
+
+.settingsToggle {
+  user-select: none;
+}
+
+.settingsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.settingsGroup h4 {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.settingsGroup ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.settingsGroup li {
+  font-size: 0.875rem;
+  padding: 0.25rem 0;
+}
+
+.settingsJson {
+  font-size: 0.75rem;
+  overflow-x: auto;
+  margin: 0;
+}
+
 .header {
   display: flex;
   justify-content: space-between;
@@ -337,4 +487,12 @@
 .submitBtn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.screenOnly {
+  display: table;
+}
+
+.printOnly {
+  display: none;
 }

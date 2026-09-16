@@ -133,7 +133,20 @@ export function createBacktestRoutes(db: Database.Database): Router {
         rationale: t.rationale,
       }));
 
-      res.json({ run, metrics, equityCurve, trades });
+      // Parse settings snapshot
+      let settingsSnapshot = null;
+      try {
+        settingsSnapshot = JSON.parse(run.settingsSnapshot);
+      } catch {
+        // Invalid JSON, leave as null
+      }
+
+      res.json({
+        run: { ...run, settingsSnapshot },
+        metrics,
+        equityCurve,
+        trades,
+      });
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
