@@ -103,9 +103,18 @@ def parse_date(date_str: str) -> str | None:
     return date_str[:10] if len(date_str) >= 10 else None
 
 
-def get_cutoff_date(years: int) -> str:
-    """Get cutoff date for filtering."""
-    cutoff = datetime.now() - timedelta(days=years * 365)
+def get_cutoff_date(years: int, from_date: str | None = None) -> str:
+    """Get cutoff date for filtering.
+    
+    Args:
+        years: Number of years to go back
+        from_date: Reference date (YYYY-MM-DD). If None, uses today.
+    """
+    if from_date:
+        ref = datetime.strptime(from_date, "%Y-%m-%d")
+    else:
+        ref = datetime.now()
+    cutoff = ref - timedelta(days=years * 365)
     return cutoff.strftime("%Y-%m-%d")
 
 
@@ -241,12 +250,24 @@ def process_prices(conn: sqlite3.Connection, data_dir: Path, cutoff_date: str):
     print(f"Prices complete: {total_rows:,} rows in {elapsed:.1f}s ({skipped_rows:,} skipped)")
 
 
-def process_news(conn: sqlite3.Connection, data_dir: Path, cutoff_date: str, scorer: FinBERTScorer):
+def process_news(conn: sqlite3.Connection, data_dir: Path, cutoff_date: str, end_date: str, scorer: FinBERTScorer):
     """Process news CSV with FinBERT, output daily aggregates per symbol."""
-    news_file = data_dir / "news" / "news_2y.csv"
+    # Try full file first, fall back to filtered 2y file
+    news_file = data_dir / "news" / "nasdaq_exteral_data.csv"
+    if not news_file.exists():
+        news_file = data_dir / "news" / "news_2y.csv"
     if not news_file.exists():
         print(f"News file not found: {news_file}")
         return
+    
+    print(f"  Reading: {news_file.name}")
+    print(f"  Date range: {cutoff_date} to {end_date}")
+    
+    # Load existing dates to skip
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT symbol || '|' || date FROM news_sentiment")
+    existing_keys = set(row[0] for row in cursor.fetchall())
+    print(f"  Existing records: {len(existing_keys):,} symbol/dates (will skip)")
     
     cursor = conn.cursor()
     print("\nProcessing news (concurrent I/O + GPU)...")
@@ -262,6 +283,8 @@ def process_news(conn: sqlite3.Connection, data_dir: Path, cutoff_date: str, sco
         """Read CSV and queue batches."""
         batch_headlines = []
         batch_keys = []
+        filtered = [0]
+        skipped_existing = [0]
         with open(news_file, "r", encoding="utf-8", errors="replace") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -270,10 +293,19 @@ def process_news(conn: sqlite3.Connection, data_dir: Path, cutoff_date: str, sco
                 if not date:
                     skipped[0] += 1
                     continue
+                # Filter by date range
+                if date < cutoff_date or date > end_date:
+                    filtered[0] += 1
+                    continue
                 symbol = (row.get("Stock_symbol") or "").strip().upper()
                 headline = (row.get("Article_title") or "").strip()
                 if not symbol or not headline:
                     skipped[0] += 1
+                    continue
+                # Skip if already processed
+                key = f"{symbol}|{date}"
+                if key in existing_keys:
+                    skipped_existing[0] += 1
                     continue
                 batch_headlines.append(headline)
                 batch_keys.append((symbol, date))
@@ -283,6 +315,8 @@ def process_news(conn: sqlite3.Connection, data_dir: Path, cutoff_date: str, sco
                     batch_keys = []
             if batch_headlines:
                 batch_queue.put((batch_headlines, batch_keys))
+        print(f"  Filtered out {filtered[0]:,} rows outside date range")
+        print(f"  Skipped {skipped_existing[0]:,} rows with existing records")
         done_reading[0] = True
     
     # Start reader thread
@@ -338,6 +372,7 @@ def main():
     parser.add_argument("--data-dir", default=DEFAULT_DATA_DIR, help="FNSPID data directory")
     parser.add_argument("--output", default=None, help="Output database path (default: <data-dir>/fnspid.db)")
     parser.add_argument("--years", type=int, default=5, help="Years of history to include")
+    parser.add_argument("--end-date", default="2023-12-16", help="Reference end date for --years calculation (default: 2023-12-16, the FNSPID data end)")
     parser.add_argument("--prices-only", action="store_true", help="Process only price data")
     parser.add_argument("--news-only", action="store_true", help="Process only news data")
     args = parser.parse_args()
@@ -348,12 +383,12 @@ def main():
         sys.exit(1)
     
     output_db = Path(args.output) if args.output else data_dir / DEFAULT_OUTPUT_DB
-    cutoff_date = get_cutoff_date(args.years)
+    cutoff_date = get_cutoff_date(args.years, args.end_date)
     
     print(f"FNSPID Preprocessing")
     print(f"  Data dir: {data_dir}")
     print(f"  Output: {output_db}")
-    print(f"  Cutoff date: {cutoff_date} ({args.years} years)")
+    print(f"  Date range: {cutoff_date} to {args.end_date} ({args.years} years)")
     
     # Setup device
     device = get_device()
@@ -373,7 +408,7 @@ def main():
             scorer = FinBERTScorer(device)
             # Warmup
             _ = scorer.score_batch(["Test headline for warmup"])
-            process_news(conn, data_dir, cutoff_date, scorer)
+            process_news(conn, data_dir, cutoff_date, args.end_date, scorer)
         
         print("\nDone!")
         

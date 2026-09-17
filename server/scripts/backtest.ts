@@ -16,6 +16,9 @@ import { runSignalBasedTradingLogic, preloadPriceHistory, type SignalProvider } 
 import { DEFAULT_SETTINGS, type Settings } from '@atn-trd/shared';
 import { runMigrations } from '../src/db/migrate.js';
 import { SettingsRepo } from '../src/repos/settingsRepo.js';
+import { BacktestRepo } from '../src/repos/backtestRepo.js';
+import { createOpenAIChatModel, promptMessages } from '../src/llm/openaiChatModel.js';
+import { BACKTEST_ANALYST_SYSTEM_PROMPT, buildBacktestAnalysisPrompt } from '../src/llm/prompts/backtestAnalyst.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -215,7 +218,19 @@ async function main() {
     tradingIntervalDays: args.interval,
   };
 
+  // Track progress
+  const backtestRepo = new BacktestRepo(atnDb);
+  const updateProgress = (progress: string) => {
+    if (args.backtestId) {
+      backtestRepo.updateProgress(args.backtestId, progress);
+    }
+    console.log(`[Progress] ${progress}`);
+  };
+
+  updateProgress('starting');
   console.log('Running backtest...\n');
+  
+  updateProgress('simulating_trades');
   const result = await runner.run(config);
 
   // Print results
@@ -245,6 +260,48 @@ async function main() {
 
   console.log(`\nBacktest ID: ${result.backtestId}`);
   console.log('='.repeat(60));
+
+  // Run LLM analysis
+  if (result.status === 'succeeded' && result.metrics) {
+    updateProgress('running_llm_analysis');
+    console.log('\nRunning LLM analysis...');
+    try {
+      const trades = backtestRepo.getTrades(result.backtestId);
+
+      const prompt = buildBacktestAnalysisPrompt({
+        metrics: {
+          totalReturn: result.metrics.totalReturn,
+          benchmarkReturn: result.metrics.benchmarkReturn,
+          sharpeRatio: result.metrics.sharpeRatio,
+          sortinoRatio: result.metrics.sortinoRatio,
+          maxDrawdown: result.metrics.maxDrawdown,
+          winRate: result.metrics.winRate,
+          totalTrades: result.metrics.totalTrades,
+        },
+        settings,
+        trades: trades.map(t => ({
+          date: t.tradeDate,
+          symbol: t.symbol,
+          side: t.side,
+          price: t.priceCents / 100,
+        })),
+        perSymbol: result.metrics.perSymbol,
+        dateRange: { start: args.start, end: args.end },
+      });
+
+      const model = createOpenAIChatModel({ timeoutMs: 90_000 });
+      const messages = promptMessages(prompt, BACKTEST_ANALYST_SYSTEM_PROMPT);
+      const completion = await model.complete(messages);
+
+      backtestRepo.updateAnalysis(result.backtestId, completion.content);
+      updateProgress('completed');
+      console.log('LLM analysis saved.');
+      console.log(`Tokens used: ${completion.tokens?.totalTokens ?? 'unknown'}`);
+    } catch (err) {
+      console.error('LLM analysis failed:', err instanceof Error ? err.message : err);
+      // Don't fail the backtest if analysis fails
+    }
+  }
 
   // Cleanup
   fnspid.close();

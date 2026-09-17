@@ -9,9 +9,11 @@ export interface BacktestRunRow {
   symbols: string[];
   settingsSnapshot: string;
   status: 'running' | 'succeeded' | 'failed';
+  progress: string | null;
   startedAt: number;
   finishedAt: number | null;
   error: string | null;
+  analysis: string | null;
 }
 
 export interface BacktestSnapshotRow {
@@ -46,7 +48,7 @@ export interface BacktestMetricsRow {
   avgWin: number | null;
   avgLoss: number | null;
   totalTrades: number;
-  perSymbol: Record<string, { return: number | null; trades: number }> | null;
+  perSymbol: Record<string, { return: number | null; trades: number; costBasis: number; proceeds: number }> | null;
 }
 
 export class BacktestRepo {
@@ -72,8 +74,14 @@ export class BacktestRepo {
 
   updateRunStatus(id: string, status: 'succeeded' | 'failed', error?: string): void {
     this.db.prepare(`
-      UPDATE backtest_runs SET status = ?, finished_at = ?, error = ? WHERE id = ?
-    `).run(status, Date.now(), error ?? null, id);
+      UPDATE backtest_runs SET status = ?, finished_at = ?, error = ?, progress = ? WHERE id = ?
+    `).run(status, Date.now(), error ?? null, status === 'succeeded' ? 'completed' : 'failed', id);
+  }
+
+  updateProgress(id: string, progress: string): void {
+    this.db.prepare(`
+      UPDATE backtest_runs SET progress = ? WHERE id = ?
+    `).run(progress, id);
   }
 
   updateSettingsSnapshot(id: string, settingsSnapshot: string): void {
@@ -84,7 +92,7 @@ export class BacktestRepo {
 
   getRun(id: string): BacktestRunRow | null {
     const row = this.db.prepare(`
-      SELECT id, name, start_date, end_date, symbols_json, settings_snapshot, status, started_at, finished_at, error
+      SELECT id, name, start_date, end_date, symbols_json, settings_snapshot, status, progress, started_at, finished_at, error, analysis
       FROM backtest_runs WHERE id = ?
     `).get(id) as {
       id: string;
@@ -94,9 +102,11 @@ export class BacktestRepo {
       symbols_json: string;
       settings_snapshot: string;
       status: 'running' | 'succeeded' | 'failed';
+      progress: string | null;
       started_at: number;
       finished_at: number | null;
       error: string | null;
+      analysis: string | null;
     } | undefined;
 
     if (!row) return null;
@@ -109,15 +119,17 @@ export class BacktestRepo {
       symbols: JSON.parse(row.symbols_json),
       settingsSnapshot: row.settings_snapshot,
       status: row.status,
+      progress: row.progress,
       startedAt: row.started_at,
       finishedAt: row.finished_at,
       error: row.error,
+      analysis: row.analysis,
     };
   }
 
   listRuns(limit = 20): BacktestRunRow[] {
     const rows = this.db.prepare(`
-      SELECT id, name, start_date, end_date, symbols_json, settings_snapshot, status, started_at, finished_at, error
+      SELECT id, name, start_date, end_date, symbols_json, settings_snapshot, status, progress, started_at, finished_at, error, analysis
       FROM backtest_runs ORDER BY started_at DESC LIMIT ?
     `).all(limit) as Array<{
       id: string;
@@ -127,9 +139,11 @@ export class BacktestRepo {
       symbols_json: string;
       settings_snapshot: string;
       status: 'running' | 'succeeded' | 'failed';
+      progress: string | null;
       started_at: number;
       finished_at: number | null;
       error: string | null;
+      analysis: string | null;
     }>;
 
     return rows.map(row => ({
@@ -140,9 +154,11 @@ export class BacktestRepo {
       symbols: JSON.parse(row.symbols_json),
       settingsSnapshot: row.settings_snapshot,
       status: row.status,
+      progress: row.progress,
       startedAt: row.started_at,
       finishedAt: row.finished_at,
       error: row.error,
+      analysis: row.analysis,
     }));
   }
 
@@ -287,5 +303,11 @@ export class BacktestRepo {
       totalTrades: row.total_trades,
       perSymbol: row.per_symbol_json ? JSON.parse(row.per_symbol_json) : null,
     };
+  }
+
+  updateAnalysis(id: string, analysis: string): void {
+    this.db.prepare(`
+      UPDATE backtest_runs SET analysis = ? WHERE id = ?
+    `).run(analysis, id);
   }
 }

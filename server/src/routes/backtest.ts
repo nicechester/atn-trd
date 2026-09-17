@@ -1,18 +1,23 @@
 import { Router, type Request, type Response } from 'express';
-import type Database from 'better-sqlite3';
+import Database from 'better-sqlite3';
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { BacktestRepo } from '../repos/backtestRepo.js';
 import { logger } from '../lib/logger.js';
+import { createOpenAIChatModel, promptMessages } from '../llm/openaiChatModel.js';
+import { BACKTEST_ANALYST_SYSTEM_PROMPT, buildBacktestAnalysisPrompt } from '../llm/prompts/backtestAnalyst.js';
 
 const log = logger.child({ component: 'backtest-routes' });
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const LOG_DIR = process.env.BACKTEST_LOG_DIR || '/tmp';
 
 /**
  * Run backtest CLI in background.
  * Spawns the CLI script which uses FNSPID data + signal-based trading logic.
+ * Logs stdout/stderr to /tmp/backtest-{id}.log for progress tracking.
  */
 function runBacktestCli(
   backtestId: string,
@@ -21,6 +26,7 @@ function runBacktestCli(
 ): void {
   const scriptPath = path.join(__dirname, '..', '..', 'scripts', 'backtest.ts');
   const cash = config.startingCashCents ? Math.floor(config.startingCashCents / 100) : 100000;
+  const logPath = path.join(LOG_DIR, `backtest-${backtestId}.log`);
 
   const args = [
     scriptPath,
@@ -30,7 +36,12 @@ function runBacktestCli(
     '--cash', cash.toString(),
   ];
 
-  log.info('spawning backtest CLI', { backtestId, args });
+  log.info('spawning backtest CLI', { backtestId, args, logPath });
+
+  // Create/truncate log file
+  const logStream = fs.createWriteStream(logPath, { flags: 'w' });
+  logStream.write(`[${new Date().toISOString()}] Starting backtest ${backtestId}\n`);
+  logStream.write(`[${new Date().toISOString()}] Config: ${JSON.stringify(config)}\n\n`);
 
   const child = spawn('npx', ['tsx', ...args], {
     cwd: path.join(__dirname, '..', '..'),
@@ -38,18 +49,23 @@ function runBacktestCli(
     env: { ...process.env, BACKTEST_ID: backtestId },
   });
 
-  let stdout = '';
   let stderr = '';
 
   child.stdout?.on('data', (data) => {
-    stdout += data.toString();
+    const text = data.toString();
+    logStream.write(text);
   });
 
   child.stderr?.on('data', (data) => {
-    stderr += data.toString();
+    const text = data.toString();
+    stderr += text;
+    logStream.write(`[STDERR] ${text}`);
   });
 
   child.on('close', (code) => {
+    logStream.write(`\n[${new Date().toISOString()}] Process exited with code ${code}\n`);
+    logStream.end();
+
     if (code === 0) {
       log.info('backtest CLI completed', { backtestId });
       // CLI already updates the DB, but ensure status is set
@@ -84,13 +100,41 @@ export function createBacktestRoutes(db: Database.Database): Router {
 
   // Get available date range for backtesting (from FNSPID data)
   router.get('/date-range', (_req: Request, res: Response) => {
-    // FNSPID sentiment data range (news_sentiment table)
-    // Prices go back to 1962, but sentiment only covers 2021-2023
-    res.json({
-      minDate: '2021-01-01',
-      maxDate: '2023-12-28',
-      note: 'Date range limited by FNSPID sentiment data availability',
-    });
+    try {
+      // Query actual date range - intersection of prices and news
+      const fnspidDbPath = process.env.BACKTEST_DATA_DIR
+        ? `${process.env.BACKTEST_DATA_DIR}/fnspid.db`
+        : '/Volumes/JetDrive/atn-trd/fnspid/fnspid.db';
+      
+      const fnspidDb = new Database(fnspidDbPath, { readonly: true });
+      const row = fnspidDb.prepare(`
+        SELECT 
+          MAX(p.minDate, n.minDate) as minDate,
+          MIN(p.maxDate, n.maxDate) as maxDate
+        FROM 
+          (SELECT MIN(date) as minDate, MAX(date) as maxDate FROM prices) p,
+          (SELECT MIN(date) as minDate, MAX(date) as maxDate FROM news_sentiment) n
+      `).get() as { minDate: string; maxDate: string } | undefined;
+      fnspidDb.close();
+      
+      if (row?.minDate && row?.maxDate) {
+        res.json({
+          minDate: row.minDate,
+          maxDate: row.maxDate,
+        });
+      } else {
+        res.json({
+          minDate: '2021-01-01',
+          maxDate: '2023-12-28',
+        });
+      }
+    } catch {
+      // Fallback if FNSPID DB not available
+      res.json({
+        minDate: '2021-01-01',
+        maxDate: '2023-12-28',
+      });
+    }
   });
 
   // List backtest runs
@@ -141,9 +185,14 @@ export function createBacktestRoutes(db: Database.Database): Router {
         // Invalid JSON, leave as null
       }
 
+      // Add starting/ending values from snapshots
+      const startingValue = snapshots.length > 0 ? snapshots[0].totalValueCents / 100 : null;
+      const endingValue = snapshots.length > 0 ? snapshots[snapshots.length - 1].totalValueCents / 100 : null;
+      const metricsWithValues = metrics ? { ...metrics, startingValue, endingValue } : null;
+
       res.json({
         run: { ...run, settingsSnapshot },
-        metrics,
+        metrics: metricsWithValues,
         equityCurve,
         trades,
       });
@@ -226,6 +275,106 @@ export function createBacktestRoutes(db: Database.Database): Router {
       }));
       res.json({ trades: mapped });
     } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Get backtest log (tail last N lines)
+  router.get('/:id/log', (req: Request, res: Response) => {
+    try {
+      const logPath = path.join(LOG_DIR, `backtest-${req.params.id}.log`);
+      const tail = parseInt(req.query.tail as string) || 50;
+
+      if (!fs.existsSync(logPath)) {
+        res.json({ lines: [], exists: false });
+        return;
+      }
+
+      const content = fs.readFileSync(logPath, 'utf-8');
+      const allLines = content.split('\n');
+      const lines = allLines.slice(-tail).filter(line => line.trim());
+
+      res.json({ lines, exists: true, totalLines: allLines.length });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Analyze backtest with LLM
+  router.post('/:id/analyze', async (req: Request, res: Response) => {
+    try {
+      const run = repo.getRun(req.params.id);
+      if (!run) {
+        res.status(404).json({ error: 'Backtest not found' });
+        return;
+      }
+
+      if (run.status !== 'succeeded') {
+        res.status(400).json({ error: 'Can only analyze completed backtests' });
+        return;
+      }
+
+      const metrics = repo.getMetrics(req.params.id);
+      if (!metrics) {
+        res.status(400).json({ error: 'No metrics available for this backtest' });
+        return;
+      }
+
+      const rawTrades = repo.getTrades(req.params.id);
+      const trades = rawTrades.map(t => ({
+        date: t.tradeDate,
+        symbol: t.symbol,
+        side: t.side,
+        price: t.priceCents / 100,
+      }));
+
+      let settings = {};
+      try {
+        settings = JSON.parse(run.settingsSnapshot) || {};
+      } catch {
+        // Invalid JSON
+      }
+
+      const prompt = buildBacktestAnalysisPrompt({
+        metrics: {
+          totalReturn: metrics.totalReturn,
+          benchmarkReturn: metrics.benchmarkReturn,
+          sharpeRatio: metrics.sharpeRatio,
+          sortinoRatio: metrics.sortinoRatio,
+          maxDrawdown: metrics.maxDrawdown,
+          winRate: metrics.winRate,
+          totalTrades: metrics.totalTrades,
+        },
+        settings,
+        trades,
+        perSymbol: metrics.perSymbol,
+        dateRange: { start: run.startDate, end: run.endDate },
+      });
+
+      log.info('analyzing backtest with LLM', { backtestId: req.params.id });
+
+      const model = createOpenAIChatModel({ timeoutMs: 60_000 });
+      const messages = promptMessages(prompt, BACKTEST_ANALYST_SYSTEM_PROMPT);
+      const completion = await model.complete(messages);
+
+      log.info('backtest analysis complete', {
+        backtestId: req.params.id,
+        tokens: completion.tokens,
+      });
+
+      // Save analysis to DB
+      repo.updateAnalysis(req.params.id, completion.content);
+
+      res.json({
+        analysis: completion.content,
+        model: completion.model,
+        tokens: completion.tokens,
+      });
+    } catch (err) {
+      log.error('backtest analysis failed', {
+        backtestId: req.params.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });

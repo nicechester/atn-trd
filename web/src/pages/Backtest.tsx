@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import Markdown from 'react-markdown';
 import { backtest as backtestApi, watchlist as watchlistApi, type BacktestRun, type BacktestMetrics, type BacktestEquityPoint, type BacktestTrade } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import styles from './Backtest.module.css';
@@ -96,6 +97,8 @@ function BacktestDetail({ id }: { id: string }) {
   const [trades, setTrades] = useState<BacktestTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [rerunning, setRerunning] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [logLines, setLogLines] = useState<string[]>([]);
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -108,6 +111,24 @@ function BacktestDetail({ id }: { id: string }) {
     const interval = setInterval(loadBacktest, 3000);
     return () => clearInterval(interval);
   }, [run?.status]);
+
+  // Poll logs while running
+  useEffect(() => {
+    if (run?.status !== 'running') return;
+    const loadLogs = async () => {
+      try {
+        const result = await backtestApi.getLog(id, 30);
+        if (result.exists) {
+          setLogLines(result.lines);
+        }
+      } catch {
+        // Ignore log errors
+      }
+    };
+    loadLogs();
+    const interval = setInterval(loadLogs, 2000);
+    return () => clearInterval(interval);
+  }, [run?.status, id]);
 
   async function loadBacktest() {
     try {
@@ -148,6 +169,19 @@ function BacktestDetail({ id }: { id: string }) {
     }
   }
 
+  async function handleAnalyze() {
+    setAnalyzing(true);
+    try {
+      await backtestApi.analyze(id);
+      await loadBacktest();
+      addToast('Analysis complete', 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to analyze backtest', 'error');
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   if (loading) return <p>Loading…</p>;
   if (!run) return <p>Backtest not found</p>;
 
@@ -160,6 +194,11 @@ function BacktestDetail({ id }: { id: string }) {
             <button onClick={handleRunAgain} disabled={rerunning} className={styles.runAgainBtn}>
               {rerunning ? 'Starting...' : '↻ Run Again'}
             </button>
+            {!run.analysis && (
+              <button onClick={handleAnalyze} disabled={analyzing} className={styles.analyzeBtn}>
+                {analyzing ? 'Analyzing...' : '🤖 Analyze'}
+              </button>
+            )}
             <button onClick={() => window.print()} className={styles.printBtn}>
               🖨 Print
             </button>
@@ -171,7 +210,17 @@ function BacktestDetail({ id }: { id: string }) {
 
       {run.status === 'running' && (
         <div className={styles.runningBox}>
-          <span className={styles.spinner} /> Running backtest... (backfilling prices, then simulating trades)
+          <span className={styles.spinner} /> Running backtest...
+          {run.progress && <span className={styles.progressLabel}> ({run.progress})</span>}
+        </div>
+      )}
+
+      {run.status === 'running' && logLines.length > 0 && (
+        <div className={styles.logBox}>
+          <h4>Progress Log</h4>
+          <pre className={styles.logContent}>
+            {logLines.join('\n')}
+          </pre>
         </div>
       )}
 
@@ -186,6 +235,7 @@ function BacktestDetail({ id }: { id: string }) {
       {equity.length > 0 && <EquityChart equity={equity} />}
       {trades.length > 0 && <TradesTable trades={trades} />}
       {metrics?.perSymbol && <SymbolAttribution perSymbol={metrics.perSymbol} />}
+      {run.analysis && <AnalysisPanel analysis={run.analysis} />}
     </div>
   );
 }
@@ -193,6 +243,7 @@ function BacktestDetail({ id }: { id: string }) {
 function MetricsPanel({ metrics }: { metrics: BacktestMetrics }) {
   const fmt = (v: number | null, suffix = '%') => v !== null ? `${(v * 100).toFixed(2)}${suffix}` : '—';
   const fmtNum = (v: number | null) => v !== null ? v.toFixed(2) : '—';
+  const fmtMoney = (v: number | null) => v !== null ? `$${v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—';
 
   return (
     <div className={styles.metricsGrid}>
@@ -229,6 +280,14 @@ function MetricsPanel({ metrics }: { metrics: BacktestMetrics }) {
       <div className={styles.metricCard}>
         <div className={styles.metricLabel}>Total Trades</div>
         <div className={styles.metricValue}>{metrics.totalTrades}</div>
+      </div>
+      <div className={styles.metricCard}>
+        <div className={styles.metricLabel}>Ending Value</div>
+        <div className={styles.metricValue}>{fmtMoney(metrics.endingValue)}</div>
+      </div>
+      <div className={styles.metricCard}>
+        <div className={styles.metricLabel}>Cost Basis</div>
+        <div className={styles.metricValue}>{fmtMoney(metrics.startingValue)}</div>
       </div>
     </div>
   );
@@ -458,7 +517,7 @@ function TradesTable({ trades }: { trades: BacktestTrade[] }) {
   );
 }
 
-function SymbolAttribution({ perSymbol }: { perSymbol: Record<string, { return: number | null; trades: number }> }) {
+function SymbolAttribution({ perSymbol }: { perSymbol: Record<string, { return: number | null; trades: number; costBasis?: number; proceeds?: number }> }) {
   const symbols = Object.entries(perSymbol).sort((a, b) => {
     // Sort by return descending, nulls last
     if (a[1].return === null && b[1].return === null) return 0;
@@ -467,6 +526,11 @@ function SymbolAttribution({ perSymbol }: { perSymbol: Record<string, { return: 
     return b[1].return - a[1].return;
   });
 
+  const fmtMoney = (v: number | undefined) => v !== undefined ? `$${v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—';
+
+  // Check if any symbol has cost/proceeds data
+  const hasCostData = symbols.some(([, d]) => d.costBasis !== undefined);
+
   return (
     <div className={styles.attributionSection}>
       <h3>Per-Symbol Attribution</h3>
@@ -474,22 +538,46 @@ function SymbolAttribution({ perSymbol }: { perSymbol: Record<string, { return: 
         <thead>
           <tr>
             <th>Symbol</th>
+            {hasCostData && <th>Cost Basis</th>}
+            {hasCostData && <th>Proceeds</th>}
+            {hasCostData && <th>P&L</th>}
             <th>Return</th>
             <th>Trades</th>
           </tr>
         </thead>
         <tbody>
-          {symbols.map(([symbol, data]) => (
-            <tr key={symbol}>
-              <td>{symbol}</td>
-              <td className={data.return !== null && data.return >= 0 ? styles.positive : data.return !== null ? styles.negative : ''}>
-                {data.return !== null ? `${(data.return * 100).toFixed(2)}%` : '—'}
-              </td>
-              <td>{data.trades}</td>
-            </tr>
-          ))}
+          {symbols.map(([symbol, data]) => {
+            const pnl = data.costBasis !== undefined && data.proceeds !== undefined ? data.proceeds - data.costBasis : undefined;
+            return (
+              <tr key={symbol}>
+                <td>{symbol}</td>
+                {hasCostData && <td>{fmtMoney(data.costBasis)}</td>}
+                {hasCostData && <td>{fmtMoney(data.proceeds)}</td>}
+                {hasCostData && (
+                  <td className={pnl !== undefined && pnl >= 0 ? styles.positive : pnl !== undefined ? styles.negative : ''}>
+                    {pnl !== undefined ? `${pnl >= 0 ? '+' : ''}${fmtMoney(pnl)}` : '—'}
+                  </td>
+                )}
+                <td className={data.return !== null && data.return >= 0 ? styles.positive : data.return !== null ? styles.negative : ''}>
+                  {data.return !== null ? `${(data.return * 100).toFixed(2)}%` : '—'}
+                </td>
+                <td>{data.trades}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function AnalysisPanel({ analysis }: { analysis: string }) {
+  return (
+    <div className={styles.analysisSection}>
+      <h3>🤖 LLM Analysis & Recommendations</h3>
+      <div className={styles.analysisContent}>
+        <Markdown>{analysis}</Markdown>
+      </div>
     </div>
   );
 }

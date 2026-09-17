@@ -22,6 +22,8 @@ type FormState = {
   weightSentiment: number;
   weightSentimentTrend: number;
   weightPriceMomentum: number;
+  weightOptions: number;
+  weightFundamentals: number;
   // Regime
   regimeEnabled: boolean;
   vixRiskOffThreshold: number;
@@ -69,6 +71,8 @@ export default function SettingsStrategic(): JSX.Element {
           weightSentiment: signals.weights.sentiment,
           weightSentimentTrend: signals.weights.sentimentTrend,
           weightPriceMomentum: signals.weights.priceMomentum,
+          weightOptions: signals.weights.options,
+          weightFundamentals: signals.weights.fundamentals,
           regimeEnabled: regime.enabled,
           vixRiskOffThreshold: regime.vixRiskOffThreshold,
           vixExtremeThreshold: regime.vixExtremeThreshold,
@@ -103,7 +107,7 @@ export default function SettingsStrategic(): JSX.Element {
 
   function validate(): string | null {
     if (!form) return 'Form not loaded';
-    const weightSum = form.weightSentiment + form.weightSentimentTrend + form.weightPriceMomentum;
+    const weightSum = form.weightSentiment + form.weightSentimentTrend + form.weightPriceMomentum + form.weightOptions + form.weightFundamentals;
     if (Math.abs(weightSum - 1) > 0.01) return `Signal weights must sum to 1 (currently ${weightSum.toFixed(2)})`;
     if (form.buyThreshold <= form.pauseThreshold) return 'Buy threshold must be greater than pause threshold';
     if (form.pauseThreshold <= form.cancelThreshold) return 'Pause threshold must be greater than cancel threshold';
@@ -138,6 +142,8 @@ export default function SettingsStrategic(): JSX.Element {
             sentiment: form.weightSentiment,
             sentimentTrend: form.weightSentimentTrend,
             priceMomentum: form.weightPriceMomentum,
+            options: form.weightOptions,
+            fundamentals: form.weightFundamentals,
           },
         },
         regime: {
@@ -180,7 +186,7 @@ export default function SettingsStrategic(): JSX.Element {
 
   if (!form) return <Card><p>Loading...</p></Card>;
 
-  const weightSum = form.weightSentiment + form.weightSentimentTrend + form.weightPriceMomentum;
+  const weightSum = form.weightSentiment + form.weightSentimentTrend + form.weightPriceMomentum + form.weightOptions + form.weightFundamentals;
   const weightError = Math.abs(weightSum - 1) > 0.01;
 
   const formatNextRun = (jobName: string) => {
@@ -226,7 +232,7 @@ export default function SettingsStrategic(): JSX.Element {
           </div>
           <div className={styles.field}>
             <label className={styles.label}>Sell Threshold</label>
-            <input className={styles.input} type="number" min={0.1} max={0.4} step={0.01}
+            <input className={styles.input} type="number" min={0.1} max={0.6} step={0.01}
               value={form.sellThreshold} onChange={e => setForm({ ...form, sellThreshold: +e.target.value })} />
             <span className={styles.hint}>Trigger sell when score drops below</span>
           </div>
@@ -241,18 +247,28 @@ export default function SettingsStrategic(): JSX.Element {
         <div className={styles.grid}>
           <div className={styles.field}>
             <label className={styles.label}>Sentiment</label>
-            <input className={styles.input} type="number" min={0} max={1} step={0.1}
+            <input className={styles.input} type="number" min={0} max={1} step={0.05}
               value={form.weightSentiment} onChange={e => setForm({ ...form, weightSentiment: +e.target.value })} />
           </div>
           <div className={styles.field}>
             <label className={styles.label}>Sentiment Trend</label>
-            <input className={styles.input} type="number" min={0} max={1} step={0.1}
+            <input className={styles.input} type="number" min={0} max={1} step={0.05}
               value={form.weightSentimentTrend} onChange={e => setForm({ ...form, weightSentimentTrend: +e.target.value })} />
           </div>
           <div className={styles.field}>
             <label className={styles.label}>Price Momentum</label>
-            <input className={styles.input} type="number" min={0} max={1} step={0.1}
+            <input className={styles.input} type="number" min={0} max={1} step={0.05}
               value={form.weightPriceMomentum} onChange={e => setForm({ ...form, weightPriceMomentum: +e.target.value })} />
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label}>Options Flow</label>
+            <input className={styles.input} type="number" min={0} max={1} step={0.05}
+              value={form.weightOptions} onChange={e => setForm({ ...form, weightOptions: +e.target.value })} />
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label}>Fundamentals</label>
+            <input className={styles.input} type="number" min={0} max={1} step={0.05}
+              value={form.weightFundamentals} onChange={e => setForm({ ...form, weightFundamentals: +e.target.value })} />
           </div>
         </div>
       </Card>
@@ -425,7 +441,7 @@ export default function SettingsStrategic(): JSX.Element {
           <dd>Exponential smoothing factor. Lower values (0.05) = smoother, slower to react. Higher values (0.3) = more responsive to recent data. Default 0.10 means 10% weight to today, 90% to history.</dd>
           
           <dt>Signal Weights</dt>
-          <dd>How to combine inputs into composite score. Must sum to 1. Sentiment = current LLM assessment (-1 to +1). Sentiment Trend = direction over rolling window. Price Momentum = technical price action.</dd>
+          <dd>How to combine inputs into composite score. Must sum to 1. Sentiment = current LLM assessment (-1 to +1). Sentiment Trend = direction over rolling window. Price Momentum = technical price action. Options Flow = unusual options activity signal. Fundamentals = earnings quality and valuation metrics.</dd>
           
           <dt>Composite Score</dt>
           <dd>Calculated as: (sentiment × weight) + (sentimentTrend × weight) + (priceMomentum × weight). Then smoothed with EWMA: <code>S'ₙ = α × Sₙ + (1-α) × S'ₙ₋₁</code>, where S'ₙ is today's smoothed score, Sₙ is today's raw score, S'ₙ₋₁ is yesterday's smoothed score, and α is the EWMA Alpha setting above. Result ranges from -1 (strong sell) to +1 (strong buy).</dd>
