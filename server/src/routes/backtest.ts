@@ -1,80 +1,89 @@
 import { Router, type Request, type Response } from 'express';
-import type Database from 'better-sqlite3';
+import Database from 'better-sqlite3';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { BacktestRepo } from '../repos/backtestRepo.js';
-import { BacktestRunner, type BacktestDeps } from '../backtest/runner.js';
-import { createHistoricalPriceProvider, createBenchmarkPriceProvider } from '../backtest/priceProvider.js';
-import { PricesRepo } from '../repos/pricesRepo.js';
-import { SettingsRepo } from '../repos/settingsRepo.js';
-import { DEFAULT_SETTINGS } from '@atn-trd/shared';
 import { logger } from '../lib/logger.js';
-import { runPriceBackfillJob } from '../scheduler/jobs/priceBackfill.js';
+import { createOpenAIChatModel, promptMessages } from '../llm/openaiChatModel.js';
+import { BACKTEST_ANALYST_SYSTEM_PROMPT, buildBacktestAnalysisPrompt } from '../llm/prompts/backtestAnalyst.js';
 
 const log = logger.child({ component: 'backtest-routes' });
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const LOG_DIR = process.env.BACKTEST_LOG_DIR || '/tmp';
 
 /**
- * Run backtest in background (fire-and-forget from HTTP handler).
- * Exported for use by auto-backtest service.
+ * Run backtest CLI in background.
+ * Spawns the CLI script which uses FNSPID data + signal-based trading logic.
+ * Logs stdout/stderr to /tmp/backtest-{id}.log for progress tracking.
  */
-export async function runBacktestInBackground(
-  db: Database.Database,
+function runBacktestCli(
   backtestId: string,
-  config: { name?: string; startDate: string; endDate: string; symbols: string[]; startingCashCents?: number }
-): Promise<void> {
-  const repo = new BacktestRepo(db);
+  config: { startDate: string; endDate: string; symbols: string[]; startingCashCents?: number },
+  repo: BacktestRepo
+): void {
+  const scriptPath = path.join(__dirname, '..', '..', 'scripts', 'backtest.ts');
+  const cash = config.startingCashCents ? Math.floor(config.startingCashCents / 100) : 100000;
+  const logPath = path.join(LOG_DIR, `backtest-${backtestId}.log`);
 
-  try {
-    // Pre-backfill missing price data via Alpaca (use backtest start date)
-    log.info('backfilling price data for backtest', { backtestId, symbols: config.symbols.length, startDate: config.startDate });
-    await runPriceBackfillJob(db, { symbols: config.symbols, startDate: config.startDate });
-    log.info('backfill complete', { backtestId });
+  const args = [
+    scriptPath,
+    '--start', config.startDate,
+    '--end', config.endDate,
+    '--symbols', config.symbols.join(','),
+    '--cash', cash.toString(),
+  ];
 
-    // Load settings
-    const settingsRepo = new SettingsRepo(db);
-    const settingsRow = settingsRepo.read();
-    const settings = settingsRow ? JSON.parse(settingsRow.doc) : DEFAULT_SETTINGS;
+  log.info('spawning backtest CLI', { backtestId, args, logPath });
 
-    // Create price providers
-    const pricesRepo = new PricesRepo(db);
-    const priceProvider = createHistoricalPriceProvider(pricesRepo);
-    const getBenchmarkPrice = createBenchmarkPriceProvider(pricesRepo);
+  // Create/truncate log file
+  const logStream = fs.createWriteStream(logPath, { flags: 'w' });
+  logStream.write(`[${new Date().toISOString()}] Starting backtest ${backtestId}\n`);
+  logStream.write(`[${new Date().toISOString()}] Config: ${JSON.stringify(config)}\n\n`);
 
-    // Simple buy-and-hold strategy
-    const runTradingLogic: BacktestDeps['runTradingLogic'] = async ({ date, symbols, broker }) => {
-      const positions = broker.getPositionsSnapshot();
-      if (Object.keys(positions).length === 0) {
-        const cashCents = broker.getCashCents();
-        const perSymbolCents = Math.floor(cashCents / symbols.length);
+  const child = spawn('npx', ['tsx', ...args], {
+    cwd: path.join(__dirname, '..', '..'),
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, BACKTEST_ID: backtestId },
+  });
 
-        for (const symbol of symbols) {
-          const price = await priceProvider.getPrice(symbol, date);
-          if (price && price.openCents > 0) {
-            const qty = Math.floor(perSymbolCents / price.openCents);
-            if (qty > 0) {
-              await broker.submitOrder({
-                clientOrderId: `bt-${date}-${symbol}`,
-                symbol,
-                side: 'buy',
-                qty,
-                type: 'market',
-                tif: 'day',
-              });
-            }
-          }
-        }
+  let stderr = '';
+
+  child.stdout?.on('data', (data) => {
+    const text = data.toString();
+    logStream.write(text);
+  });
+
+  child.stderr?.on('data', (data) => {
+    const text = data.toString();
+    stderr += text;
+    logStream.write(`[STDERR] ${text}`);
+  });
+
+  child.on('close', (code) => {
+    logStream.write(`\n[${new Date().toISOString()}] Process exited with code ${code}\n`);
+    logStream.end();
+
+    if (code === 0) {
+      log.info('backtest CLI completed', { backtestId });
+      // CLI already updates the DB, but ensure status is set
+      const run = repo.getRun(backtestId);
+      if (run?.status === 'running') {
+        repo.updateRunStatus(backtestId, 'succeeded');
       }
-    };
+    } else {
+      const errorMsg = stderr || `CLI exited with code ${code}`;
+      log.error('backtest CLI failed', { backtestId, code, stderr: stderr.slice(-500) });
+      repo.updateRunStatus(backtestId, 'failed', errorMsg.slice(0, 1000));
+    }
+  });
 
-    const deps: BacktestDeps = { db, priceProvider, getBenchmarkPrice, runTradingLogic, settings };
-    const runner = new BacktestRunner(deps);
-
-    log.info('starting backtest execution', { backtestId });
-    await runner.run({ ...config, backtestId });
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    log.error('backtest async execution failed', { backtestId, error: errorMsg });
-    repo.updateRunStatus(backtestId, 'failed', errorMsg);
-  }
+  child.on('error', (err) => {
+    log.error('backtest CLI spawn error', { backtestId, error: err.message });
+    repo.updateRunStatus(backtestId, 'failed', err.message);
+  });
 }
 
 const BacktestRequestSchema = z.object({
@@ -83,12 +92,50 @@ const BacktestRequestSchema = z.object({
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   symbols: z.array(z.string().toUpperCase()).min(1),
   startingCashCents: z.number().int().positive().optional(),
-  slippageBps: z.number().int().min(0).max(100).optional(),
 });
 
 export function createBacktestRoutes(db: Database.Database): Router {
   const router = Router();
   const repo = new BacktestRepo(db);
+
+  // Get available date range for backtesting (from FNSPID data)
+  router.get('/date-range', (_req: Request, res: Response) => {
+    try {
+      // Query actual date range - intersection of prices and news
+      const fnspidDbPath = process.env.BACKTEST_DATA_DIR
+        ? `${process.env.BACKTEST_DATA_DIR}/fnspid.db`
+        : '/Volumes/JetDrive/atn-trd/fnspid/fnspid.db';
+      
+      const fnspidDb = new Database(fnspidDbPath, { readonly: true });
+      const row = fnspidDb.prepare(`
+        SELECT 
+          MAX(p.minDate, n.minDate) as minDate,
+          MIN(p.maxDate, n.maxDate) as maxDate
+        FROM 
+          (SELECT MIN(date) as minDate, MAX(date) as maxDate FROM prices) p,
+          (SELECT MIN(date) as minDate, MAX(date) as maxDate FROM news_sentiment) n
+      `).get() as { minDate: string; maxDate: string } | undefined;
+      fnspidDb.close();
+      
+      if (row?.minDate && row?.maxDate) {
+        res.json({
+          minDate: row.minDate,
+          maxDate: row.maxDate,
+        });
+      } else {
+        res.json({
+          minDate: '2021-01-01',
+          maxDate: '2023-12-28',
+        });
+      }
+    } catch {
+      // Fallback if FNSPID DB not available
+      res.json({
+        minDate: '2021-01-01',
+        maxDate: '2023-12-28',
+      });
+    }
+  });
 
   // List backtest runs
   router.get('/', (_req: Request, res: Response) => {
@@ -130,13 +177,31 @@ export function createBacktestRoutes(db: Database.Database): Router {
         rationale: t.rationale,
       }));
 
-      res.json({ run, metrics, equityCurve, trades });
+      // Parse settings snapshot
+      let settingsSnapshot = null;
+      try {
+        settingsSnapshot = JSON.parse(run.settingsSnapshot);
+      } catch {
+        // Invalid JSON, leave as null
+      }
+
+      // Add starting/ending values from snapshots
+      const startingValue = snapshots.length > 0 ? snapshots[0].totalValueCents / 100 : null;
+      const endingValue = snapshots.length > 0 ? snapshots[snapshots.length - 1].totalValueCents / 100 : null;
+      const metricsWithValues = metrics ? { ...metrics, startingValue, endingValue } : null;
+
+      res.json({
+        run: { ...run, settingsSnapshot },
+        metrics: metricsWithValues,
+        equityCurve,
+        trades,
+      });
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
-  // Start a new backtest (async - returns immediately, runs in background)
+  // Start a new backtest (async - returns immediately, runs CLI in background)
   router.post('/', (req: Request, res: Response) => {
     const parsed = BacktestRequestSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -163,10 +228,8 @@ export function createBacktestRoutes(db: Database.Database): Router {
     // Return immediately
     res.status(202).json({ backtestId, status: 'running' });
 
-    // Run backtest in background
-    runBacktestInBackground(db, backtestId, { ...config, symbols: allSymbols }).catch(err => {
-      log.error('background backtest failed', { backtestId, error: err instanceof Error ? err.message : String(err) });
-    });
+    // Spawn CLI in background
+    runBacktestCli(backtestId, { ...config, symbols: allSymbols }, repo);
   });
 
   // Get backtest metrics
@@ -212,6 +275,106 @@ export function createBacktestRoutes(db: Database.Database): Router {
       }));
       res.json({ trades: mapped });
     } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Get backtest log (tail last N lines)
+  router.get('/:id/log', (req: Request, res: Response) => {
+    try {
+      const logPath = path.join(LOG_DIR, `backtest-${req.params.id}.log`);
+      const tail = parseInt(req.query.tail as string) || 50;
+
+      if (!fs.existsSync(logPath)) {
+        res.json({ lines: [], exists: false });
+        return;
+      }
+
+      const content = fs.readFileSync(logPath, 'utf-8');
+      const allLines = content.split('\n');
+      const lines = allLines.slice(-tail).filter(line => line.trim());
+
+      res.json({ lines, exists: true, totalLines: allLines.length });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Analyze backtest with LLM
+  router.post('/:id/analyze', async (req: Request, res: Response) => {
+    try {
+      const run = repo.getRun(req.params.id);
+      if (!run) {
+        res.status(404).json({ error: 'Backtest not found' });
+        return;
+      }
+
+      if (run.status !== 'succeeded') {
+        res.status(400).json({ error: 'Can only analyze completed backtests' });
+        return;
+      }
+
+      const metrics = repo.getMetrics(req.params.id);
+      if (!metrics) {
+        res.status(400).json({ error: 'No metrics available for this backtest' });
+        return;
+      }
+
+      const rawTrades = repo.getTrades(req.params.id);
+      const trades = rawTrades.map(t => ({
+        date: t.tradeDate,
+        symbol: t.symbol,
+        side: t.side,
+        price: t.priceCents / 100,
+      }));
+
+      let settings = {};
+      try {
+        settings = JSON.parse(run.settingsSnapshot) || {};
+      } catch {
+        // Invalid JSON
+      }
+
+      const prompt = buildBacktestAnalysisPrompt({
+        metrics: {
+          totalReturn: metrics.totalReturn,
+          benchmarkReturn: metrics.benchmarkReturn,
+          sharpeRatio: metrics.sharpeRatio,
+          sortinoRatio: metrics.sortinoRatio,
+          maxDrawdown: metrics.maxDrawdown,
+          winRate: metrics.winRate,
+          totalTrades: metrics.totalTrades,
+        },
+        settings,
+        trades,
+        perSymbol: metrics.perSymbol,
+        dateRange: { start: run.startDate, end: run.endDate },
+      });
+
+      log.info('analyzing backtest with LLM', { backtestId: req.params.id });
+
+      const model = createOpenAIChatModel({ timeoutMs: 60_000 });
+      const messages = promptMessages(prompt, BACKTEST_ANALYST_SYSTEM_PROMPT);
+      const completion = await model.complete(messages);
+
+      log.info('backtest analysis complete', {
+        backtestId: req.params.id,
+        tokens: completion.tokens,
+      });
+
+      // Save analysis to DB
+      repo.updateAnalysis(req.params.id, completion.content);
+
+      res.json({
+        analysis: completion.content,
+        model: completion.model,
+        tokens: completion.tokens,
+      });
+    } catch (err) {
+      log.error('backtest analysis failed', {
+        backtestId: req.params.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });

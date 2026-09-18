@@ -37,8 +37,10 @@ export function calculateMetrics(input: MetricsInput): BacktestMetricsRow {
   const endValue = snapshots[snapshots.length - 1].totalValueCents;
   const totalReturn = (endValue - startValue) / startValue;
 
-  const startBenchmark = snapshots[0].benchmarkValueCents;
-  const endBenchmark = snapshots[snapshots.length - 1].benchmarkValueCents;
+  // Filter to snapshots with valid benchmark data for benchmark return calculation
+  const benchmarkSnapshots = snapshots.filter(s => s.benchmarkValueCents !== null && s.benchmarkValueCents !== undefined);
+  const startBenchmark = benchmarkSnapshots.length > 0 ? benchmarkSnapshots[0].benchmarkValueCents : null;
+  const endBenchmark = benchmarkSnapshots.length > 0 ? benchmarkSnapshots[benchmarkSnapshots.length - 1].benchmarkValueCents : null;
   const benchmarkReturn = startBenchmark && endBenchmark
     ? (endBenchmark - startBenchmark) / startBenchmark
     : 0;
@@ -175,7 +177,7 @@ function calculateTradeStats(trades: BacktestTradeRow[]): {
 
 function calculatePerSymbolAttribution(
   trades: BacktestTradeRow[]
-): Record<string, { return: number | null; trades: number }> | null {
+): Record<string, { return: number | null; trades: number; costBasis: number; proceeds: number }> | null {
   const symbolTrades = new Map<string, BacktestTradeRow[]>();
   for (const trade of trades) {
     const existing = symbolTrades.get(trade.symbol) ?? [];
@@ -185,11 +187,12 @@ function calculatePerSymbolAttribution(
 
   if (symbolTrades.size === 0) return null;
 
-  const result: Record<string, { return: number | null; trades: number }> = {};
+  const result: Record<string, { return: number | null; trades: number; costBasis: number; proceeds: number }> = {};
 
   for (const [symbol, symbolTradeList] of symbolTrades) {
     let totalPnlCents = 0;
     let totalCostCents = 0;
+    let totalProceedsCents = 0;
     let position = 0;
     let costBasis = 0;
     let hasSells = false;
@@ -201,6 +204,7 @@ function calculatePerSymbolAttribution(
         position += trade.qty;
       } else {
         hasSells = true;
+        totalProceedsCents += trade.qty * trade.priceCents;
         const avgCost = position > 0 ? costBasis / position : 0;
         totalPnlCents += trade.qty * (trade.priceCents - avgCost);
         position -= trade.qty;
@@ -212,6 +216,8 @@ function calculatePerSymbolAttribution(
       // Return null if no sells (position still open, can't calculate realized return)
       return: hasSells && totalCostCents > 0 ? totalPnlCents / totalCostCents : null,
       trades: symbolTradeList.length,
+      costBasis: totalCostCents / 100,
+      proceeds: totalProceedsCents / 100,
     };
   }
 

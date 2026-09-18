@@ -31,3 +31,17 @@
     flex-direction: row;
   }
 }
+
+@media print {
+  .layout {
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
+
+  .main {
+    padding: 0;
+    overflow: visible;
+    height: auto;
+  }
+}

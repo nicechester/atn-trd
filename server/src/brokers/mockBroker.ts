@@ -50,6 +50,7 @@ export class MockBroker implements Broker {
   private readonly config: MockBrokerConfig;
   private readonly priceProvider: HistoricalPriceProvider;
   private currentDate: string = '';
+  private lastKnownPrices = new Map<string, number>(); // Track last known price per symbol
 
   constructor(priceProvider: HistoricalPriceProvider, config: Partial<MockBrokerConfig> = {}) {
     this.config = {
@@ -212,7 +213,14 @@ export class MockBroker implements Broker {
       if (pos.qty > 0) {
         const price = await this.priceProvider.getPrice(pos.symbol, date);
         if (price) {
+          this.lastKnownPrices.set(pos.symbol, price.closeCents);
           equityCents += notionalCents(pos.qty, price.closeCents);
+        } else {
+          // Use last known price on holidays/missing data
+          const lastPrice = this.lastKnownPrices.get(pos.symbol);
+          if (lastPrice) {
+            equityCents += notionalCents(pos.qty, lastPrice);
+          }
         }
       }
     }

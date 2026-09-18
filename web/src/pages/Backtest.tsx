@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import Markdown from 'react-markdown';
 import { backtest as backtestApi, watchlist as watchlistApi, type BacktestRun, type BacktestMetrics, type BacktestEquityPoint, type BacktestTrade } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import styles from './Backtest.module.css';
@@ -89,23 +90,47 @@ function BacktestList() {
 }
 
 function BacktestDetail({ id }: { id: string }) {
+  const navigate = useNavigate();
   const [run, setRun] = useState<BacktestRun | null>(null);
   const [metrics, setMetrics] = useState<BacktestMetrics | null>(null);
   const [equity, setEquity] = useState<BacktestEquityPoint[]>([]);
   const [trades, setTrades] = useState<BacktestTrade[]>([]);
   const [loading, setLoading] = useState(true);
+  const [rerunning, setRerunning] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [logLines, setLogLines] = useState<string[]>([]);
   const { addToast } = useToast();
 
   useEffect(() => {
     loadBacktest();
   }, [id]);
 
-  // Poll while running
+  // Poll while running or while analysis is pending
   useEffect(() => {
-    if (run?.status !== 'running') return;
+    // Keep polling if running, or if succeeded but no analysis yet (CLI still running LLM)
+    const shouldPoll = run?.status === 'running' || (run?.status === 'succeeded' && !run?.analysis && run?.progress !== 'completed');
+    if (!shouldPoll) return;
     const interval = setInterval(loadBacktest, 3000);
     return () => clearInterval(interval);
-  }, [run?.status]);
+  }, [run?.status, run?.analysis, run?.progress]);
+
+  // Poll logs while running
+  useEffect(() => {
+    if (run?.status !== 'running') return;
+    const loadLogs = async () => {
+      try {
+        const result = await backtestApi.getLog(id, 30);
+        if (result.exists) {
+          setLogLines(result.lines);
+        }
+      } catch {
+        // Ignore log errors
+      }
+    };
+    loadLogs();
+    const interval = setInterval(loadLogs, 2000);
+    return () => clearInterval(interval);
+  }, [run?.status, id]);
 
   async function loadBacktest() {
     try {
@@ -127,18 +152,77 @@ function BacktestDetail({ id }: { id: string }) {
     }
   }
 
+  async function handleRunAgain() {
+    if (!run) return;
+    setRerunning(true);
+    try {
+      const result = await backtestApi.create({
+        name: run.name ? `${run.name} (rerun)` : undefined,
+        startDate: run.startDate,
+        endDate: run.endDate,
+        symbols: run.symbols,
+      });
+      addToast('Backtest started', 'success');
+      navigate(`/backtest/${result.backtestId}`);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to start backtest', 'error');
+    } finally {
+      setRerunning(false);
+    }
+  }
+
+  async function handleAnalyze() {
+    setAnalyzing(true);
+    try {
+      await backtestApi.analyze(id);
+      await loadBacktest();
+      addToast('Analysis complete', 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to analyze backtest', 'error');
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   if (loading) return <p>Loading…</p>;
   if (!run) return <p>Backtest not found</p>;
 
   return (
     <div>
-      <Link to="/backtest" className={styles.backLink}>← Back to Backtests</Link>
+      <div className={styles.detailHeader}>
+        <Link to="/backtest" className={styles.backLink}>← Back to Backtests</Link>
+        {run.status !== 'running' && (
+          <div className={styles.detailActions}>
+            <button onClick={handleRunAgain} disabled={rerunning} className={styles.runAgainBtn}>
+              {rerunning ? 'Starting...' : '↻ Run Again'}
+            </button>
+            {!run.analysis && (
+              <button onClick={handleAnalyze} disabled={analyzing} className={styles.analyzeBtn}>
+                {analyzing ? 'Analyzing...' : '🤖 Analyze'}
+              </button>
+            )}
+            <button onClick={() => window.print()} className={styles.printBtn}>
+              🖨 Print
+            </button>
+          </div>
+        )}
+      </div>
       <h1>{run.name || `Backtest ${run.id.slice(0, 8)}`}</h1>
       <p className={styles.dateRange}>{run.startDate} → {run.endDate}</p>
 
       {run.status === 'running' && (
         <div className={styles.runningBox}>
-          <span className={styles.spinner} /> Running backtest... (backfilling prices, then simulating trades)
+          <span className={styles.spinner} /> Running backtest...
+          {run.progress && <span className={styles.progressLabel}> ({run.progress})</span>}
+        </div>
+      )}
+
+      {run.status === 'running' && logLines.length > 0 && (
+        <div className={styles.logBox}>
+          <h4>Progress Log</h4>
+          <pre className={styles.logContent}>
+            {logLines.join('\n')}
+          </pre>
         </div>
       )}
 
@@ -147,9 +231,13 @@ function BacktestDetail({ id }: { id: string }) {
       )}
 
       {metrics && <MetricsPanel metrics={metrics} />}
+      {run.settingsSnapshot && Object.keys(run.settingsSnapshot).length > 0 && (
+        <SettingsPanel settings={run.settingsSnapshot} />
+      )}
       {equity.length > 0 && <EquityChart equity={equity} />}
       {trades.length > 0 && <TradesTable trades={trades} />}
       {metrics?.perSymbol && <SymbolAttribution perSymbol={metrics.perSymbol} />}
+      {run.analysis && <AnalysisPanel analysis={run.analysis} />}
     </div>
   );
 }
@@ -157,6 +245,7 @@ function BacktestDetail({ id }: { id: string }) {
 function MetricsPanel({ metrics }: { metrics: BacktestMetrics }) {
   const fmt = (v: number | null, suffix = '%') => v !== null ? `${(v * 100).toFixed(2)}${suffix}` : '—';
   const fmtNum = (v: number | null) => v !== null ? v.toFixed(2) : '—';
+  const fmtMoney = (v: number | null) => v !== null ? `$${v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—';
 
   return (
     <div className={styles.metricsGrid}>
@@ -194,6 +283,77 @@ function MetricsPanel({ metrics }: { metrics: BacktestMetrics }) {
         <div className={styles.metricLabel}>Total Trades</div>
         <div className={styles.metricValue}>{metrics.totalTrades}</div>
       </div>
+      <div className={styles.metricCard}>
+        <div className={styles.metricLabel}>Ending Value</div>
+        <div className={styles.metricValue}>{fmtMoney(metrics.endingValue)}</div>
+      </div>
+      <div className={styles.metricCard}>
+        <div className={styles.metricLabel}>Cost Basis</div>
+        <div className={styles.metricValue}>{fmtMoney(metrics.startingValue)}</div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsPanel({ settings }: { settings: Record<string, unknown> }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Extract key settings for display
+  const signals = settings.signals as Record<string, unknown> | undefined;
+  const weights = signals?.weights as Record<string, number> | undefined;
+  const risk = settings.risk as Record<string, unknown> | undefined;
+
+  const buyThreshold = signals?.buyThreshold as number | undefined;
+  const sellThreshold = signals?.sellThreshold as number | undefined;
+  const maxPositions = risk?.maxConcurrentPositions as number | undefined;
+  const maxPositionWeight = risk?.maxPositionWeightPercent as number | undefined;
+
+  const hasKeySettings = weights || buyThreshold !== undefined;
+
+  const content = hasKeySettings ? (
+    <div className={styles.settingsGrid}>
+      {weights && (
+        <div className={styles.settingsGroup}>
+          <h4>Signal Weights</h4>
+          <ul>
+            {Object.entries(weights)
+              .filter(([, val]) => val > 0)
+              .map(([key, val]) => (
+                <li key={key}>{key}: {(val * 100).toFixed(0)}%</li>
+              ))}
+          </ul>
+        </div>
+      )}
+      <div className={styles.settingsGroup}>
+        <h4>Thresholds</h4>
+        <ul>
+          <li>Buy: {buyThreshold ?? '—'}</li>
+          <li>Sell: {sellThreshold ?? '—'}</li>
+        </ul>
+      </div>
+      {(maxPositions || maxPositionWeight) && (
+        <div className={styles.settingsGroup}>
+          <h4>Risk Limits</h4>
+          <ul>
+            {maxPositions && <li>Max positions: {maxPositions}</li>}
+            {maxPositionWeight && <li>Max position weight: {maxPositionWeight}%</li>}
+          </ul>
+        </div>
+      )}
+    </div>
+  ) : (
+    <pre className={styles.settingsJson}>{JSON.stringify(settings, null, 2)}</pre>
+  );
+
+  return (
+    <div className={styles.settingsSection}>
+      <h3 onClick={() => setExpanded(!expanded)} style={{ cursor: 'pointer' }} className={styles.settingsToggle}>
+        Strategy Settings {expanded ? '▼' : '▶'}
+      </h3>
+      {/* Screen: show based on expanded state */}
+      {expanded && <div className={styles.settingsContent}>{content}</div>}
+      {/* Print: always show */}
+      <div className={styles.settingsContentPrint}>{content}</div>
     </div>
   );
 }
@@ -304,7 +464,8 @@ function TradesTable({ trades }: { trades: BacktestTrade[] }) {
   return (
     <div className={styles.tradesSection}>
       <h3>Trades ({trades.length})</h3>
-      <table className={styles.table}>
+      {/* Screen: paginated */}
+      <table className={`${styles.table} ${styles.screenOnly}`}>
         <thead>
           <tr>
             <th>Date</th>
@@ -326,6 +487,29 @@ function TradesTable({ trades }: { trades: BacktestTrade[] }) {
           ))}
         </tbody>
       </table>
+      {/* Print: all trades */}
+      <table className={`${styles.table} ${styles.printOnly}`}>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Symbol</th>
+            <th>Side</th>
+            <th>Quantity</th>
+            <th>Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          {trades.map((t, i) => (
+            <tr key={i}>
+              <td>{t.date}</td>
+              <td>{t.symbol}</td>
+              <td className={t.side === 'buy' ? styles.buy : styles.sell}>{t.side}</td>
+              <td>{Number.isInteger(t.qty) ? t.qty : t.qty.toFixed(2)}</td>
+              <td>${t.price.toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       {trades.length > 20 && !showAll && (
         <button onClick={() => setShowAll(true)} className={styles.showMoreBtn}>
           Show all {trades.length} trades
@@ -335,7 +519,7 @@ function TradesTable({ trades }: { trades: BacktestTrade[] }) {
   );
 }
 
-function SymbolAttribution({ perSymbol }: { perSymbol: Record<string, { return: number | null; trades: number }> }) {
+function SymbolAttribution({ perSymbol }: { perSymbol: Record<string, { return: number | null; trades: number; costBasis?: number; proceeds?: number }> }) {
   const symbols = Object.entries(perSymbol).sort((a, b) => {
     // Sort by return descending, nulls last
     if (a[1].return === null && b[1].return === null) return 0;
@@ -344,6 +528,11 @@ function SymbolAttribution({ perSymbol }: { perSymbol: Record<string, { return: 
     return b[1].return - a[1].return;
   });
 
+  const fmtMoney = (v: number | undefined) => v !== undefined ? `$${v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—';
+
+  // Check if any symbol has cost/proceeds data
+  const hasCostData = symbols.some(([, d]) => d.costBasis !== undefined);
+
   return (
     <div className={styles.attributionSection}>
       <h3>Per-Symbol Attribution</h3>
@@ -351,22 +540,46 @@ function SymbolAttribution({ perSymbol }: { perSymbol: Record<string, { return: 
         <thead>
           <tr>
             <th>Symbol</th>
+            {hasCostData && <th>Cost Basis</th>}
+            {hasCostData && <th>Proceeds</th>}
+            {hasCostData && <th>P&L</th>}
             <th>Return</th>
             <th>Trades</th>
           </tr>
         </thead>
         <tbody>
-          {symbols.map(([symbol, data]) => (
-            <tr key={symbol}>
-              <td>{symbol}</td>
-              <td className={data.return !== null && data.return >= 0 ? styles.positive : data.return !== null ? styles.negative : ''}>
-                {data.return !== null ? `${(data.return * 100).toFixed(2)}%` : '—'}
-              </td>
-              <td>{data.trades}</td>
-            </tr>
-          ))}
+          {symbols.map(([symbol, data]) => {
+            const pnl = data.costBasis !== undefined && data.proceeds !== undefined ? data.proceeds - data.costBasis : undefined;
+            return (
+              <tr key={symbol}>
+                <td>{symbol}</td>
+                {hasCostData && <td>{fmtMoney(data.costBasis)}</td>}
+                {hasCostData && <td>{fmtMoney(data.proceeds)}</td>}
+                {hasCostData && (
+                  <td className={pnl !== undefined && pnl >= 0 ? styles.positive : pnl !== undefined ? styles.negative : ''}>
+                    {pnl !== undefined ? `${pnl >= 0 ? '+' : ''}${fmtMoney(pnl)}` : '—'}
+                  </td>
+                )}
+                <td className={data.return !== null && data.return >= 0 ? styles.positive : data.return !== null ? styles.negative : ''}>
+                  {data.return !== null ? `${(data.return * 100).toFixed(2)}%` : '—'}
+                </td>
+                <td>{data.trades}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function AnalysisPanel({ analysis }: { analysis: string }) {
+  return (
+    <div className={styles.analysisSection}>
+      <h3>🤖 LLM Analysis & Recommendations</h3>
+      <div className={styles.analysisContent}>
+        <Markdown>{analysis}</Markdown>
+      </div>
     </div>
   );
 }
@@ -378,6 +591,7 @@ function NewBacktestForm({ onCreated }: { onCreated: () => void }) {
   const { addToast } = useToast();
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [dateRange, setDateRange] = useState<{ minDate: string; maxDate: string } | null>(null);
 
   // Form state
   const [name, setName] = useState('');
@@ -390,6 +604,20 @@ function NewBacktestForm({ onCreated }: { onCreated: () => void }) {
   useEffect(() => {
     watchlistApi.list().then(res => {
       setWatchlist(res.data.filter(w => w.enabled));
+    }).catch(() => {});
+
+    // Load available date range
+    backtestApi.getDateRange().then(range => {
+      setDateRange(range);
+      // Set default dates to last 6 months of available data
+      const end = new Date(range.maxDate);
+      const start = new Date(range.maxDate);
+      start.setMonth(start.getMonth() - 6);
+      if (start < new Date(range.minDate)) {
+        start.setTime(new Date(range.minDate).getTime());
+      }
+      setStartDate(start.toISOString().slice(0, 10));
+      setEndDate(end.toISOString().slice(0, 10));
     }).catch(() => {});
   }, []);
 
@@ -437,12 +665,26 @@ function NewBacktestForm({ onCreated }: { onCreated: () => void }) {
         <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="My Backtest" />
       </div>
       <div className={styles.formRow}>
-        <label>Start Date</label>
-        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required />
+        <label>Start Date {dateRange && <span className={styles.muted}>(data available: {dateRange.minDate} to {dateRange.maxDate})</span>}</label>
+        <input 
+          type="date" 
+          value={startDate} 
+          onChange={e => setStartDate(e.target.value)} 
+          min={dateRange?.minDate} 
+          max={dateRange?.maxDate}
+          required 
+        />
       </div>
       <div className={styles.formRow}>
         <label>End Date</label>
-        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required />
+        <input 
+          type="date" 
+          value={endDate} 
+          onChange={e => setEndDate(e.target.value)} 
+          min={dateRange?.minDate} 
+          max={dateRange?.maxDate}
+          required 
+        />
       </div>
       <div className={styles.formRow}>
         <label>Starting Cash ($)</label>

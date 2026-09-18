@@ -594,10 +594,13 @@ export interface BacktestRun {
   startDate: string;
   endDate: string;
   symbols: string[];
+  settingsSnapshot: Record<string, unknown> | null;
   status: 'running' | 'succeeded' | 'failed';
+  progress: string | null;
   startedAt: number;
   finishedAt: number | null;
   error: string | null;
+  analysis: string | null;
 }
 
 export interface BacktestMetrics {
@@ -610,7 +613,9 @@ export interface BacktestMetrics {
   avgWin: number | null;
   avgLoss: number | null;
   totalTrades: number;
-  perSymbol: Record<string, { return: number; trades: number }> | null;
+  perSymbol: Record<string, { return: number | null; trades: number; costBasis?: number; proceeds?: number }> | null;
+  startingValue: number | null;
+  endingValue: number | null;
 }
 
 export interface BacktestEquityPoint {
@@ -632,6 +637,9 @@ export const backtest = {
   list(): Promise<{ runs: BacktestRun[] }> {
     return request<{ runs: BacktestRun[] }>('/backtest');
   },
+  getDateRange(): Promise<{ minDate: string; maxDate: string; note: string }> {
+    return request('/backtest/date-range');
+  },
   get(id: string): Promise<{ run: BacktestRun; metrics: BacktestMetrics | null; equityCurve?: BacktestEquityPoint[]; trades?: BacktestTrade[] }> {
     return request(`/backtest/${encodeURIComponent(id)}`);
   },
@@ -643,6 +651,12 @@ export const backtest = {
   },
   create(config: { name?: string; startDate: string; endDate: string; symbols: string[]; startingCashCents?: number }): Promise<{ backtestId: string }> {
     return request('/backtest', { method: 'POST', body: JSON.stringify(config) });
+  },
+  analyze(id: string): Promise<{ analysis: string; model: string; tokens?: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+    return request(`/backtest/${encodeURIComponent(id)}/analyze`, { method: 'POST' });
+  },
+  getLog(id: string, tail = 50): Promise<{ lines: string[]; exists: boolean; totalLines?: number }> {
+    return request(`/backtest/${encodeURIComponent(id)}/log?tail=${tail}`);
   },
 };
 

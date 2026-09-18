@@ -208,3 +208,11 @@
     display: none;
   }
 }
+
+@media print {
+  .hamburger,
+  .backdrop,
+  .nav {
+    display: none !important;
+  }
+}
