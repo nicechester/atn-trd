@@ -22,6 +22,14 @@ export interface BacktestStateConfig {
   startDate: string;
 }
 
+export interface Fill {
+  date: string;
+  symbol: string;
+  side: 'buy' | 'sell';
+  qty: number;
+  priceCents: number;
+}
+
 export class BacktestState {
   readonly signalSnapshots: MockSignalSnapshotsRepo;
   readonly strategicPlans: MockStrategicPlansRepo;
@@ -35,6 +43,7 @@ export class BacktestState {
 
   private currentDate: string;
   private readonly config: BacktestStateConfig;
+  private readonly fills: Fill[] = [];
 
   constructor(config: BacktestStateConfig) {
     this.config = config;
@@ -124,6 +133,9 @@ export class BacktestState {
 
   /** Record a position change from a fill */
   recordFill(symbol: string, side: 'buy' | 'sell', qty: number, priceCents: number): void {
+    // Track fill for reporting
+    this.fills.push({ date: this.currentDate, symbol, side, qty, priceCents });
+
     const existing = this.positions.get(symbol);
     const now = Date.now();
 
@@ -171,25 +183,34 @@ export class BacktestState {
     }
   }
 
-  /** Get snapshot of current state for debugging */
+  /** Get snapshot of current state */
   getStateSnapshot(): {
     date: string;
     cashCents: number;
     portfolioValueCents: number;
+    positions: Array<{ symbol: string; qty: number; avgCostCents: number }>;
     positionCount: number;
     activePlanCount: number;
     regime: string | null;
+    fills: Fill[];
   } {
     const portfolio = this.portfolio.read();
     const regime = this.marketRegime.getLatest();
+    const positions = this.positions.list().map(p => ({
+      symbol: p.symbol,
+      qty: p.qty,
+      avgCostCents: p.avgCostCents,
+    }));
 
     return {
       date: this.currentDate,
       cashCents: portfolio?.cashCents ?? 0,
       portfolioValueCents: this.getPortfolioValueCents(),
-      positionCount: this.positions.list().length,
+      positions,
+      positionCount: positions.length,
       activePlanCount: this.strategicPlans.listActive().length,
       regime: regime?.regime ?? null,
+      fills: this.fills,
     };
   }
 }
