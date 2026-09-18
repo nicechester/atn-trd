@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Markdown from 'react-markdown';
 import { backtest as backtestApi, watchlist as watchlistApi, type BacktestRun, type BacktestMetrics, type BacktestEquityPoint, type BacktestTrade } from '../api/client';
 import { useToast } from '../context/ToastContext';
@@ -15,10 +15,20 @@ export default function BacktestPage() {
 }
 
 function BacktestList() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [runs, setRuns] = useState<BacktestRun[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  const hasPrefill = searchParams.get('prefill') === '1';
+  const [showForm, setShowForm] = useState(hasPrefill);
   const { addToast } = useToast();
+
+  const prefill = hasPrefill ? {
+    name: searchParams.get('name') || undefined,
+    startDate: searchParams.get('startDate') || undefined,
+    endDate: searchParams.get('endDate') || undefined,
+    symbols: searchParams.get('symbols') || undefined,
+    startingCash: searchParams.get('startingCash') || undefined,
+  } : undefined;
 
   useEffect(() => {
     loadRuns();
@@ -49,7 +59,7 @@ function BacktestList() {
         Historical strategy validation. Run backtests to answer "Would this have worked in the past?"
       </p>
 
-      {showForm && <NewBacktestForm onCreated={() => { setShowForm(false); loadRuns(); }} />}
+      {showForm && <NewBacktestForm onCreated={() => { setShowForm(false); setSearchParams({}); loadRuns(); }} prefill={prefill} />}
 
       {runs.length === 0 && !showForm ? (
         <p className={styles.muted}>No backtests yet. Click "+ New Backtest" to run one.</p>
@@ -96,7 +106,6 @@ function BacktestDetail({ id }: { id: string }) {
   const [equity, setEquity] = useState<BacktestEquityPoint[]>([]);
   const [trades, setTrades] = useState<BacktestTrade[]>([]);
   const [loading, setLoading] = useState(true);
-  const [rerunning, setRerunning] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [logLines, setLogLines] = useState<string[]>([]);
   const { addToast } = useToast();
@@ -152,23 +161,17 @@ function BacktestDetail({ id }: { id: string }) {
     }
   }
 
-  async function handleRunAgain() {
+  function handleRunAgain() {
     if (!run) return;
-    setRerunning(true);
-    try {
-      const result = await backtestApi.create({
-        name: run.name ? `${run.name} (rerun)` : undefined,
-        startDate: run.startDate,
-        endDate: run.endDate,
-        symbols: run.symbols,
-      });
-      addToast('Backtest started', 'success');
-      navigate(`/backtest/${result.backtestId}`);
-    } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to start backtest', 'error');
-    } finally {
-      setRerunning(false);
-    }
+    const params = new URLSearchParams({
+      prefill: '1',
+      startDate: run.startDate,
+      endDate: run.endDate,
+      symbols: run.symbols.join(','),
+      ...(run.name ? { name: run.name } : {}),
+      ...(metrics?.startingValue ? { startingCash: String(metrics.startingValue) } : {}),
+    });
+    navigate(`/backtest?${params.toString()}`);
   }
 
   async function handleAnalyze() {
@@ -193,8 +196,8 @@ function BacktestDetail({ id }: { id: string }) {
         <Link to="/backtest" className={styles.backLink}>← Back to Backtests</Link>
         {run.status !== 'running' && (
           <div className={styles.detailActions}>
-            <button onClick={handleRunAgain} disabled={rerunning} className={styles.runAgainBtn}>
-              {rerunning ? 'Starting...' : '↻ Run Again'}
+            <button onClick={handleRunAgain} className={styles.runAgainBtn}>
+              ↻ Run Again
             </button>
             {!run.analysis && (
               <button onClick={handleAnalyze} disabled={analyzing} className={styles.analyzeBtn}>
@@ -586,7 +589,7 @@ function AnalysisPanel({ analysis }: { analysis: string }) {
 
 interface WatchlistItem { symbol: string; enabled: boolean }
 
-function NewBacktestForm({ onCreated }: { onCreated: () => void }) {
+function NewBacktestForm({ onCreated, prefill }: { onCreated: () => void; prefill?: { name?: string; startDate?: string; endDate?: string; symbols?: string; startingCash?: string } }) {
   const navigate = useNavigate();
   const { addToast } = useToast();
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
@@ -594,12 +597,12 @@ function NewBacktestForm({ onCreated }: { onCreated: () => void }) {
   const [dateRange, setDateRange] = useState<{ minDate: string; maxDate: string } | null>(null);
 
   // Form state
-  const [name, setName] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [symbolsInput, setSymbolsInput] = useState('');
-  const [useWatchlist, setUseWatchlist] = useState(true);
-  const [startingCash, setStartingCash] = useState('100000');
+  const [name, setName] = useState(prefill?.name || '');
+  const [startDate, setStartDate] = useState(prefill?.startDate || '');
+  const [endDate, setEndDate] = useState(prefill?.endDate || '');
+  const [symbolsInput, setSymbolsInput] = useState(prefill?.symbols || '');
+  const [useWatchlist, setUseWatchlist] = useState(!prefill?.symbols);
+  const [startingCash, setStartingCash] = useState(prefill?.startingCash || '100000');
 
   useEffect(() => {
     watchlistApi.list().then(res => {
@@ -609,17 +612,19 @@ function NewBacktestForm({ onCreated }: { onCreated: () => void }) {
     // Load available date range
     backtestApi.getDateRange().then(range => {
       setDateRange(range);
-      // Set default dates to last 6 months of available data
-      const end = new Date(range.maxDate);
-      const start = new Date(range.maxDate);
-      start.setMonth(start.getMonth() - 6);
-      if (start < new Date(range.minDate)) {
-        start.setTime(new Date(range.minDate).getTime());
+      // Only set default dates if not prefilled
+      if (!prefill?.startDate || !prefill?.endDate) {
+        const end = new Date(range.maxDate);
+        const start = new Date(range.maxDate);
+        start.setMonth(start.getMonth() - 6);
+        if (start < new Date(range.minDate)) {
+          start.setTime(new Date(range.minDate).getTime());
+        }
+        if (!prefill?.startDate) setStartDate(start.toISOString().slice(0, 10));
+        if (!prefill?.endDate) setEndDate(end.toISOString().slice(0, 10));
       }
-      setStartDate(start.toISOString().slice(0, 10));
-      setEndDate(end.toISOString().slice(0, 10));
     }).catch(() => {});
-  }, []);
+  }, [prefill?.startDate, prefill?.endDate]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
