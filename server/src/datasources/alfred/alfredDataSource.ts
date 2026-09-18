@@ -76,10 +76,13 @@ export class AlfredDataSource {
 
   /**
    * Get 10Y-2Y yield curve spread as of date.
+   * Computed from DGS10 - DGS2 (T10Y2Y doesn't support ALFRED vintage queries).
    */
   getYieldCurve(asOfDate: string): number | null {
-    const obs = this.getVintage('T10Y2Y', asOfDate);
-    return obs?.value ?? null;
+    const dgs10 = this.getVintage('DGS10', asOfDate);
+    const dgs2 = this.getVintage('DGS2', asOfDate);
+    if (dgs10?.value == null || dgs2?.value == null) return null;
+    return dgs10.value - dgs2.value;
   }
 
   /**

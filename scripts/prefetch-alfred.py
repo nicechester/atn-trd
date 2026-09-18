@@ -38,7 +38,9 @@ DEFAULT_OUTPUT_DB = "alfred/alfred.db"
 
 # FRED API settings
 FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
-DEFAULT_SERIES = ["VIXCLS", "T10Y2Y"]
+# Note: T10Y2Y is derived and doesn't support ALFRED vintage queries.
+# Fetch DGS10 and DGS2 separately, compute spread in datasource.
+DEFAULT_SERIES = ["VIXCLS", "DGS10", "DGS2"]
 RATE_LIMIT_DELAY = 0.6  # ~100 req/min to stay under FRED's 120/min limit
 
 
