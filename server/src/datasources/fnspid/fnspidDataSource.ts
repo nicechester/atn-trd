@@ -42,6 +42,7 @@ export class FnspidDataSource {
   private readonly stmtGetSentimentRange: Database.Statement;
   private readonly stmtListSymbols: Database.Statement;
   private readonly stmtGetDateRange: Database.Statement;
+  private readonly stmtGetSentimentDateRange: Database.Statement;
 
   constructor(options: FnspidDataSourceOptions) {
     this.db = new Database(options.dbPath, { readonly: true });
@@ -80,8 +81,17 @@ export class FnspidDataSource {
       SELECT DISTINCT symbol FROM prices ORDER BY symbol
     `);
 
+    // Use metadata table for fast date range lookup
     this.stmtGetDateRange = this.db.prepare(`
-      SELECT MIN(date) as minDate, MAX(date) as maxDate FROM prices
+      SELECT 
+        (SELECT value FROM dataset_meta WHERE key = 'price_min_date') as minDate,
+        (SELECT value FROM dataset_meta WHERE key = 'price_max_date') as maxDate
+    `);
+
+    this.stmtGetSentimentDateRange = this.db.prepare(`
+      SELECT 
+        (SELECT value FROM dataset_meta WHERE key = 'sentiment_min_date') as minDate,
+        (SELECT value FROM dataset_meta WHERE key = 'sentiment_max_date') as maxDate
     `);
 
     log.info('fnspid datasource initialized', { dbPath: options.dbPath });
@@ -186,7 +196,12 @@ export class FnspidDataSource {
 
   getDateRange(): { minDate: string; maxDate: string } | null {
     const row = this.stmtGetDateRange.get() as { minDate: string; maxDate: string } | null;
-    return row;
+    return row?.minDate ? row : null;
+  }
+
+  getSentimentDateRange(): { minDate: string; maxDate: string } | null {
+    const row = this.stmtGetSentimentDateRange.get() as { minDate: string; maxDate: string } | null;
+    return row?.minDate ? row : null;
   }
 
   createPriceProvider(): HistoricalPriceProvider {

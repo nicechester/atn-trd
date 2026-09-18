@@ -40,6 +40,7 @@ interface BacktestArgs {
   alfredDb: string;
   atnDb: string;
   backtestId?: string;
+  noAnalysis: boolean;
 }
 
 function parseArguments(): BacktestArgs {
@@ -53,6 +54,7 @@ function parseArguments(): BacktestArgs {
       'alfred-db': { type: 'string', default: DEFAULT_ALFRED_DB },
       'atn-db': { type: 'string', default: DEFAULT_ATN_DB },
       'backtest-id': { type: 'string' },
+      'no-analysis': { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -75,6 +77,7 @@ Options:
   --alfred-db       Path to alfred.db (default: ${DEFAULT_ALFRED_DB})
   --atn-db          Path to atn.db (default: ${DEFAULT_ATN_DB})
   --backtest-id     Use existing backtest record (for API-triggered runs)
+  --no-analysis     Skip LLM analysis at end
   -h, --help        Show this help message
 `);
     process.exit(values.help ? 0 : 1);
@@ -89,6 +92,7 @@ Options:
     alfredDb: values['alfred-db'] ?? DEFAULT_ALFRED_DB,
     atnDb: values['atn-db'] ?? DEFAULT_ATN_DB,
     backtestId: values['backtest-id'] ?? process.env.BACKTEST_ID,
+    noAnalysis: values['no-analysis'] ?? false,
   };
 }
 
@@ -143,19 +147,10 @@ async function main() {
   // Run migrations to ensure tables exist
   const migrationsDir = path.join(__dirname, '..', 'src', 'db', 'migrations');
   runMigrations(atnDb, migrationsDir);
+  console.log('Migrations complete');
 
-  // Verify date range
-  const dateRange = fnspid.getDateRange();
-  if (!dateRange) {
-    console.error('Error: Could not read date range from FNSPID database');
-    process.exit(1);
-  }
-
-  console.log(`FNSPID Data Range: ${dateRange.minDate} to ${dateRange.maxDate}`);
-
-  if (args.start < dateRange.minDate || args.end > dateRange.maxDate) {
-    console.warn(`Warning: Requested range (${args.start} to ${args.end}) extends beyond available data`);
-  }
+  // Skip slow date range scan - data availability checked during replay
+  console.log('FNSPID database loaded');
 
   // Ensure SPY is included for benchmark
   const allSymbols = args.symbols.includes('SPY') ? args.symbols : [...args.symbols, 'SPY'];
@@ -206,9 +201,11 @@ async function main() {
   console.log();
 
   // Create data provider
+  console.log('Creating data provider...');
   const dataProvider = createDataProvider(fnspid, alfred);
 
   // Setup backtest repo for persistence
+  console.log('Setting up backtest record...');
   const backtestRepo = new BacktestRepo(atnDb);
   const backtestId = args.backtestId ?? backtestRepo.createRun({
     name: args.backtestId ? undefined : `CLI Backtest ${args.start} to ${args.end}`,
@@ -230,7 +227,8 @@ async function main() {
   };
 
   updateProgress('starting');
-  console.log('Running backtest with full job replay...\n');
+  console.log('Running backtest with full job replay...');
+  console.log(`  Processing ${args.start} to ${args.end}...\n`);
 
   // Track snapshots and trades for metrics
   const snapshots: Array<{ asOfDate: string; totalValueCents: number; benchmarkValueCents?: number }> = [];
@@ -298,8 +296,8 @@ async function main() {
         }
       }
 
-      // Progress every 100 days
-      if (snapshots.length % 100 === 0) {
+      // Progress every 20 days
+      if (snapshots.length % 20 === 0) {
         console.log(`  ${date}: $${(totalValueCents / 100).toLocaleString()} (${snapshots.length} days)`);
       }
     },
@@ -354,6 +352,10 @@ async function main() {
   console.log('='.repeat(60));
 
   // Run LLM analysis
+  if (args.noAnalysis) {
+    updateProgress('completed');
+    console.log('\nSkipping LLM analysis (--no-analysis)');
+  } else {
   updateProgress('running_llm_analysis');
   console.log('\nRunning LLM analysis...');
   try {
@@ -388,6 +390,7 @@ async function main() {
     console.log(`Tokens used: ${completion.tokens?.totalTokens ?? 'unknown'}`);
   } catch (err) {
     console.error('LLM analysis failed:', err instanceof Error ? err.message : err);
+  }
   }
 
   // Cleanup

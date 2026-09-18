@@ -86,14 +86,15 @@ export class AlfredDataSource {
   }
 
   /**
-   * Get date range available in the database.
+   * Get date range available in the database (from metadata table).
    */
   getDateRange(): { minDate: string; maxDate: string } | null {
     const row = this.db.prepare(`
-      SELECT MIN(vintage_date) as minDate, MAX(vintage_date) as maxDate 
-      FROM macro_vintage
+      SELECT 
+        (SELECT value FROM dataset_meta WHERE key = 'min_date') as minDate,
+        (SELECT value FROM dataset_meta WHERE key = 'max_date') as maxDate
     `).get() as { minDate: string; maxDate: string } | null;
-    return row;
+    return row?.minDate ? row : null;
   }
 
   /**

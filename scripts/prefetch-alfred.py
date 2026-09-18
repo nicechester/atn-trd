@@ -61,6 +61,11 @@ def create_schema(conn: sqlite3.Connection):
         CREATE INDEX IF NOT EXISTS idx_macro_vintage_series_date 
         ON macro_vintage(series_id, vintage_date);
         
+        CREATE TABLE IF NOT EXISTS dataset_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
+        
         CREATE TABLE IF NOT EXISTS prefetch_meta (
             key TEXT PRIMARY KEY,
             value TEXT
@@ -255,6 +260,14 @@ def main():
         conn.commit()
     
     finally:
+        # Update metadata with date range
+        cursor = conn.cursor()
+        cursor.execute("SELECT MIN(vintage_date), MAX(vintage_date) FROM macro_vintage")
+        min_date, max_date = cursor.fetchone()
+        if min_date and max_date:
+            cursor.execute("INSERT OR REPLACE INTO dataset_meta VALUES ('min_date', ?)", (min_date,))
+            cursor.execute("INSERT OR REPLACE INTO dataset_meta VALUES ('max_date', ?)", (max_date,))
+            conn.commit()
         conn.close()
     
     elapsed = time.perf_counter() - start_time

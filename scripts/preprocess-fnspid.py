@@ -77,6 +77,11 @@ def create_schema(conn: sqlite3.Connection):
         CREATE INDEX IF NOT EXISTS idx_prices_symbol_date ON prices(symbol, date);
         CREATE INDEX IF NOT EXISTS idx_sentiment_symbol_date ON news_sentiment(symbol, date);
         
+        CREATE TABLE IF NOT EXISTS dataset_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
+        
         CREATE TABLE IF NOT EXISTS preprocess_meta (
             key TEXT PRIMARY KEY,
             value TEXT
@@ -247,7 +252,17 @@ def process_prices(conn: sqlite3.Connection, data_dir: Path, cutoff_date: str):
     
     conn.commit()
     elapsed = time.perf_counter() - start_time
+    
+    # Update metadata
+    cursor.execute("SELECT MIN(date), MAX(date) FROM prices")
+    min_date, max_date = cursor.fetchone()
+    if min_date and max_date:
+        cursor.execute("INSERT OR REPLACE INTO dataset_meta VALUES ('price_min_date', ?)", (min_date,))
+        cursor.execute("INSERT OR REPLACE INTO dataset_meta VALUES ('price_max_date', ?)", (max_date,))
+        conn.commit()
+    
     print(f"Prices complete: {total_rows:,} rows in {elapsed:.1f}s ({skipped_rows:,} skipped)")
+    print(f"  Date range: {min_date} to {max_date}")
 
 
 def process_news(conn: sqlite3.Connection, data_dir: Path, cutoff_date: str, end_date: str, scorer: FinBERTScorer):
@@ -360,6 +375,14 @@ def process_news(conn: sqlite3.Connection, data_dir: Path, cutoff_date: str, end
         "INSERT INTO news_sentiment (symbol, date, headline, sentiment_score, sentiment_label, confidence) VALUES (?,?,?,?,NULL,NULL)",
         insert_data
     )
+    
+    # Update metadata
+    cursor.execute("SELECT MIN(date), MAX(date) FROM news_sentiment")
+    min_date, max_date = cursor.fetchone()
+    if min_date and max_date:
+        cursor.execute("INSERT OR REPLACE INTO dataset_meta VALUES ('sentiment_min_date', ?)", (min_date,))
+        cursor.execute("INSERT OR REPLACE INTO dataset_meta VALUES ('sentiment_max_date', ?)", (max_date,))
+    
     cursor.execute("INSERT OR REPLACE INTO preprocess_meta VALUES ('news_complete', 'true')")
     conn.commit()
     
