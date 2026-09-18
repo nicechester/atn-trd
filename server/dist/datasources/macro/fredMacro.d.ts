@@ -49,6 +49,11 @@ export interface MacroPayload {
 export interface MacroQuery {
     /** Defaults to `DEFAULT_SERIES_IDS`. */
     seriesIds?: string[];
+    /**
+     * ALFRED vintage mode: fetch data as it was known on this date.
+     * Format: YYYY-MM-DD. When set, returns point-in-time values.
+     */
+    asOfDate?: string;
 }
 export interface FredObservationRaw {
     realtime_start?: string;
@@ -91,5 +96,14 @@ export declare class FredMacroDataSource extends BaseDataSource<MacroQuery, Data
     /** FRED puts a human-readable reason in the error body; surface it. */
     private extractFredMessage;
     protected probe(): Promise<string>;
+    /**
+     * Get a single observation as it was known on a specific date (ALFRED vintage).
+     * Useful for backtesting to avoid look-ahead bias.
+     *
+     * @param seriesId - FRED series ID (e.g., 'UNRATE', 'CPIAUCSL')
+     * @param asOfDate - Date to query vintage data for (YYYY-MM-DD)
+     * @returns The most recent observation available as of that date, or null
+     */
+    getVintageObservation(seriesId: string, asOfDate: string, ctx?: FetchContext): Promise<MacroObservation | null>;
 }
 //# sourceMappingURL=fredMacro.d.ts.map

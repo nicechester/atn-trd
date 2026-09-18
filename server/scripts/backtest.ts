@@ -9,23 +9,28 @@
  *   npx tsx server/scripts/backtest.ts --start 2022-01-01 --end 2023-12-31 --symbols AAPL,MSFT,GOOGL
  */
 
+import { config as dotenvConfig } from 'dotenv';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import Database from 'better-sqlite3';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Load .env from project root (two levels up from scripts/)
+dotenvConfig({ path: path.join(__dirname, '..', '..', '.env') });
+
 import { FnspidDataSource } from '../src/datasources/fnspid/index.js';
 import { AlfredDataSource } from '../src/datasources/alfred/alfredDataSource.js';
 import { runReplay, type BacktestDataProvider, type ReplayResult } from '../src/backtest/index.js';
 import { DEFAULT_SETTINGS, type Settings } from '@atn-trd/shared';
 import { runMigrations } from '../src/db/migrate.js';
+import { initializeDatabase, closeDatabase } from '../src/db/index.js';
 import { SettingsRepo } from '../src/repos/settingsRepo.js';
 import { BacktestRepo } from '../src/repos/backtestRepo.js';
 import { createOpenAIChatModel, promptMessages } from '../src/llm/openaiChatModel.js';
 import { BACKTEST_ANALYST_SYSTEM_PROMPT, buildBacktestAnalysisPrompt } from '../src/llm/prompts/backtestAnalyst.js';
 import { calculateMetrics } from '../src/backtest/metrics.js';
 import { isTradingDayStr } from '../src/scheduler/marketCalendar.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_FNSPID_DB = process.env.FNSPID_DB_PATH || '/Volumes/JetDrive/atn-trd/fnspid/fnspid.db';
 const DEFAULT_ALFRED_DB = process.env.ALFRED_DB_PATH || '/Volumes/JetDrive/atn-trd/alfred/alfred.db';
@@ -41,6 +46,7 @@ interface BacktestArgs {
   atnDb: string;
   backtestId?: string;
   noAnalysis: boolean;
+  verbose: boolean;
 }
 
 function parseArguments(): BacktestArgs {
@@ -55,6 +61,7 @@ function parseArguments(): BacktestArgs {
       'atn-db': { type: 'string', default: DEFAULT_ATN_DB },
       'backtest-id': { type: 'string' },
       'no-analysis': { type: 'boolean' },
+      'verbose': { type: 'boolean', short: 'v' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -78,6 +85,7 @@ Options:
   --atn-db          Path to atn.db (default: ${DEFAULT_ATN_DB})
   --backtest-id     Use existing backtest record (for API-triggered runs)
   --no-analysis     Skip LLM analysis at end
+  -v, --verbose      Print detailed job logs
   -h, --help        Show this help message
 `);
     process.exit(values.help ? 0 : 1);
@@ -93,6 +101,7 @@ Options:
     atnDb: values['atn-db'] ?? DEFAULT_ATN_DB,
     backtestId: values['backtest-id'] ?? process.env.BACKTEST_ID,
     noAnalysis: values['no-analysis'] ?? false,
+    verbose: values['verbose'] ?? false,
   };
 }
 
@@ -142,7 +151,9 @@ async function main() {
     console.warn('Warning: ALFRED database not found, regime detection will use defaults');
   }
 
-  const atnDb = new Database(args.atnDb);
+  // Initialize the global database (required for settingsService/secretsService)
+  const atnDbDir = path.dirname(path.resolve(args.atnDb));
+  const atnDb = initializeDatabase(atnDbDir);
 
   // Run migrations to ensure tables exist
   const migrationsDir = path.join(__dirname, '..', 'src', 'db', 'migrations');
@@ -233,16 +244,34 @@ async function main() {
   // Track snapshots and trades for metrics
   const snapshots: Array<{ asOfDate: string; totalValueCents: number; benchmarkValueCents?: number }> = [];
   const trades: Array<{ tradeDate: string; symbol: string; side: string; qty: number; priceCents: number }> = [];
+  let lastFillCount = 0; // Track fills we've already recorded
 
-  // Get initial benchmark price for normalization
+  // Get initial benchmark price for normalization (find first trading day with data)
   let initialBenchmarkPrice: number | null = null;
-  const spyPrice = dataProvider.getPrice('SPY', args.start);
-  if (spyPrice) {
-    initialBenchmarkPrice = spyPrice.adjCloseCents;
+  let benchmarkStartDate = args.start;
+  for (let i = 0; i < 10; i++) {
+    const spyPrice = dataProvider.getPrice('SPY', benchmarkStartDate);
+    if (spyPrice) {
+      initialBenchmarkPrice = spyPrice.adjCloseCents;
+      break;
+    }
+    // Try next day
+    const nextDate = new Date(benchmarkStartDate + 'T12:00:00Z');
+    nextDate.setDate(nextDate.getDate() + 1);
+    benchmarkStartDate = nextDate.toISOString().split('T')[0];
+  }
+  if (!initialBenchmarkPrice) {
+    console.warn('Warning: Could not find initial SPY price for benchmark');
   }
   const initialValueCents = args.cash * 100;
 
   updateProgress('simulating_trades');
+
+  // Logging helper
+  const log = (msg: string) => {
+    const ts = new Date().toISOString().slice(11, 23);
+    console.log(`[${ts}] ${msg}`);
+  };
 
   // Run replay
   const result: ReplayResult = await runReplay({
@@ -252,6 +281,7 @@ async function main() {
     startingCashCents: initialValueCents,
     settings,
     dataProvider,
+    log: args.verbose ? log : undefined,
     onDayComplete: (date, snapshot) => {
       // Skip non-trading days
       if (!isTradingDayStr(date)) return;
@@ -275,26 +305,26 @@ async function main() {
         benchmarkValueCents,
       });
 
-      // Record new fills
-      for (const fill of snapshot.fills) {
-        if (fill.date === date) {
-          trades.push({
-            tradeDate: date,
-            symbol: fill.symbol,
-            side: fill.side,
-            qty: fill.qty,
-            priceCents: fill.priceCents,
-          });
-          backtestRepo.createTrade({
-            backtestId,
-            tradeDate: date,
-            symbol: fill.symbol,
-            side: fill.side,
-            qty: fill.qty,
-            priceCents: fill.priceCents,
-          });
-        }
+      // Record new fills (only ones we haven't seen yet)
+      const newFills = snapshot.fills.slice(lastFillCount);
+      for (const fill of newFills) {
+        trades.push({
+          tradeDate: fill.date,
+          symbol: fill.symbol,
+          side: fill.side,
+          qty: fill.qty,
+          priceCents: fill.priceCents,
+        });
+        backtestRepo.createTrade({
+          backtestId,
+          tradeDate: fill.date,
+          symbol: fill.symbol,
+          side: fill.side,
+          qty: fill.qty,
+          priceCents: fill.priceCents,
+        });
       }
+      lastFillCount = snapshot.fills.length;
 
       // Progress every 20 days
       if (snapshots.length % 20 === 0) {
@@ -396,7 +426,7 @@ async function main() {
   // Cleanup
   fnspid.close();
   alfred?.close();
-  atnDb.close();
+  closeDatabase();
 }
 
 main().catch(err => {

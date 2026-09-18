@@ -89,6 +89,10 @@ export class BacktestState {
     return this.currentDate;
   }
 
+  getCurrentDateMs(): number {
+    return new Date(this.currentDate + 'T12:00:00Z').getTime();
+  }
+
   /** Reset all state for a fresh backtest */
   reset(): void {
     this.signalSnapshots.clear();

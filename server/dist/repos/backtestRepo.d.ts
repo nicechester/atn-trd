@@ -7,9 +7,11 @@ export interface BacktestRunRow {
     symbols: string[];
     settingsSnapshot: string;
     status: 'running' | 'succeeded' | 'failed';
+    progress: string | null;
     startedAt: number;
     finishedAt: number | null;
     error: string | null;
+    analysis: string | null;
 }
 export interface BacktestSnapshotRow {
     id: string;
@@ -48,6 +50,8 @@ export interface BacktestMetricsRow {
     perSymbol: Record<string, {
         return: number | null;
         trades: number;
+        costBasis: number;
+        proceeds: number;
     }> | null;
 }
 export declare class BacktestRepo {
@@ -61,6 +65,8 @@ export declare class BacktestRepo {
         settingsSnapshot: string;
     }): string;
     updateRunStatus(id: string, status: 'succeeded' | 'failed', error?: string): void;
+    updateProgress(id: string, progress: string): void;
+    updateSettingsSnapshot(id: string, settingsSnapshot: string): void;
     getRun(id: string): BacktestRunRow | null;
     listRuns(limit?: number): BacktestRunRow[];
     createSnapshot(input: {
@@ -88,5 +94,6 @@ export declare class BacktestRepo {
     getTrades(backtestId: string): BacktestTradeRow[];
     saveMetrics(metrics: BacktestMetricsRow): void;
     getMetrics(backtestId: string): BacktestMetricsRow | null;
+    updateAnalysis(id: string, analysis: string): void;
 }
 //# sourceMappingURL=backtestRepo.d.ts.map

@@ -105,12 +105,14 @@ function BacktestDetail({ id }: { id: string }) {
     loadBacktest();
   }, [id]);
 
-  // Poll while running
+  // Poll while running or while analysis is pending
   useEffect(() => {
-    if (run?.status !== 'running') return;
+    // Keep polling if running, or if succeeded but no analysis yet (CLI still running LLM)
+    const shouldPoll = run?.status === 'running' || (run?.status === 'succeeded' && !run?.analysis && run?.progress !== 'completed');
+    if (!shouldPoll) return;
     const interval = setInterval(loadBacktest, 3000);
     return () => clearInterval(interval);
-  }, [run?.status]);
+  }, [run?.status, run?.analysis, run?.progress]);
 
   // Poll logs while running
   useEffect(() => {

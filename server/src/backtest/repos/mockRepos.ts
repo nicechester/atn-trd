@@ -129,12 +129,12 @@ export class MockStrategicPlansRepo implements IStrategicPlansRepo {
     }
   }
 
-  recordTrancheExecution(id: string, shares: number): void {
+  recordTrancheExecution(id: string, shares: number, timestamp?: number): void {
     const plan = this.plans.get(id);
     if (!plan) return;
     plan.executedShares += shares;
     plan.tranchesExecuted += 1;
-    plan.lastTrancheAt = Date.now();
+    plan.lastTrancheAt = timestamp ?? Date.now();
   }
 
   clear(): void {

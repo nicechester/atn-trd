@@ -47,7 +47,7 @@ export interface IStrategicPlansRepo {
   listPaused(): StrategicPlanRow[];
   listBySymbol(symbol: string): StrategicPlanRow[];
   updateStatus(id: string, status: PlanStatus, pauseReason?: string): void;
-  recordTrancheExecution(id: string, shares: number): void;
+  recordTrancheExecution(id: string, shares: number, timestamp?: number): void;
 }
 
 export interface IPlanTranchesRepo {

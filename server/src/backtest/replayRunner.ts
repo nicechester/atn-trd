@@ -13,6 +13,7 @@
 import { randomUUID } from 'crypto';
 import type { Settings } from '@atn-trd/shared';
 import { BacktestState } from './BacktestState.js';
+import { isTradingDayStr } from '../scheduler/marketCalendar.js';
 import type { IMarketRegimeRepo, ISignalSnapshotsRepo, IStrategicPlansRepo, IPlanTranchesRepo, IPortfolioRepo, IPricesRepo, IPositionsRepo, IWatchlistRepo, Regime, SignalSnapshotRow } from './repos/interfaces.js';
 
 // ── Data Providers ────────────────────────────────────────────────────────────
@@ -59,6 +60,7 @@ export interface ReplayPlanReviewDeps {
 
 export interface ReplayTrancheExecutorDeps extends ReplayPlanReviewDeps {
   onFill: (symbol: string, side: 'buy' | 'sell', qty: number, priceCents: number) => void;
+  state: BacktestState;
 }
 
 // ── Replay Logic ──────────────────────────────────────────────────────────────
@@ -396,7 +398,7 @@ function replayTrancheExecutor(deps: ReplayTrancheExecutorDeps, _date: string): 
 } {
   const {
     signalSnapshotsRepo, strategicPlansRepo, planTranchesRepo,
-    marketRegimeRepo, portfolioRepo, pricesRepo, positionsRepo, getSettings, onFill
+    marketRegimeRepo, portfolioRepo, pricesRepo, positionsRepo, getSettings, onFill, state
   } = deps;
   const settings = getSettings();
 
@@ -432,9 +434,9 @@ function replayTrancheExecutor(deps: ReplayTrancheExecutorDeps, _date: string): 
   const portfolio = portfolioRepo.read();
 
   for (const plan of activePlans) {
-    // Check minimum days between tranches
+    // Check minimum days between tranches (use simulation date, not wall clock)
     if (plan.lastTrancheAt) {
-      const daysSince = Math.floor((Date.now() - plan.lastTrancheAt) / 86_400_000);
+      const daysSince = Math.floor((state.getCurrentDateMs() - plan.lastTrancheAt) / 86_400_000);
       if (daysSince < plan.minDaysBetween) continue;
     }
 
@@ -501,16 +503,16 @@ function replayTrancheExecutor(deps: ReplayTrancheExecutorDeps, _date: string): 
       orderId: null,
       compositeScore: signalSnapshotsRepo.getLatest(plan.symbol)?.compositeEwma ?? null,
       regime,
-      executedAt: Date.now(),
+      executedAt: state.getCurrentDateMs(),
     });
     planTranchesRepo.updateStatus(
       Array.from({ length: 1 }).map(() => randomUUID())[0], // dummy, we just created it
       'FILLED',
       shares * price.adjCloseCents,
-      Date.now()
+      state.getCurrentDateMs()
     );
 
-    strategicPlansRepo.recordTrancheExecution(plan.id, shares);
+    strategicPlansRepo.recordTrancheExecution(plan.id, shares, state.getCurrentDateMs());
     tranchesExecuted++;
 
     // Check if plan is complete
@@ -533,6 +535,7 @@ export interface ReplayRunnerConfig {
   settings: Settings;
   dataProvider: BacktestDataProvider;
   onDayComplete?: (date: string, snapshot: ReturnType<BacktestState['getStateSnapshot']>) => void;
+  log?: (msg: string) => void;
 }
 
 export interface ReplayResult {
@@ -546,7 +549,9 @@ export interface ReplayResult {
  * Run a full backtest replay using actual production job logic.
  */
 export async function runReplay(config: ReplayRunnerConfig): Promise<ReplayResult> {
-  const { startDate, endDate, symbols, startingCashCents, settings, dataProvider, onDayComplete } = config;
+  const { startDate, endDate, symbols, startingCashCents, settings, dataProvider, onDayComplete, log } = config;
+  
+  const logMsg = log ?? (() => {});
 
   // Initialize state
   const state = new BacktestState({ symbols, startingCashCents, startDate });
@@ -590,8 +595,20 @@ export async function runReplay(config: ReplayRunnerConfig): Promise<ReplayResul
 
   // Iterate through trading days
   let currentDate = startDate;
+  let dayCount = 0;
   while (currentDate <= endDate) {
+    // Skip non-trading days (weekends, holidays)
+    if (!isTradingDayStr(currentDate)) {
+      const nextDate = new Date(currentDate + 'T12:00:00Z');
+      nextDate.setDate(nextDate.getDate() + 1);
+      currentDate = nextDate.toISOString().split('T')[0];
+      continue;
+    }
+    
+    dayCount++;
     state.setCurrentDate(currentDate);
+    
+    logMsg(`[${currentDate}] day ${dayCount} start`);
 
     // Load prices for this date
     for (const symbol of symbols) {
@@ -613,11 +630,12 @@ export async function runReplay(config: ReplayRunnerConfig): Promise<ReplayResul
     }
 
     // 1. Regime detection
-    replayRegimeDetection(
+    const regime = replayRegimeDetection(
       { marketRegimeRepo: state.marketRegime, getSettings },
       currentDate,
       dataProvider
     );
+    logMsg(`[${currentDate}] regime: ${regime}`);
 
     // 2. Signal collection
     replaySignalCollection(
@@ -632,6 +650,7 @@ export async function runReplay(config: ReplayRunnerConfig): Promise<ReplayResul
       dataProvider,
       priceHistory
     );
+    logMsg(`[${currentDate}] signals collected`);
 
     // 3. Plan review
     const planResult = replayPlanReview(
@@ -650,9 +669,12 @@ export async function runReplay(config: ReplayRunnerConfig): Promise<ReplayResul
     );
     totalPlansCreated += planResult.plansCreated;
     totalTrimPlansCreated += planResult.trimPlansCreated;
+    if (planResult.plansCreated > 0 || planResult.trimPlansCreated > 0) {
+      logMsg(`[${currentDate}] plans: +${planResult.plansCreated} accumulate, +${planResult.trimPlansCreated} trim`);
+    }
 
     // 4. Tranche executor
-    replayTrancheExecutor(
+    const trancheResult = replayTrancheExecutor(
       {
         signalSnapshotsRepo: state.signalSnapshots,
         strategicPlansRepo: state.strategicPlans,
@@ -663,21 +685,26 @@ export async function runReplay(config: ReplayRunnerConfig): Promise<ReplayResul
         watchlistRepo: state.watchlist,
         positionsRepo: state.positions,
         getSettings,
+        state,
         onFill: (symbol, side, qty, priceCents) => {
           state.recordFill(symbol, side, qty, priceCents);
           totalTrades++;
+          logMsg(`[${currentDate}] fill: ${side} ${qty} ${symbol} @ $${(priceCents / 100).toFixed(2)}`);
         },
       },
       currentDate
     );
+    if (trancheResult.tranchesExecuted > 0 || trancheResult.plansPaused > 0 || trancheResult.plansCancelled > 0) {
+      logMsg(`[${currentDate}] tranches: ${trancheResult.tranchesExecuted} exec, ${trancheResult.plansPaused} paused, ${trancheResult.plansCancelled} cancelled`);
+    }
 
     // Callback for progress tracking
     if (onDayComplete) {
       onDayComplete(currentDate, state.getStateSnapshot());
     }
 
-    // Next trading day (simple increment, caller should filter non-trading days)
-    const nextDate = new Date(currentDate);
+    // Next day
+    const nextDate = new Date(currentDate + 'T12:00:00Z'); // Use noon to avoid DST issues
     nextDate.setDate(nextDate.getDate() + 1);
     currentDate = nextDate.toISOString().split('T')[0];
   }

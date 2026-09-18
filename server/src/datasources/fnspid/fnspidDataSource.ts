@@ -44,6 +44,9 @@ export class FnspidDataSource {
   private readonly stmtGetDateRange: Database.Statement;
   private readonly stmtGetSentimentDateRange: Database.Statement;
 
+  private readonly stmtGetSentimentAsOf: Database.Statement;
+  private readonly stmtGetRecentSentiment: Database.Statement;
+
   constructor(options: FnspidDataSourceOptions) {
     this.db = new Database(options.dbPath, { readonly: true });
 
@@ -75,6 +78,22 @@ export class FnspidDataSource {
       FROM news_sentiment
       WHERE symbol = ? AND date >= ? AND date <= ?
       ORDER BY date ASC
+    `);
+
+    this.stmtGetSentimentAsOf = this.db.prepare(`
+      SELECT symbol, date, headline as headlineCount, sentiment_score as sentimentScore
+      FROM news_sentiment
+      WHERE symbol = ? AND date <= ?
+      ORDER BY date DESC
+      LIMIT 1
+    `);
+
+    this.stmtGetRecentSentiment = this.db.prepare(`
+      SELECT symbol, date, headline as headlineCount, sentiment_score as sentimentScore
+      FROM news_sentiment
+      WHERE symbol = ? AND date <= ?
+      ORDER BY date DESC
+      LIMIT ?
     `);
 
     this.stmtListSymbols = this.db.prepare(`
@@ -140,15 +159,7 @@ export class FnspidDataSource {
   }
 
   getSentimentAsOf(symbol: string, asOfDate: string): FnspidSentiment | null {
-    const stmt = this.db.prepare(`
-      SELECT symbol, date, headline as headlineCount, sentiment_score as sentimentScore
-      FROM news_sentiment
-      WHERE symbol = ? AND date <= ?
-      ORDER BY date DESC
-      LIMIT 1
-    `);
-
-    const row = stmt.get(symbol.toUpperCase(), asOfDate) as {
+    const row = this.stmtGetSentimentAsOf.get(symbol.toUpperCase(), asOfDate) as {
       symbol: string;
       date: string;
       headlineCount: string;
@@ -166,15 +177,7 @@ export class FnspidDataSource {
   }
 
   getRecentSentiment(symbol: string, asOfDate: string, days: number): FnspidSentiment[] {
-    const stmt = this.db.prepare(`
-      SELECT symbol, date, headline as headlineCount, sentiment_score as sentimentScore
-      FROM news_sentiment
-      WHERE symbol = ? AND date <= ?
-      ORDER BY date DESC
-      LIMIT ?
-    `);
-
-    const rows = stmt.all(symbol.toUpperCase(), asOfDate, days) as Array<{
+    const rows = this.stmtGetRecentSentiment.all(symbol.toUpperCase(), asOfDate, days) as Array<{
       symbol: string;
       date: string;
       headlineCount: string;

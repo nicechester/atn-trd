@@ -23,6 +23,7 @@ export declare class MockBroker implements Broker {
     private readonly config;
     private readonly priceProvider;
     private currentDate;
+    private lastKnownPrices;
     constructor(priceProvider: HistoricalPriceProvider, config?: Partial<MockBrokerConfig>);
     /** Set the current simulation date for order fills */
     setCurrentDate(date: string): void;

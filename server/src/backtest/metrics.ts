@@ -37,8 +37,10 @@ export function calculateMetrics(input: MetricsInput): BacktestMetricsRow {
   const endValue = snapshots[snapshots.length - 1].totalValueCents;
   const totalReturn = (endValue - startValue) / startValue;
 
-  const startBenchmark = snapshots[0].benchmarkValueCents;
-  const endBenchmark = snapshots[snapshots.length - 1].benchmarkValueCents;
+  // Filter to snapshots with valid benchmark data for benchmark return calculation
+  const benchmarkSnapshots = snapshots.filter(s => s.benchmarkValueCents !== null && s.benchmarkValueCents !== undefined);
+  const startBenchmark = benchmarkSnapshots.length > 0 ? benchmarkSnapshots[0].benchmarkValueCents : null;
+  const endBenchmark = benchmarkSnapshots.length > 0 ? benchmarkSnapshots[benchmarkSnapshots.length - 1].benchmarkValueCents : null;
   const benchmarkReturn = startBenchmark && endBenchmark
     ? (endBenchmark - startBenchmark) / startBenchmark
     : 0;
