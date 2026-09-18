@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { FnspidDataSource } from '../src/datasources/fnspid/index.js';
+import { AlfredDataSource } from '../src/datasources/alfred/alfredDataSource.js';
 import { BacktestRunner, type BacktestConfig, type BacktestDeps } from '../src/backtest/runner.js';
 import { runSignalBasedTradingLogic, preloadPriceHistory, type SignalProvider } from '../src/backtest/tradingLogic.js';
 import { DEFAULT_SETTINGS, type Settings } from '@atn-trd/shared';
@@ -23,6 +24,7 @@ import { BACKTEST_ANALYST_SYSTEM_PROMPT, buildBacktestAnalysisPrompt } from '../
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_FNSPID_DB = process.env.FNSPID_DB_PATH || '/Volumes/JetDrive/atn-trd/fnspid/fnspid.db';
+const DEFAULT_ALFRED_DB = process.env.ALFRED_DB_PATH || '/Volumes/JetDrive/atn-trd/alfred/alfred.db';
 const DEFAULT_ATN_DB = process.env.ATN_DB_PATH || '../data/atn.db';
 
 interface BacktestArgs {
@@ -31,6 +33,7 @@ interface BacktestArgs {
   symbols: string[];
   cash: number;
   fnspidDb: string;
+  alfredDb: string;
   atnDb: string;
   interval: number;
   backtestId?: string;
@@ -44,6 +47,7 @@ function parseArguments(): BacktestArgs {
       symbols: { type: 'string' },
       cash: { type: 'string', default: '100000' },
       'fnspid-db': { type: 'string', default: DEFAULT_FNSPID_DB },
+      'alfred-db': { type: 'string', default: DEFAULT_ALFRED_DB },
       'atn-db': { type: 'string', default: DEFAULT_ATN_DB },
       interval: { type: 'string', default: '7' },
       'backtest-id': { type: 'string' },
@@ -64,6 +68,7 @@ Options:
   --symbols         Comma-separated list of symbols [required]
   --cash            Starting cash in dollars (default: 100000)
   --fnspid-db       Path to fnspid.db (default: ${DEFAULT_FNSPID_DB})
+  --alfred-db       Path to alfred.db (default: ${DEFAULT_ALFRED_DB})
   --atn-db          Path to atn.db (default: ${DEFAULT_ATN_DB})
   --interval        Trading interval in days (default: 7 = weekly)
   --backtest-id     Use existing backtest record (for API-triggered runs)
@@ -78,14 +83,15 @@ Options:
     symbols: values.symbols.split(',').map(s => s.trim().toUpperCase()),
     cash: parseInt(values.cash ?? '100000', 10),
     fnspidDb: values['fnspid-db'] ?? DEFAULT_FNSPID_DB,
+    alfredDb: values['alfred-db'] ?? DEFAULT_ALFRED_DB,
     atnDb: values['atn-db'] ?? DEFAULT_ATN_DB,
     interval: parseInt(values.interval ?? '7', 10),
     backtestId: values['backtest-id'] ?? process.env.BACKTEST_ID,
   };
 }
 
-/** Adapt FnspidDataSource to SignalProvider interface */
-function createFnspidSignalProvider(fnspid: FnspidDataSource): SignalProvider {
+/** Adapt FnspidDataSource + AlfredDataSource to SignalProvider interface */
+function createSignalProvider(fnspid: FnspidDataSource, alfred: AlfredDataSource | null): SignalProvider {
   return {
     getSentiment(symbol: string, date: string): number | null {
       const sentiment = fnspid.getSentimentAsOf(symbol, date);
@@ -96,6 +102,12 @@ function createFnspidSignalProvider(fnspid: FnspidDataSource): SignalProvider {
     },
     getPriceRange(symbol: string, startDate: string, endDate: string) {
       return fnspid.getPriceRange(symbol, startDate, endDate);
+    },
+    getVix(date: string): number | null {
+      return alfred?.getVix(date) ?? null;
+    },
+    getYieldCurve(date: string): number | null {
+      return alfred?.getYieldCurve(date) ?? null;
     },
   };
 }
@@ -110,11 +122,20 @@ async function main() {
   console.log(`  Starting Cash: $${args.cash.toLocaleString()}`);
   console.log(`  Trading Interval: ${args.interval} days`);
   console.log(`  FNSPID DB: ${args.fnspidDb}`);
+  console.log(`  Alfred DB: ${args.alfredDb}`);
   console.log(`  ATN DB: ${args.atnDb}`);
   console.log();
 
   // Initialize data sources
   const fnspid = new FnspidDataSource({ dbPath: args.fnspidDb });
+  let alfred: AlfredDataSource | null = null;
+  try {
+    alfred = new AlfredDataSource({ dbPath: args.alfredDb });
+    const alfredRange = alfred.getDateRange();
+    console.log(`ALFRED Data Range: ${alfredRange?.minDate} to ${alfredRange?.maxDate}`);
+  } catch {
+    console.warn('Warning: ALFRED database not found, regime detection will use defaults');
+  }
   const atnDb = new Database(args.atnDb);
 
   // Run migrations to ensure tables exist
@@ -181,7 +202,7 @@ async function main() {
   console.log();
 
   // Create signal provider and pre-load price history
-  const signalProvider = createFnspidSignalProvider(fnspid);
+  const signalProvider = createSignalProvider(fnspid, alfred);
   console.log(`Pre-loading price history...`);
   const priceHistory = preloadPriceHistory(signalProvider, allSymbols, args.start);
   for (const [symbol, prices] of priceHistory) {
@@ -305,6 +326,7 @@ async function main() {
 
   // Cleanup
   fnspid.close();
+  alfred?.close();
   atnDb.close();
 }
 

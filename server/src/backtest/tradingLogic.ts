@@ -13,6 +13,10 @@ export interface SignalProvider {
   getPrice(symbol: string, date: string): { openCents: number; closeCents: number; adjCloseCents: number } | null;
   /** Get price range for SMA calculation */
   getPriceRange(symbol: string, startDate: string, endDate: string): Array<{ date: string; adjCloseCents: number }>;
+  /** Get VIX value as of date (for regime detection) */
+  getVix?(date: string): number | null;
+  /** Get yield curve spread as of date (for regime detection) */
+  getYieldCurve?(date: string): number | null;
 }
 
 interface TradingLogicParams {
