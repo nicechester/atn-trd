@@ -31,7 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.changes.outputs.code_changed == 'true'
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Install dependencies
         if: steps.changes.outputs.code_changed == 'true'
