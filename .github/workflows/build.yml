@@ -28,32 +28,6 @@ jobs:
             echo "Only docs changed, skipping build/deploy"
           fi
 
-      - uses: actions/setup-node@v4
-        if: steps.changes.outputs.code_changed == 'true'
-        with:
-          node-version: '24'
-
-      - name: Install dependencies
-        if: steps.changes.outputs.code_changed == 'true'
-        run: npm install
-
-      - name: Build
-        if: steps.changes.outputs.code_changed == 'true'
-        run: |
-          npm run build
-          mkdir -p server/public
-          cp -r web/dist/* server/public/
-          echo "{\"commit\":\"${GITHUB_SHA::7}\",\"buildNumber\":${{ github.run_number }},\"buildTime\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > server/build-info.json
-
-      - name: Commit dist files
-        if: steps.changes.outputs.code_changed == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f shared/dist server/public web/dist server/build-info.json
-          git diff --staged --quiet || git commit -m "build: update dist files [skip ci]"
-          git push
-
       - name: Deploy to VM
         if: steps.changes.outputs.code_changed == 'true'
         uses: appleboy/ssh-action@v1.0.3
