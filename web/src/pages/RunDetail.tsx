@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { runs as runsApi, type RunDetailData, type AgentRunRow, type DecisionRow, type AgentMessageRow, type ResearchArtifactRow, type RunCoverageData, type PlanReviewSummary, type SignalCollectionSummary, type WatchlistCurationSummary, type TrancheExecutionSummary, type ScreenerSelectionRow, type SignalSnapshotRow } from '../api/client';
 import { centsToUSD, formatTimestamp, formatDuration, formatQty } from '../lib/format';
@@ -226,6 +226,8 @@ export default function RunDetailPage() {
   const [coverage, setCoverage] = useState<RunCoverageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [detailsBeforePrint, setDetailsBeforePrint] = useState<Set<string>>(new Set());
+  const pageRef = useRef<HTMLDivElement>(null);
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -240,6 +242,67 @@ export default function RunDetailPage() {
       .then(res => setCoverage(res.data))
       .catch(e => console.warn('Failed to load coverage:', e instanceof Error ? e.message : 'Unknown error'));
   }, [id]);
+
+  useEffect(() => {
+    const handleBeforePrint = () => {
+      // Save current state
+      setDetailsBeforePrint(new Set(expanded));
+
+      // Open all details and expand all messages
+      const allDetails = pageRef.current?.querySelectorAll('details');
+      if (allDetails) {
+        allDetails.forEach(detail => {
+          detail.open = true;
+        });
+      }
+
+      // Expand all truncated messages
+      setExpanded(new Set(detail?.messages.map(m => m.id) || []));
+    };
+
+    const handleAfterPrint = () => {
+      // Restore prior state
+      setExpanded(detailsBeforePrint);
+
+      // Close details back to their prior state
+      const allDetails = pageRef.current?.querySelectorAll('details');
+      if (allDetails) {
+        allDetails.forEach(detail => {
+          const summary = detail.querySelector('summary');
+          if (summary) {
+            // Check if this was originally open by matching against saved state
+            const key = (summary.textContent || '').slice(0, 50);
+            // For safety, we close non-explicitly expanded ones
+            if (detail.parentElement?.className.includes('section')) {
+              detail.open = false;
+            }
+          }
+        });
+      }
+    };
+
+    window.addEventListener('beforeprint', handleBeforePrint);
+    window.addEventListener('afterprint', handleAfterPrint);
+
+    // Safari fallback using matchMedia
+    const printMediaQuery = window.matchMedia('print');
+    let wasPrinting = false;
+    printMediaQuery.addEventListener('change', (e) => {
+      if (e.matches && !wasPrinting) {
+        wasPrinting = true;
+        handleBeforePrint();
+      } else if (!e.matches && wasPrinting) {
+        wasPrinting = false;
+        handleAfterPrint();
+      }
+    });
+
+    return () => {
+      window.removeEventListener('beforeprint', handleBeforePrint);
+      window.removeEventListener('afterprint', handleAfterPrint);
+      printMediaQuery.removeEventListener('change', () => {});
+    };
+  }, [detail?.messages, detailsBeforePrint]);
 
   function toggleExpanded(msgId: string) {
     setExpanded(prev => {
@@ -280,8 +343,11 @@ export default function RunDetailPage() {
   }
 
   return (
-    <div>
-      <Link to="/job-history" className={styles.backLink}>← Back to Job History</Link>
+    <div ref={pageRef}>
+      <div className={styles.detailHeader}>
+        <Link to="/job-history" className={styles.backLink}>← Back to Job History</Link>
+        <button onClick={() => window.print()} className={styles.printBtn}>🖨 Print</button>
+      </div>
       <h1>Run Detail</h1>
 
       {/* Summary */}
@@ -499,7 +565,7 @@ export default function RunDetailPage() {
                           {m.toolName && <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginBottom: 4 }}>{m.toolName}</div>}
                           <pre>{truncated ? content.slice(0, 500) + '…' : content}</pre>
                           {content.length > 500 && (
-                            <button onClick={() => toggleExpanded(m.id)} style={{ fontSize: '0.75rem', background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', padding: 0, marginTop: 4 }}>
+                            <button onClick={() => toggleExpanded(m.id)} className={styles.showMoreBtn} style={{ fontSize: '0.75rem', background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', padding: 0, marginTop: 4 }}>
                               {isExpanded ? 'show less' : 'show more'}
                             </button>
                           )}
