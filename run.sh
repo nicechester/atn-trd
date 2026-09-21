@@ -32,6 +32,14 @@ if [ ! -d node_modules ]; then
   echo ""
 fi
 
+# Build
+echo -e "${YELLOW}Building...${NC}"
+npm run build
+npm run build --workspace=shared
+cp -r web/dist/* server/public/
+echo -e "${GREEN}✓ Build complete${NC}"
+echo ""
+
 # Clear any stale server process from a previous run
 lsof -ti :8080 | xargs kill -9 2>/dev/null || true
 
