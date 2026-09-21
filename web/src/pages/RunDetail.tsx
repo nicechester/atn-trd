@@ -313,6 +313,304 @@ export default function RunDetailPage() {
     });
   }
 
+  function generateRunMarkdown(
+    run: AgentRunRow,
+    summary: PlanReviewSummary | SignalCollectionSummary | WatchlistCurationSummary | TrancheExecutionSummary | null,
+    assessments: any[],
+    decisions: any[],
+    orders: any[],
+    messages: AgentMessageRow[],
+    artifacts: ResearchArtifactRow[],
+    coverage: RunCoverageData | null,
+    tokenUsage: Record<string, unknown> | null,
+    jobType: JobType,
+    screenerSelections: ScreenerSelectionRow[],
+    signalSnapshots: SignalSnapshotRow[],
+    rejections: any[]
+  ): string {
+    const lines: string[] = [];
+
+    lines.push(`# Run Detail: ${run.id}`);
+    lines.push('');
+
+    // Header info
+    lines.push('## Run Information');
+    lines.push(`- **Status:** ${run.status}`);
+    lines.push(`- **Job Type:** ${JOB_TYPE_LABELS[jobType]}`);
+    lines.push(`- **Trigger:** ${run.trigger}`);
+    lines.push(`- **Started:** ${formatTimestamp(run.startedAt)}`);
+    lines.push(`- **Duration:** ${formatDuration(run.startedAt, run.finishedAt)}`);
+    if (run.error) lines.push(`- **Error:** ${run.error}`);
+    if (run.skipReason) lines.push(`- **Skip Reason:** ${run.skipReason}`);
+    lines.push('');
+
+    // Token usage
+    if (tokenUsage) {
+      lines.push('## LLM Telemetry');
+      const totalTokens = (tokenUsage as any)?.total_tokens;
+      const promptTokens = (tokenUsage as any)?.prompt_tokens;
+      const completionTokens = (tokenUsage as any)?.completion_tokens;
+      const models = (tokenUsage as any)?.models;
+      const tokens = (tokenUsage as any)?.tokens;
+      const cost = (tokenUsage as any)?.cost;
+      const latency = (tokenUsage as any)?.latency_ms;
+
+      if (promptTokens !== undefined) {
+        lines.push(`- **Prompt Tokens:** ${promptTokens?.toLocaleString()}`);
+        lines.push(`- **Completion Tokens:** ${completionTokens?.toLocaleString()}`);
+        lines.push(`- **Total Tokens:** ${totalTokens?.toLocaleString()}`);
+      }
+      if (models) {
+        lines.push(`- **Analyst Model:** ${models.analyst}`);
+        lines.push(`- **Portfolio Manager Model:** ${models.portfolioManager}`);
+      }
+      if (cost) {
+        lines.push(`- **Analyst Cost:** $${cost.analyst?.toFixed(4)}`);
+        lines.push(`- **Portfolio Manager Cost:** $${cost.portfolioManager?.toFixed(4)}`);
+        lines.push(`- **Total Cost:** $${cost.total?.toFixed(4)}`);
+      }
+      if (latency) {
+        lines.push(`- **Analyst Latency:** ${latency.analyst}ms`);
+        lines.push(`- **Portfolio Manager Latency:** ${latency.portfolioManager}ms`);
+        lines.push(`- **Total Latency:** ${latency.total}ms`);
+      }
+      lines.push('');
+    }
+
+    // Strategic Run Summary
+    if (jobType === 'plan_review' && summary) {
+      const s = summary as PlanReviewSummary;
+      lines.push('## Plan Review Summary');
+      lines.push(`- **Regime:** ${s.regime}`);
+      lines.push(`- **Watchlist:** ${s.watchlistCount} symbols`);
+      lines.push(`- **Monitored Positions:** ${s.positionsCount}`);
+      lines.push(`- **Accumulate Plans:** ${s.plansCreated}`);
+      lines.push(`- **Trim Plans:** ${s.trimPlansCreated}`);
+      lines.push(`- **Existing Active Plans:** ${s.existingActivePlans}`);
+
+      if (s.symbolsPruned && s.symbolsPruned.length > 0) {
+        lines.push(`- **Pruned Symbols:** ${s.symbolsPruned.join(', ')}`);
+      }
+      lines.push('');
+    } else if (jobType === 'signal_collection' && summary) {
+      const s = summary as SignalCollectionSummary;
+      lines.push('## Signal Collection Summary');
+      lines.push(`- **Symbols Updated:** ${s.symbolsUpdated}`);
+      lines.push(`- **Errors:** ${s.errors}`);
+      if (s.tokensUsed > 0) {
+        lines.push(`- **Tokens Used:** ${s.tokensUsed.toLocaleString()}`);
+      }
+
+      if (signalSnapshots.length > 0) {
+        lines.push('');
+        lines.push('### Signal Analysis');
+        signalSnapshots.forEach(snap => {
+          lines.push(`- **${snap.symbol}**`);
+          if (snap.compositeEwma !== null) {
+            lines.push(`  - Composite Score: ${(snap.compositeEwma * 100).toFixed(0)}%`);
+          }
+          if (snap.sentimentScore !== null) {
+            lines.push(`  - Sentiment: ${snap.sentimentScore >= 0 ? '+' : ''}${snap.sentimentScore.toFixed(2)}`);
+          }
+          if (snap.sentimentSynthesis) {
+            lines.push(`  - ${snap.sentimentSynthesis}`);
+          }
+        });
+      }
+      lines.push('');
+    } else if (jobType === 'watchlist_curation' && summary) {
+      const s = summary as WatchlistCurationSummary;
+      lines.push('## Watchlist Curation Summary');
+      lines.push(`- **Total in Watchlist:** ${s.totalInWatchlist}`);
+      lines.push(`- **Screener Picks:** ${s.screenerSelections}`);
+      if (s.symbolsAdded.length > 0) {
+        lines.push(`- **Added:** ${s.symbolsAdded.join(', ')}`);
+      }
+      if (s.symbolsUpdated.length > 0) {
+        lines.push(`- **Updated:** ${s.symbolsUpdated.join(', ')}`);
+      }
+
+      if (screenerSelections.length > 0) {
+        lines.push('');
+        lines.push('### AI Selections');
+        screenerSelections.forEach(sel => {
+          lines.push(`- **${sel.symbol}** (${Math.round(sel.conviction * 100)}% conviction)`);
+          lines.push(`  - ${sel.rationale}`);
+        });
+      }
+      lines.push('');
+    } else if (jobType === 'tranche_execution' && summary) {
+      const s = summary as TrancheExecutionSummary;
+      lines.push('## Tranche Execution Summary');
+      lines.push(`- **Regime:** ${s.regime}`);
+      lines.push(`- **Active Plans:** ${s.activePlans}`);
+      lines.push(`- **Tranches Executed:** ${s.tranchesExecuted}`);
+      lines.push(`- **Plans Paused:** ${s.plansPaused}`);
+      lines.push(`- **Plans Resumed:** ${s.plansResumed}`);
+      lines.push(`- **Auto Trim Plans:** ${s.autoTrimPlans}`);
+      if (s.autoHedgePlan) {
+        lines.push(`- **Auto Hedge:** ${s.autoHedgePlan.symbol} ${s.autoHedgePlan.shares} shares`);
+      }
+      lines.push('');
+    }
+
+    // Coverage heatmap
+    if (coverage && jobType === 'trading_cycle') {
+      lines.push('## Coverage');
+      if (coverage.belowThreshold) {
+        lines.push(`⚠️ **Below ${coverage.thresholdPercent}% threshold**`);
+      }
+      if (coverage.data && coverage.data.length > 0) {
+        lines.push('');
+        lines.push('| Sector | Coverage % |');
+        lines.push('|--------|-----------|');
+        coverage.data.forEach(row => {
+          const pct = row.coveragePct !== null ? row.coveragePct.toFixed(1) : 'N/A';
+          lines.push(`| ${row.sector} | ${pct}% |`);
+        });
+      }
+      lines.push('');
+    }
+
+    // Assessments
+    if (assessments.length > 0) {
+      lines.push('## Assessments');
+      assessments.forEach(a => {
+        lines.push(`### ${a.symbol}`);
+        lines.push(`- **Score:** ${a.score}/5`);
+        lines.push(`- **Confidence:** ${Math.round(a.confidence * 100)}%`);
+        lines.push(`- **Thesis:** ${a.thesis}`);
+        if (a.risks) lines.push(`- **Risks:** ${a.risks}`);
+        if (a.catalysts) lines.push(`- **Catalysts:** ${a.catalysts}`);
+        lines.push('');
+      });
+    }
+
+    // Decisions
+    if (decisions.length > 0) {
+      lines.push('## Decisions');
+      decisions.forEach(d => {
+        lines.push(`### ${d.symbol}`);
+        lines.push(`- **Action:** ${d.action}`);
+        if (d.targetWeight != null) lines.push(`- **Target Weight:** ${Math.round(d.targetWeight * 100)}%`);
+        lines.push(`- **Confidence:** ${Math.round(d.confidence * 100)}%`);
+        lines.push(`- **Rationale:** ${d.rationale}`);
+        lines.push('');
+      });
+    }
+
+    // Orders
+    if (orders.length > 0) {
+      lines.push('## Orders');
+      orders.forEach(o => {
+        lines.push(`### ${o.symbol}`);
+        lines.push(`- **Side:** ${o.side}`);
+        lines.push(`- **Status:** ${o.status}`);
+        lines.push(`- **Quantity:** ${formatQty(o.qty)}`);
+        lines.push(`- **Type:** ${o.type}`);
+        lines.push(`- **Submitted:** ${formatTimestamp(o.submittedAt)}`);
+
+        if (o.fills && o.fills.length > 0) {
+          lines.push('');
+          lines.push('| Date | Qty | Price | Fee |');
+          lines.push('|------|-----|-------|-----|');
+          o.fills.forEach(f => {
+            lines.push(`| ${f.barDate} | ${formatQty(f.qty)} | ${centsToUSD(f.priceCents)} | ${centsToUSD(f.feeCents)} |`);
+          });
+        }
+        lines.push('');
+      });
+    }
+
+    // Rejected Decisions
+    if (rejections && rejections.length > 0) {
+      lines.push('## Rejected Decisions');
+      rejections.forEach(r => {
+        lines.push(`### ${r.symbol}`);
+        lines.push(`- **Action:** ${r.action}`);
+        lines.push(`- **Rejection Reason:** ${r.rejectionReason}`);
+        if (r.rationale) lines.push(`- **Rationale:** ${r.rationale}`);
+        lines.push('');
+      });
+    }
+
+    // Messages/Transcript
+    if (messages.length > 0) {
+      lines.push('## Transcript');
+      const msgGroups = new Map<string, AgentMessageRow[]>();
+      for (const m of messages) {
+        const key = m.symbol ?? '__portfolio__';
+        if (!msgGroups.has(key)) msgGroups.set(key, []);
+        msgGroups.get(key)!.push(m);
+      }
+
+      Array.from(msgGroups.entries()).forEach(([key, msgs]) => {
+        lines.push(`### ${key === '__portfolio__' ? 'Portfolio Manager' : key === 'screener' ? 'Screener Agent' : key}`);
+        msgs.forEach(m => {
+          lines.push('');
+          lines.push(`**${m.role.toUpperCase()}**${m.toolName ? ` (${m.toolName})` : ''}`);
+          lines.push('```');
+          lines.push(m.content);
+          lines.push('```');
+        });
+        lines.push('');
+      });
+    }
+
+    // Artifacts
+    if (artifacts.length > 0) {
+      lines.push('## Research Artifacts');
+      const artifactGroups = new Map<string, ResearchArtifactRow[]>();
+      for (const a of artifacts) {
+        const key = a.symbol ?? '__portfolio__';
+        if (!artifactGroups.has(key)) artifactGroups.set(key, []);
+        artifactGroups.get(key)!.push(a);
+      }
+
+      Array.from(artifactGroups.entries()).forEach(([key, arts]) => {
+        lines.push(`### ${key === '__portfolio__' ? 'General' : key}`);
+        arts.forEach(a => {
+          lines.push(`**${a.source}** (${a.provider})`);
+          if (a.summary) lines.push(a.summary);
+          let citations: string[] = [];
+          try { if (a.citationsJson) citations = JSON.parse(a.citationsJson); } catch {}
+          if (citations.length > 0) {
+            lines.push(`*Citations: ${citations.join(' · ')}*`);
+          }
+          lines.push('');
+        });
+      });
+    }
+
+    return lines.join('\n');
+  }
+
+  function handleMarkdownDownload() {
+    const markdown = generateRunMarkdown(
+      run,
+      summary,
+      assessments,
+      decisions,
+      orders,
+      messages,
+      artifacts,
+      coverage,
+      tokenUsage,
+      jobType,
+      screenerSelections,
+      signalSnapshots,
+      detail.rejections
+    );
+
+    const blob = new Blob([markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `run-${run.id || 'detail'}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (loading) return <p>Loading…</p>;
   if (!detail) return <p>Run not found.</p>;
 
@@ -346,7 +644,10 @@ export default function RunDetailPage() {
     <div ref={pageRef}>
       <div className={styles.detailHeader}>
         <Link to="/job-history" className={styles.backLink}>← Back to Job History</Link>
-        <button onClick={() => window.print()} className={styles.printBtn}>🖨 Print</button>
+        <div className={styles.detailActions}>
+          <button onClick={() => window.print()} className={styles.printBtn} title="Print" aria-label="Print">🖨</button>
+          <button onClick={() => handleMarkdownDownload()} className={styles.printBtn} title="Download as Markdown" aria-label="Download as Markdown">⬇️</button>
+        </div>
       </div>
       <h1>Run Detail</h1>
 
