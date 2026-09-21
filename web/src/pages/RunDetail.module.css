@@ -1,4 +1,4 @@
-.backLink { display: inline-block; color: var(--color-primary); text-decoration: none; margin-bottom: var(--spacing-md); font-size: 0.875rem; }
+.backLink { display: inline-block; color: var(--color-primary); text-decoration: none; font-size: 0.875rem; }
 .section { margin-bottom: var(--spacing-lg); }
 .section > details > summary { cursor: pointer; font-weight: 600; padding: var(--spacing-sm) 0; font-size: 1rem; list-style: none; display: flex; align-items: center; gap: var(--spacing-sm); }
 .section > details > summary::marker { display: none; }
@@ -34,3 +34,69 @@
 .heatOk { background: #d1fae5; color: #065f46; }
 .heatError { background: #fee2e2; color: #7f1d1d; }
 .heatMissing { background: #f3f4f6; color: #6b7280; }
+.detailHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md); flex-wrap: wrap; gap: var(--spacing-md); }
+.detailActions { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; }
+.printBtn { padding: 0.5rem 1rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 4px; cursor: pointer; color: var(--color-text); font-size: 0.875rem; }
+.printBtn:hover { background: var(--color-border); }
+.showMoreBtn { display: inline; }
+
+@media print {
+  .detailHeader,
+  .showMoreBtn {
+    display: none !important;
+  }
+
+  .symbolCard {
+    background: #fff;
+    color: #000;
+    border: 1px solid #999;
+    page-break-inside: avoid;
+  }
+
+  .section {
+    page-break-inside: avoid;
+  }
+
+  .fieldLabel,
+  .fieldValue,
+  .muted {
+    color: #000;
+  }
+
+  .messageContent {
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    color: #000;
+  }
+
+  .badgeGreen,
+  .badgeRed,
+  .badgeYellow,
+  .badgeGray,
+  .badgeOrange,
+  .badgeBlue {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    border: 1px solid #999;
+  }
+
+  .fillsTable,
+  .heatTable {
+    background: #fff;
+    color: #000;
+  }
+
+  .fillsTable th,
+  .fillsTable td,
+  .heatTable th,
+  .heatTable td {
+    background: #fff;
+    color: #000;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .section > details > summary::before {
+    display: none;
+  }
+}

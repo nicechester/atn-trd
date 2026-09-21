@@ -89,3 +89,10 @@ body {
   color: var(--color-text);
   font-size: 14px;
 }
+
+@media print {
+  body {
+    background: #fff;
+    color: #000;
+  }
+}
