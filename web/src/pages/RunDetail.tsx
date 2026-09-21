@@ -460,13 +460,13 @@ export default function RunDetailPage() {
       if (coverage.belowThreshold) {
         lines.push(`⚠️ **Below ${coverage.thresholdPercent}% threshold**`);
       }
-      if (coverage.data && coverage.data.length > 0) {
+      if (coverage.matrix && coverage.matrix.length > 0) {
         lines.push('');
-        lines.push('| Sector | Coverage % |');
+        lines.push('| Symbol | Coverage % |');
         lines.push('|--------|-----------|');
-        coverage.data.forEach(row => {
-          const pct = row.coveragePct !== null ? row.coveragePct.toFixed(1) : 'N/A';
-          lines.push(`| ${row.sector} | ${pct}% |`);
+        coverage.matrix.forEach(row => {
+          const pct = row.coveragePercent !== null ? row.coveragePercent.toFixed(1) : 'N/A';
+          lines.push(`| ${row.symbol} | ${pct}% |`);
         });
       }
       lines.push('');
@@ -599,7 +599,7 @@ export default function RunDetailPage() {
       jobType,
       screenerSelections,
       signalSnapshots,
-      detail.rejections
+      detail!.rejections
     );
 
     const blob = new Blob([markdown], { type: 'text/markdown' });
