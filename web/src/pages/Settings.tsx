@@ -14,14 +14,14 @@ export default function SettingsPage(): JSX.Element {
     <div>
       <h1>Settings</h1>
       <nav className={styles.subNav}>
-        <NavLink to="general" className={styles.subLink}>General</NavLink>
-        <NavLink to="watchlist" className={styles.subLink}>Watchlist</NavLink>
-        <NavLink to="schedule" className={styles.subLink}>Schedules</NavLink>
-        <NavLink to="risk" className={styles.subLink}>Risk</NavLink>
-        <NavLink to="investor-profile" className={styles.subLink}>Investor Profile</NavLink>
-        <NavLink to="data-sources" className={styles.subLink}>Data Sources</NavLink>
-        <NavLink to="llm" className={styles.subLink}>LLM</NavLink>
-        <NavLink to="strategic" className={styles.subLink}>Strategic</NavLink>
+        <NavLink to="/settings/general" className={styles.subLink} end>General</NavLink>
+        <NavLink to="/settings/watchlist" className={styles.subLink} end>Watchlist</NavLink>
+        <NavLink to="/settings/schedule" className={styles.subLink} end>Schedules</NavLink>
+        <NavLink to="/settings/risk" className={styles.subLink} end>Risk</NavLink>
+        <NavLink to="/settings/investor-profile" className={styles.subLink} end>Investor Profile</NavLink>
+        <NavLink to="/settings/data-sources" className={styles.subLink} end>Data Sources</NavLink>
+        <NavLink to="/settings/llm" className={styles.subLink} end>LLM</NavLink>
+        <NavLink to="/settings/strategic" className={styles.subLink} end>Strategic</NavLink>
       </nav>
       <Routes>
         <Route index element={<Navigate to="general" replace />} />
