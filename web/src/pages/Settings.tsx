@@ -25,14 +25,14 @@ export default function SettingsPage(): JSX.Element {
       </nav>
       <Routes>
         <Route index element={<Navigate to="general" replace />} />
-        <Route path="general" element={<SettingsGeneral />} />
-        <Route path="watchlist" element={<SettingsWatchlist />} />
-        <Route path="schedule" element={<SettingsSchedule />} />
-        <Route path="risk" element={<SettingsRisk />} />
-        <Route path="investor-profile" element={<SettingsInvestorProfile />} />
-        <Route path="data-sources" element={<SettingsDataSources />} />
-        <Route path="llm" element={<SettingsLlm />} />
-        <Route path="strategic" element={<SettingsStrategic />} />
+        <Route path="general/*" element={<SettingsGeneral />} />
+        <Route path="watchlist/*" element={<SettingsWatchlist />} />
+        <Route path="schedule/*" element={<SettingsSchedule />} />
+        <Route path="risk/*" element={<SettingsRisk />} />
+        <Route path="investor-profile/*" element={<SettingsInvestorProfile />} />
+        <Route path="data-sources/*" element={<SettingsDataSources />} />
+        <Route path="llm/*" element={<SettingsLlm />} />
+        <Route path="strategic/*" element={<SettingsStrategic />} />
       </Routes>
     </div>
   );
