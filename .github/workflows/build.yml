@@ -57,17 +57,15 @@ jobs:
             package.json \
             package-lock.json
 
-      - name: Copy tarball to VM
+      - name: Upload tarball to GCS
         if: steps.changes.outputs.code_changed == 'true'
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          source: "atn-trd.tar.gz"
-          target: "~/"
+        run: |
+          echo '${{ secrets.GCP_SA_KEY }}' > /tmp/gcp-key.json
+          gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+          gsutil cp atn-trd.tar.gz gs://atn-trd-backups/deploy/atn-trd.tar.gz
+          rm /tmp/gcp-key.json
 
-      - name: Extract and restart service
+      - name: Deploy on VM
         if: steps.changes.outputs.code_changed == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -76,9 +74,9 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
             cd ~
+            gsutil cp gs://atn-trd-backups/deploy/atn-trd.tar.gz .
             sudo systemctl stop atn-trd
-            rm -rf atn-trd
-            mkdir atn-trd
+            rm -rf atn-trd/node_modules atn-trd/server/dist atn-trd/shared/dist atn-trd/web/dist
             tar -xzf atn-trd.tar.gz -C atn-trd
             rm atn-trd.tar.gz
             sudo systemctl start atn-trd
