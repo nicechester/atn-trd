@@ -78,6 +78,7 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          timeout: 60s
           script: sudo systemctl stop atn-trd || true
 
       - name: Download tarball on VM
@@ -87,6 +88,7 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          timeout: 120s
           script: gsutil cp gs://atn-trd-backups/deploy/atn-trd.tar.gz ~/
 
       - name: Extract tarball on VM
@@ -96,6 +98,7 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          timeout: 120s
           script: |
             rm -rf ~/atn-trd/node_modules ~/atn-trd/server/dist ~/atn-trd/shared/dist ~/atn-trd/web/dist
             tar -xzf ~/atn-trd.tar.gz -C ~/atn-trd
@@ -108,6 +111,7 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          timeout: 60s
           script: sudo systemctl start atn-trd
 
       - name: Wait for FinBERT ready
