@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "rm -rf dist && esbuild src/main.ts --bundle --platform=node --target=node22 --outfile=dist/main.js --format=esm --external:better-sqlite3 --external:@huggingface/transformers --external:@alpacahq/alpaca-trade-api --external:express --external:cookie-parser --external:jsonwebtoken --external:dotenv --external:croner --external:rss-parser --external:yahoo-finance2 --external:zod --external:@langchain/* && mkdir -p dist/db && cp -r src/db/migrations dist/db/ && cp -r src/config dist/",
+    "build": "rm -rf dist && esbuild src/main.ts --bundle --platform=node --target=node22 --outfile=dist/main.js --format=esm --external:better-sqlite3 --external:@huggingface/transformers --external:@alpacahq/alpaca-trade-api --external:express --external:cookie-parser --external:jsonwebtoken --external:dotenv --external:croner --external:rss-parser --external:yahoo-finance2 --external:zod --external:@langchain/* --external:vite && mkdir -p dist/db && cp -r src/db/migrations dist/db/ && cp -r src/config dist/",
     "typecheck": "tsc --noEmit",
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
@@ -24,6 +24,7 @@
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.3",
     "rss-parser": "^3.13.0",
+    "vite": "8.3.0",
     "yahoo-finance2": "^4.0.2",
     "zod": "^3.22.4"
   },
