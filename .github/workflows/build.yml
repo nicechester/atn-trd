@@ -79,7 +79,8 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           timeout: 60s
-          script: sudo systemctl stop atn-trd || true
+          script: |
+            sudo systemctl stop atn-trd || true
 
       - name: Download tarball on VM
         if: steps.changes.outputs.code_changed == 'true'
@@ -89,7 +90,8 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           timeout: 120s
-          script: gsutil cp gs://atn-trd-backups/deploy/atn-trd.tar.gz ~/
+          script: |
+            gsutil cp gs://atn-trd-backups/deploy/atn-trd.tar.gz ~/
 
       - name: Extract tarball on VM
         if: steps.changes.outputs.code_changed == 'true'
@@ -112,7 +114,8 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           timeout: 60s
-          script: sudo systemctl start atn-trd
+          script: |
+            sudo systemctl start atn-trd
 
       - name: Wait for FinBERT ready
         if: steps.changes.outputs.code_changed == 'true'
