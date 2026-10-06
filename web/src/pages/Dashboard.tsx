@@ -184,6 +184,22 @@ export default function DashboardPage(): JSX.Element {
         <div className={styles.fullWidth}>
           <DailyActivityLog />
         </div>
+
+        <div className={styles.fullWidth}>
+          <Card title="Market Summary">
+            <iframe
+              src="/market-summary.html"
+              className={styles.marketSummaryFrame}
+              title="Market Summary"
+              onLoad={(e) => {
+                const iframe = e.target as HTMLIFrameElement;
+                if (iframe.contentWindow?.document.body) {
+                  iframe.style.height = iframe.contentWindow.document.body.scrollHeight + 'px';
+                }
+              }}
+            />
+          </Card>
+        </div>
       </div>
     </div>
   );
