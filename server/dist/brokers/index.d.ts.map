@@ -1,1 +1,0 @@
-{"version":3,"file":"index.d.ts","sourceRoot":"","sources":["../../src/brokers/index.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,YAAY,EAAE,KAAK,kBAAkB,EAAE,MAAM,mBAAmB,CAAC;AAE1E,MAAM,MAAM,YAAY,GAAG,kBAAkB,CAAC;AAE9C,OAAO,EAAE,YAAY,EAAE,KAAK,kBAAkB,EAAE,CAAC;AACjD,cAAc,YAAY,CAAC"}
