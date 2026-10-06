@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --outfile=dist/main.js --format=esm --packages=external && cp -r src/db/migrations dist/db/ && cp -r src/config dist/ && cp src/config/staticSymbols.json dist/",
     "typecheck": "tsc --noEmit",
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",

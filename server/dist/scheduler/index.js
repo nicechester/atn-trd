@@ -1,0 +1,421 @@
+/**
+ * Croner-based job scheduler.
+ *
+ * Loads the cron expression and timezone from settings, registers jobs, and
+ * re-registers them whenever settings change. In Phase 1 only the snapshot
+ * job is registered, as a no-op placeholder for the Phase 2 trading cycle.
+ *
+ * Public API:
+ *   startScheduler()   — initialise once at startup
+ *   stopScheduler()    — graceful shutdown
+ *   getNextRuns(n)     — next N scheduled run times (ISO strings)
+ */
+import { Cron } from 'croner';
+import { getSettings } from '../config/settingsService.js';
+import { settingsEvents } from '../config/settingsService.js';
+import { getLlmLimits } from '@atn-trd/shared';
+import { logger } from '../lib/logger.js';
+import { runSnapshotJob } from './jobs/snapshot.js';
+import { runSignalCollectionJob } from './jobs/signalCollection.js';
+import { runRegimeDetectionJob } from './jobs/regimeDetection.js';
+import { runWeeklyPlannerJob } from './jobs/weeklyPlanner.js';
+import { runTrancheExecutorJob } from './jobs/trancheExecutor.js';
+import { runWatchlistCuratorJob } from './jobs/watchlistCurator.js';
+import { runPriceBackfillJob } from './jobs/priceBackfill.js';
+import { getDatabase } from '../db/index.js';
+import { RunsRepo } from '../repos/runsRepo.js';
+import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
+import { DecisionsRepo } from '../repos/decisionsRepo.js';
+import { OrdersRepo } from '../repos/ordersRepo.js';
+import { PositionsRepo } from '../repos/positionsRepo.js';
+import { PortfolioRepo } from '../repos/portfolioRepo.js';
+import { PricesRepo } from '../repos/pricesRepo.js';
+import { AgentMessagesRepo } from '../repos/agentMessagesRepo.js';
+import { ArtifactsRepo } from '../repos/artifactsRepo.js';
+import { WatchlistRepo } from '../repos/watchlistRepo.js';
+import { PriceService } from '../services/priceService.js';
+import { PortfolioServiceImpl } from '../services/portfolioService.js';
+import { AlpacaBroker } from '../brokers/alpacaBroker.js';
+import { RunCache } from '../datasources/cache.js';
+import { dataSourceRegistry } from '../datasources/registry.js';
+import { YahooSectorPerformance } from '../datasources/sectors/index.js';
+import { createTradingCycleService } from '../services/tradingCycleService.js';
+import { createEmbeddingService } from '../llm/embeddingService.js';
+import { createSemanticMemoryService } from '../services/semanticMemoryService.js';
+import { resolveApiKey } from '../llm/openaiChatModel.js';
+import { ScreenerSelectionsRepo } from '../repos/screenerSelectionsRepo.js';
+import { runScreener } from '../services/screenerOrchestrationService.js';
+const log = logger.child({ component: 'scheduler' });
+// Active job handle; replaced on every settings change.
+let activeJob = null;
+// Snapshot job handle; runs daily at 16:30 ET on trading days (after market close, before trading cycle).
+let snapshotCronJob = null;
+// Price backfill job; runs daily at 15:55 ET on trading days (before signal collection).
+let priceBackfillJob = null;
+// Signal collection job; runs daily at 16:00 ET on trading days (before snapshot).
+let signalCollectionJob = null;
+// Regime detection job; runs daily at 16:05 ET on trading days.
+let regimeDetectionJob = null;
+// Weekly planner job; runs Mondays at 16:10 ET.
+let weeklyPlannerJob = null;
+// Tranche executor job; runs daily at 16:15 ET on trading days.
+let trancheExecutorJob = null;
+// Watchlist curator job; runs on configurable schedule (weekly/monthly/quarterly).
+let watchlistCuratorJob = null;
+// ── internal ──────────────────────────────────────────────────────────────────
+function stopAllJobs() {
+    if (activeJob) {
+        activeJob.stop();
+        activeJob = null;
+    }
+    if (snapshotCronJob) {
+        snapshotCronJob.stop();
+        snapshotCronJob = null;
+    }
+    if (priceBackfillJob) {
+        priceBackfillJob.stop();
+        priceBackfillJob = null;
+    }
+    if (signalCollectionJob) {
+        signalCollectionJob.stop();
+        signalCollectionJob = null;
+    }
+    if (regimeDetectionJob) {
+        regimeDetectionJob.stop();
+        regimeDetectionJob = null;
+    }
+    if (weeklyPlannerJob) {
+        weeklyPlannerJob.stop();
+        weeklyPlannerJob = null;
+    }
+    if (trancheExecutorJob) {
+        trancheExecutorJob.stop();
+        trancheExecutorJob = null;
+    }
+    if (watchlistCuratorJob) {
+        watchlistCuratorJob.stop();
+        watchlistCuratorJob = null;
+    }
+}
+function registerAllJobs() {
+    const db = getDatabase();
+    const settings = getSettings();
+    stopAllJobs();
+    log.info('re-registering all scheduler jobs');
+    // Trading Cycle job
+    const { cron, timezone } = settings.schedule;
+    try {
+        activeJob = new Cron(cron, { timezone, protect: true }, async () => {
+            // Skip if strategic execution is enabled (use plan-based trading instead)
+            const currentSettings = getSettings();
+            if (currentSettings.execution.enabled) {
+                log.info('trading cycle skipped (strategic execution enabled, use plan-based trading)');
+                return;
+            }
+            try {
+                const db = getDatabase();
+                const settings = getSettings();
+                // repos
+                const runsRepo = new RunsRepo(db);
+                const assessmentsRepo = new AssessmentsRepo(db);
+                const decisionsRepo = new DecisionsRepo(db);
+                const ordersRepo = new OrdersRepo(db);
+                const positionsRepo = new PositionsRepo(db);
+                const portfolioRepo = new PortfolioRepo(db);
+                const pricesRepo = new PricesRepo(db);
+                const messagesRepo = new AgentMessagesRepo(db);
+                const artifactsRepo = new ArtifactsRepo(db);
+                const watchlistRepo = new WatchlistRepo(db);
+                // semantic memory (optional, guarded against unconfigured API key)
+                let semanticMemory;
+                if (settings.semanticMemory.enabled) {
+                    if (resolveApiKey()) {
+                        semanticMemory = createSemanticMemoryService(db, createEmbeddingService());
+                    }
+                    else {
+                        log.warn('semantic memory enabled but no LLM API key configured; skipping');
+                    }
+                }
+                // services
+                const priceService = new PriceService(pricesRepo);
+                const portfolioService = new PortfolioServiceImpl(db, priceService, positionsRepo, portfolioRepo);
+                // Initialize Alpaca paper trading broker
+                const apiKey = process.env.ALPACA_API_KEY;
+                const apiSecret = process.env.ALPACA_API_SECRET;
+                if (!apiKey || !apiSecret) {
+                    throw new Error('ALPACA_API_KEY and ALPACA_API_SECRET environment variables are required for Alpaca paper trading');
+                }
+                const broker = new AlpacaBroker({
+                    apiKey,
+                    apiSecret,
+                    paperTrading: true,
+                });
+                // agent tools deps (with per-run cache)
+                const runCache = new RunCache();
+                const sectorSource = new YahooSectorPerformance({ pricesRepo });
+                const analystDeps = {
+                    toolsDeps: {
+                        newsSource: dataSourceRegistry.get('news'),
+                        fundamentalsSource: dataSourceRegistry.get('fundamentals'),
+                        macroSource: dataSourceRegistry.get('macro'),
+                        optionsSource: dataSourceRegistry.get('options'),
+                        sectorSource,
+                        pricesRepo,
+                        portfolioService,
+                        decisionsRepo,
+                        cache: runCache,
+                        semanticMemory,
+                        llmLimits: getLlmLimits(settings.llm.localLlmMode),
+                    },
+                    messagesRepo,
+                    artifactsRepo,
+                };
+                // screener deps
+                const screenerSelectionsRepo = new ScreenerSelectionsRepo(db);
+                const screenerAgentDeps = {
+                    toolsDeps: {
+                        sectorSource,
+                        fundamentalsSource: dataSourceRegistry.get('fundamentals'),
+                        optionsSource: dataSourceRegistry.get('options'),
+                        cache: runCache,
+                    },
+                    messagesRepo,
+                    artifactsRepo,
+                };
+                // Seed portfolio on first run if not yet initialized
+                if (!portfolioRepo.read()) {
+                    portfolioRepo.write({
+                        cashCents: settings.trading.startingCashCents,
+                        startingCashCents: settings.trading.startingCashCents,
+                        startedAt: Date.now(),
+                        resetAt: null,
+                        baseCurrency: settings.trading.baseCurrency,
+                    });
+                }
+                const tradingCycle = createTradingCycleService({
+                    db,
+                    runsRepo,
+                    assessmentsRepo,
+                    decisionsRepo,
+                    ordersRepo,
+                    portfolioService,
+                    broker,
+                    analystDeps,
+                    priceFeed: priceService,
+                    getSettings,
+                    watchlistRepo,
+                    semanticMemory,
+                    screenerDeps: {
+                        screenerSelectionsRepo,
+                        screenerAgentDeps,
+                        toolsDeps: analystDeps.toolsDeps,
+                    },
+                    runScreener,
+                });
+                await tradingCycle.execute('scheduled');
+            }
+            catch (err) {
+                log.error('trading cycle job failed', { error: err instanceof Error ? err.message : String(err) });
+            }
+        });
+        log.info('trading-cycle job registered', { cron, timezone, nextRun: activeJob.nextRun()?.toISOString() ?? null });
+    }
+    catch (err) {
+        log.error('failed to register trading-cycle job', { error: err instanceof Error ? err.message : String(err) });
+        activeJob = null;
+    }
+    // Snapshot job (configurable, default 16:30 ET daily on trading days)
+    const snapshotCron = settings.jobSchedules?.snapshot || '30 16 * * 1-5';
+    try {
+        snapshotCronJob = new Cron(snapshotCron, { timezone: 'America/New_York', protect: true }, async () => {
+            await runSnapshotJob(db);
+        });
+        log.info('snapshot job registered', { cron: snapshotCron, nextRun: snapshotCronJob.nextRun()?.toISOString() ?? null });
+    }
+    catch (err) {
+        log.error('failed to register snapshot job', { error: err instanceof Error ? err.message : String(err) });
+        snapshotCronJob = null;
+    }
+    // Price backfill job (runs before signal collection to ensure fresh price data)
+    const priceBackfillCron = settings.jobSchedules?.priceBackfill || '55 15 * * 1-5';
+    try {
+        priceBackfillJob = new Cron(priceBackfillCron, { timezone: 'America/New_York', protect: true }, async () => {
+            await runPriceBackfillJob(db, { days: 7 }); // Last 7 days to catch any gaps
+        });
+        log.info('price-backfill job registered', { cron: priceBackfillCron, nextRun: priceBackfillJob.nextRun()?.toISOString() ?? null });
+    }
+    catch (err) {
+        log.error('failed to register price-backfill job', { error: err instanceof Error ? err.message : String(err) });
+        priceBackfillJob = null;
+    }
+    // Signal collection job (configurable, default 16:00 ET on trading days)
+    const signalCron = settings.jobSchedules?.signalCollection || '0 16 * * 1-5';
+    try {
+        signalCollectionJob = new Cron(signalCron, { timezone: 'America/New_York', protect: true }, async () => {
+            await runSignalCollectionJob(db);
+        });
+        log.info('signal-collection job registered', { cron: signalCron });
+    }
+    catch (err) {
+        log.error('failed to register signal-collection job', { error: err instanceof Error ? err.message : String(err) });
+        signalCollectionJob = null;
+    }
+    // Regime detection job (configurable, default 16:05 ET on trading days)
+    const regimeCron = settings.jobSchedules?.regimeDetection || '5 16 * * 1-5';
+    try {
+        regimeDetectionJob = new Cron(regimeCron, { timezone: 'America/New_York', protect: true }, async () => {
+            await runRegimeDetectionJob(db);
+        });
+        log.info('regime-detection job registered', { cron: regimeCron });
+    }
+    catch (err) {
+        log.error('failed to register regime-detection job', { error: err instanceof Error ? err.message : String(err) });
+        regimeDetectionJob = null;
+    }
+    // Weekly planner job (configurable, default Mondays at 16:10 ET)
+    const plannerCron = settings.jobSchedules?.weeklyPlanner || '10 16 * * 1';
+    try {
+        weeklyPlannerJob = new Cron(plannerCron, { timezone: 'America/New_York', protect: true }, async () => {
+            await runWeeklyPlannerJob(db);
+        });
+        log.info('weekly-planner job registered', { cron: plannerCron });
+    }
+    catch (err) {
+        log.error('failed to register weekly-planner job', { error: err instanceof Error ? err.message : String(err) });
+        weeklyPlannerJob = null;
+    }
+    // Tranche executor job (configurable, default 16:15 ET on trading days)
+    const trancheCron = settings.jobSchedules?.trancheExecutor || '15 16 * * 1-5';
+    try {
+        trancheExecutorJob = new Cron(trancheCron, { timezone: 'America/New_York', protect: true }, async () => {
+            await runTrancheExecutorJob(db);
+        });
+        log.info('tranche-executor job registered', { cron: trancheCron });
+    }
+    catch (err) {
+        log.error('failed to register tranche-executor job', { error: err instanceof Error ? err.message : String(err) });
+        trancheExecutorJob = null;
+    }
+    // Watchlist curator job (configurable schedule)
+    const curatorCron = settings.watchlist.curatorCron?.trim();
+    if (curatorCron && settings.watchlist.mode === 'dynamic') {
+        try {
+            watchlistCuratorJob = new Cron(curatorCron, { timezone: 'America/New_York', protect: true }, async () => {
+                await runWatchlistCuratorJob(db);
+            });
+            log.info('watchlist-curator job registered', { cron: curatorCron, nextRun: watchlistCuratorJob.nextRun()?.toISOString() ?? null });
+        }
+        catch (err) {
+            log.error('failed to register watchlist-curator job', { error: err instanceof Error ? err.message : String(err) });
+            watchlistCuratorJob = null;
+        }
+    }
+    else {
+        log.debug('watchlist curator not scheduled', { reason: !curatorCron ? 'no cron set' : 'not in dynamic mode' });
+    }
+}
+// ── public API ────────────────────────────────────────────────────────────────
+/** Initialise the scheduler. Must be called once after settings are available. */
+export function startScheduler() {
+    registerAllJobs();
+    settingsEvents.on('change', () => registerAllJobs());
+}
+/** Stop all active jobs (call on SIGTERM/SIGINT). */
+export function stopScheduler() {
+    stopAllJobs();
+    log.info('scheduler stopped');
+}
+/**
+ * Return the next `n` scheduled run times as ISO-8601 strings.
+ * Returns an empty array if no job is registered or the expression
+ * produces no future runs.
+ */
+export function getNextRuns(n) {
+    if (!activeJob)
+        return [];
+    try {
+        return activeJob.nextRuns(n).map((d) => d.toISOString());
+    }
+    catch {
+        return [];
+    }
+}
+/** Return schedule info for all registered jobs. */
+export function getJobSchedules() {
+    const settings = getSettings();
+    const jobSchedules = settings.jobSchedules || {};
+    const jobs = [];
+    const priceBackfillCron = jobSchedules.priceBackfill || '55 15 * * 1-5';
+    if (priceBackfillJob) {
+        jobs.push({
+            name: 'Price Backfill',
+            cron: priceBackfillCron,
+            nextRun: priceBackfillJob.nextRun()?.toISOString() ?? null,
+            enabled: true, // Always enabled
+        });
+    }
+    const signalCron = jobSchedules.signalCollection || '0 16 * * 1-5';
+    if (signalCollectionJob) {
+        jobs.push({
+            name: 'Signal Collection',
+            cron: signalCron,
+            nextRun: signalCollectionJob.nextRun()?.toISOString() ?? null,
+            enabled: settings.signals.enabled,
+        });
+    }
+    const regimeCron = jobSchedules.regimeDetection || '5 16 * * 1-5';
+    if (regimeDetectionJob) {
+        jobs.push({
+            name: 'Regime Detection',
+            cron: regimeCron,
+            nextRun: regimeDetectionJob.nextRun()?.toISOString() ?? null,
+            enabled: settings.regime.enabled,
+        });
+    }
+    const plannerCron = jobSchedules.weeklyPlanner || '10 16 * * 1';
+    if (weeklyPlannerJob) {
+        jobs.push({
+            name: 'Weekly Planner',
+            cron: plannerCron,
+            nextRun: weeklyPlannerJob.nextRun()?.toISOString() ?? null,
+            enabled: settings.execution.enabled,
+        });
+    }
+    const trancheCron = jobSchedules.trancheExecutor || '15 16 * * 1-5';
+    if (trancheExecutorJob) {
+        jobs.push({
+            name: 'Tranche Executor',
+            cron: trancheCron,
+            nextRun: trancheExecutorJob.nextRun()?.toISOString() ?? null,
+            enabled: settings.execution.enabled,
+        });
+    }
+    // Always show Watchlist Curator (even when not scheduled)
+    const curatorCron = settings.watchlist.curatorCron;
+    const curatorEnabled = settings.watchlist.mode === 'dynamic' && !!curatorCron;
+    jobs.push({
+        name: 'Watchlist Curator',
+        cron: curatorCron || 'disabled',
+        nextRun: watchlistCuratorJob?.nextRun()?.toISOString() ?? null,
+        enabled: curatorEnabled,
+    });
+    const snapshotCron = jobSchedules.snapshot || '30 16 * * 1-5';
+    if (snapshotCronJob) {
+        jobs.push({
+            name: 'Snapshot',
+            cron: snapshotCron,
+            nextRun: snapshotCronJob.nextRun()?.toISOString() ?? null,
+            enabled: true, // Always enabled
+        });
+    }
+    if (activeJob) {
+        jobs.push({
+            name: 'Trading Cycle',
+            cron: settings.schedule.cron,
+            nextRun: activeJob.nextRun()?.toISOString() ?? null,
+            enabled: settings.trading.enabled && !settings.execution.enabled,
+        });
+    }
+    return jobs;
+}
+//# sourceMappingURL=index.js.map

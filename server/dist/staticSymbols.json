@@ -1,0 +1,20 @@
+{
+  "description": "Symbols always included for price caching, regardless of user watchlist",
+  "sectorETFs": [
+    "XLK",
+    "XLF",
+    "XLE",
+    "XLV",
+    "XLY",
+    "XLP",
+    "XLI",
+    "XLB",
+    "XLRE",
+    "XLU",
+    "XLC"
+  ],
+  "benchmarks": [
+    "SPY",
+    "QQQ"
+  ]
+}

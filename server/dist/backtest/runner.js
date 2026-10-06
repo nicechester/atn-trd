@@ -1,0 +1,192 @@
+/**
+ * BacktestRunner: Replays historical data through the trading pipeline.
+ *
+ * TODO(#93 follow-up): backtest runs do not feed semantic memory. Neither
+ * assessments nor realized trade outcomes generated during a backtest are
+ * embedded via SemanticMemoryService. Wiring this up was deferred out of
+ * this issue's scope — see #93 spec notes on backtesting vs. semantic
+ * memory token cost trade-offs.
+ */
+import { BacktestRepo } from '../repos/backtestRepo.js';
+import { MockBroker } from '../brokers/mockBroker.js';
+import { calculateMetrics } from './metrics.js';
+import { logger } from '../lib/logger.js';
+import { nextTradingDateStr, isTradingDayStr } from '../scheduler/marketCalendar.js';
+const log = logger.child({ component: 'backtest-runner' });
+export class BacktestRunner {
+    repo;
+    deps;
+    constructor(deps) {
+        this.deps = deps;
+        this.repo = new BacktestRepo(deps.db);
+    }
+    async run(config) {
+        // Use existing backtestId or create new
+        const backtestId = config.backtestId ?? this.repo.createRun({
+            name: config.name,
+            startDate: config.startDate,
+            endDate: config.endDate,
+            symbols: config.symbols,
+            settingsSnapshot: JSON.stringify(this.deps.settings),
+        });
+        // If using existing record, update the settings snapshot
+        if (config.backtestId) {
+            this.repo.updateSettingsSnapshot(backtestId, JSON.stringify(this.deps.settings));
+        }
+        log.info('starting backtest', {
+            backtestId,
+            startDate: config.startDate,
+            endDate: config.endDate,
+            symbols: config.symbols.length,
+        });
+        const broker = new MockBroker(this.deps.priceProvider, {
+            startingCashCents: config.startingCashCents ?? 100_000_00,
+            slippageBps: config.slippageBps ?? 5,
+        });
+        try {
+            // Find first trading day with benchmark data for normalization
+            let initialBenchmarkPrice = null;
+            let benchmarkStartDate = config.startDate;
+            for (let i = 0; i < 10; i++) { // Try up to 10 days to find data
+                initialBenchmarkPrice = await this.deps.getBenchmarkPrice(benchmarkStartDate);
+                if (initialBenchmarkPrice)
+                    break;
+                benchmarkStartDate = nextTradingDateStr(benchmarkStartDate);
+            }
+            const initialValue = await broker.getPortfolioValue(config.startDate);
+            // Record initial snapshot (benchmark starts at same value as portfolio)
+            this.repo.createSnapshot({
+                backtestId,
+                asOfDate: config.startDate,
+                cashCents: broker.getCashCents(),
+                positions: broker.getPositionsSnapshot(),
+                totalValueCents: initialValue,
+                benchmarkValueCents: initialValue, // Normalized to match starting portfolio
+            });
+            // Iterate through each trading day (start after initial snapshot)
+            let currentDate = nextTradingDateStr(config.startDate);
+            let daysSinceLastTrade = 0;
+            const tradingInterval = config.tradingIntervalDays ?? 7; // Default: weekly
+            let lastBenchmarkPrice = initialBenchmarkPrice; // Track last known benchmark price for holidays
+            while (currentDate <= config.endDate) {
+                if (isTradingDayStr(currentDate)) {
+                    broker.setCurrentDate(currentDate);
+                    daysSinceLastTrade++;
+                    // Run trading logic on interval (e.g., weekly)
+                    const shouldTrade = daysSinceLastTrade >= tradingInterval;
+                    if (shouldTrade) {
+                        await this.deps.runTradingLogic({
+                            date: currentDate,
+                            symbols: config.symbols,
+                            broker,
+                            settings: this.deps.settings,
+                        });
+                        daysSinceLastTrade = 0;
+                        // Record any trades that occurred TODAY (filter by fillDate)
+                        const orders = await broker.listOrders({ status: ['filled'] });
+                        for (const order of orders) {
+                            if (order.status === 'filled' && order.fillDate === currentDate) {
+                                this.repo.createTrade({
+                                    backtestId,
+                                    tradeDate: currentDate,
+                                    symbol: order.symbol,
+                                    side: order.side,
+                                    qty: order.qty,
+                                    priceCents: order.fillPriceCents ?? order.limitPriceCents ?? 0,
+                                });
+                            }
+                        }
+                    }
+                    // Record end-of-day snapshot
+                    const portfolioValue = await broker.getPortfolioValue(currentDate);
+                    const currentBenchmarkPrice = await this.deps.getBenchmarkPrice(currentDate);
+                    // Update last known benchmark price if we got data
+                    if (currentBenchmarkPrice) {
+                        lastBenchmarkPrice = currentBenchmarkPrice;
+                    }
+                    // Normalize benchmark: if SPY went from $370 to $400, and we started with $100k,
+                    // benchmark value = $100k * (400/370). Use last known price on holidays.
+                    const benchmarkPriceToUse = currentBenchmarkPrice ?? lastBenchmarkPrice;
+                    const normalizedBenchmark = initialBenchmarkPrice && benchmarkPriceToUse
+                        ? Math.round(initialValue * (benchmarkPriceToUse / initialBenchmarkPrice))
+                        : undefined;
+                    this.repo.createSnapshot({
+                        backtestId,
+                        asOfDate: currentDate,
+                        cashCents: broker.getCashCents(),
+                        positions: broker.getPositionsSnapshot(),
+                        totalValueCents: portfolioValue,
+                        benchmarkValueCents: normalizedBenchmark,
+                    });
+                    log.debug('backtest day complete', {
+                        backtestId,
+                        date: currentDate,
+                        portfolioValue: portfolioValue / 100,
+                    });
+                }
+                currentDate = nextTradingDateStr(currentDate);
+            }
+            // Calculate metrics
+            const snapshots = this.repo.getSnapshots(backtestId);
+            const trades = this.repo.getTrades(backtestId);
+            const metrics = calculateMetrics({ backtestId, snapshots, trades });
+            this.repo.saveMetrics(metrics);
+            this.repo.updateRunStatus(backtestId, 'succeeded');
+            log.info('backtest complete', {
+                backtestId,
+                totalReturn: (metrics.totalReturn * 100).toFixed(2) + '%',
+                benchmarkReturn: (metrics.benchmarkReturn * 100).toFixed(2) + '%',
+                sharpeRatio: metrics.sharpeRatio?.toFixed(2),
+                maxDrawdown: (metrics.maxDrawdown * 100).toFixed(2) + '%',
+                totalTrades: metrics.totalTrades,
+            });
+            return {
+                backtestId,
+                status: 'succeeded',
+                metrics: {
+                    totalReturn: metrics.totalReturn,
+                    benchmarkReturn: metrics.benchmarkReturn,
+                    sharpeRatio: metrics.sharpeRatio,
+                    sortinoRatio: metrics.sortinoRatio,
+                    maxDrawdown: metrics.maxDrawdown,
+                    winRate: metrics.winRate,
+                    totalTrades: metrics.totalTrades,
+                },
+            };
+        }
+        catch (err) {
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            this.repo.updateRunStatus(backtestId, 'failed', errorMsg);
+            log.error('backtest failed', { backtestId, error: errorMsg });
+            return {
+                backtestId,
+                status: 'failed',
+                error: errorMsg,
+            };
+        }
+    }
+    getResult(backtestId) {
+        const run = this.repo.getRun(backtestId);
+        if (!run)
+            return null;
+        const metrics = this.repo.getMetrics(backtestId);
+        return {
+            backtestId,
+            status: run.status === 'running' ? 'failed' : run.status,
+            error: run.error ?? undefined,
+            metrics: metrics ? {
+                totalReturn: metrics.totalReturn,
+                benchmarkReturn: metrics.benchmarkReturn,
+                sharpeRatio: metrics.sharpeRatio,
+                sortinoRatio: metrics.sortinoRatio,
+                maxDrawdown: metrics.maxDrawdown,
+                winRate: metrics.winRate,
+                totalTrades: metrics.totalTrades,
+            } : undefined,
+        };
+    }
+    listRuns(limit = 20) {
+        return this.repo.listRuns(limit);
+    }
+}
+//# sourceMappingURL=runner.js.map

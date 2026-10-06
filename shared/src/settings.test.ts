@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { SettingsSchema, StyleWeightsSchema } from './settings';
+import { SettingsSchema, StyleWeightsSchema } from './settings.js';
 
 describe('StyleWeights validation', () => {
   it('should accept weights that sum to exactly 100', () => {

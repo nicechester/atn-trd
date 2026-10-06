@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { SettingsSchema } from './settings';
-import { OrderSchema, DecisionSetSchema, AssessmentSchema, FillSchema, PositionSchema, } from './domain';
+import { SettingsSchema } from './settings.js';
+import { OrderSchema, DecisionSetSchema, AssessmentSchema, FillSchema, PositionSchema, } from './domain.js';
 // Settings API
 export const GetSettingsResponseSchema = z.object({
     ok: z.boolean(),

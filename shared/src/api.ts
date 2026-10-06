@@ -1,12 +1,12 @@
 import { z } from 'zod';
-import { SettingsSchema } from './settings';
+import { SettingsSchema } from './settings.js';
 import {
   OrderSchema,
   DecisionSetSchema,
   AssessmentSchema,
   FillSchema,
   PositionSchema,
-} from './domain';
+} from './domain.js';
 
 // Settings API
 export const GetSettingsResponseSchema = z.object({
