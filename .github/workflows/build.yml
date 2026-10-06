@@ -37,7 +37,7 @@ jobs:
       - name: Install dependencies and build
         if: steps.changes.outputs.code_changed == 'true'
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: Create deployment tarball
@@ -45,7 +45,7 @@ jobs:
         run: |
           # Remove dev dependencies, keep only production
           rm -rf node_modules
-          npm ci --omit=dev
+          npm install --omit=dev
           
           # Create tarball with only what's needed to run
           tar -czf atn-trd.tar.gz \
