@@ -22,6 +22,7 @@ import { runRegimeDetectionJob } from './jobs/regimeDetection.js';
 import { runWeeklyPlannerJob } from './jobs/weeklyPlanner.js';
 import { runTrancheExecutorJob } from './jobs/trancheExecutor.js';
 import { runWatchlistCuratorJob } from './jobs/watchlistCurator.js';
+import { runPriceBackfillJob } from './jobs/priceBackfill.js';
 import { getDatabase } from '../db/index.js';
 import { RunsRepo } from '../repos/runsRepo.js';
 import { AssessmentsRepo } from '../repos/assessmentsRepo.js';
@@ -60,6 +61,9 @@ let activeJob: Cron | null = null;
 // Snapshot job handle; runs daily at 16:30 ET on trading days (after market close, before trading cycle).
 let snapshotCronJob: Cron | null = null;
 
+// Price backfill job; runs daily at 15:55 ET on trading days (before signal collection).
+let priceBackfillJob: Cron | null = null;
+
 // Signal collection job; runs daily at 16:00 ET on trading days (before snapshot).
 let signalCollectionJob: Cron | null = null;
 
@@ -80,6 +84,7 @@ let watchlistCuratorJob: Cron | null = null;
 function stopAllJobs(): void {
   if (activeJob) { activeJob.stop(); activeJob = null; }
   if (snapshotCronJob) { snapshotCronJob.stop(); snapshotCronJob = null; }
+  if (priceBackfillJob) { priceBackfillJob.stop(); priceBackfillJob = null; }
   if (signalCollectionJob) { signalCollectionJob.stop(); signalCollectionJob = null; }
   if (regimeDetectionJob) { regimeDetectionJob.stop(); regimeDetectionJob = null; }
   if (weeklyPlannerJob) { weeklyPlannerJob.stop(); weeklyPlannerJob = null; }
@@ -237,6 +242,18 @@ function registerAllJobs(): void {
     snapshotCronJob = null;
   }
 
+  // Price backfill job (runs before signal collection to ensure fresh price data)
+  const priceBackfillCron = settings.jobSchedules?.priceBackfill || '55 15 * * 1-5';
+  try {
+    priceBackfillJob = new Cron(priceBackfillCron, { timezone: 'America/New_York', protect: true }, async () => {
+      await runPriceBackfillJob(db, { days: 7 }); // Last 7 days to catch any gaps
+    });
+    log.info('price-backfill job registered', { cron: priceBackfillCron, nextRun: priceBackfillJob.nextRun()?.toISOString() ?? null });
+  } catch (err) {
+    log.error('failed to register price-backfill job', { error: err instanceof Error ? err.message : String(err) });
+    priceBackfillJob = null;
+  }
+
   // Signal collection job (configurable, default 16:00 ET on trading days)
   const signalCron = settings.jobSchedules?.signalCollection || '0 16 * * 1-5';
   try {
@@ -342,6 +359,16 @@ export function getJobSchedules(): JobSchedule[] {
   const settings = getSettings();
   const jobSchedules = settings.jobSchedules || {};
   const jobs: JobSchedule[] = [];
+
+  const priceBackfillCron = jobSchedules.priceBackfill || '55 15 * * 1-5';
+  if (priceBackfillJob) {
+    jobs.push({
+      name: 'Price Backfill',
+      cron: priceBackfillCron,
+      nextRun: priceBackfillJob.nextRun()?.toISOString() ?? null,
+      enabled: true, // Always enabled
+    });
+  }
 
   const signalCron = jobSchedules.signalCollection || '0 16 * * 1-5';
   if (signalCollectionJob) {

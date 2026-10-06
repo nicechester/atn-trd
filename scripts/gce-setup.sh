@@ -5,6 +5,9 @@
 set -e
 
 PROJECT_ID="autonomous-trader-506715"
+
+# Ensure correct project context
+gcloud config set project $PROJECT_ID --quiet 2>/dev/null
 ZONE="us-central1-a"
 VM_NAME="atn-trd-vm"
 IMAGE_REPO="us-central1-docker.pkg.dev/${PROJECT_ID}/atn-trd/app"

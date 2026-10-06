@@ -790,6 +790,14 @@ export interface TrancheExecutionSummary {
   autoHedgePlan: { symbol: string; shares: number } | null;
 }
 
+export interface PriceBackfillSummary {
+  total: number;
+  succeeded: number;
+  bars: number;
+  symbols: string[];
+  startDate: string;
+}
+
 export const strategicJobs = {
   collectSignals(): Promise<{ ok: boolean; summary: SignalCollectionSummary }> {
     return request('/trigger/signal-collection', { method: 'POST' });
@@ -834,5 +842,12 @@ export const reports = {
   },
 };
 
+// Prices
+export const prices = {
+  bars(symbols: string[], days = 5): Promise<{ ok: boolean; bars: Record<string, number[]> }> {
+    return request(`/prices/bars?symbols=${symbols.join(',')}&days=${days}`);
+  },
+};
+
 // Unified API object
-export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades, calibration, performance, backtest, plans, regime, signals, strategicJobs, reports };
+export const api = { health, settings, secrets, symbols, watchlist, llm, datasources, scheduler, runs, portfolio, trades, calibration, performance, backtest, plans, regime, signals, strategicJobs, reports, prices };

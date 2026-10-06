@@ -9,11 +9,18 @@
  * - estimatedRuntimeSeconds: estimated duration for progress indication
  */
 export const JOB_REGISTRY = {
+    'price-backfill': {
+        id: 'price-backfill',
+        label: 'Price Backfill',
+        description: 'Fetch historical price data for all tracked symbols from Alpaca',
+        dependencies: [],
+        estimatedRuntimeSeconds: 60,
+    },
     'signal-collection': {
         id: 'signal-collection',
         label: 'Signal Collection',
         description: 'Collect market signals for watchlist symbols (news, technicals, macro)',
-        dependencies: [],
+        dependencies: ['price-backfill'], // Needs fresh prices
         estimatedRuntimeSeconds: 120,
     },
     'plan-review': {

@@ -36,7 +36,7 @@ import { listTradesHandler, getTradeHandler, listPendingOrdersHandler, cancelPen
 import { getCalibrationHandler } from './routes/calibration.js';
 import { getPerformanceHandler } from './routes/performance.js';
 import { runProgressStreamHandler } from './routes/runProgress.js';
-import { triggerBackfillHandler, listTrackedSymbolsHandler } from './routes/prices.js';
+import { triggerBackfillHandler, listTrackedSymbolsHandler, getBarsHandler } from './routes/prices.js';
 import { createBacktestRoutes } from './routes/backtest.js';
 import { listPlansHandler, getPlanHandler, getCurrentRegimeHandler, getSignalHistoryHandler } from './routes/plans.js';
 import { listReportsHandler, getReportHandler, generateReportHandler } from './routes/reports.js';
@@ -104,6 +104,7 @@ export function createApp(options: AppOptions = {}): Express {
   app.get('/api/calibration', requireAuth, getCalibrationHandler);
   app.get('/api/performance', requireAuth, getPerformanceHandler);
   app.get('/api/prices/symbols', requireAuth, listTrackedSymbolsHandler);
+  app.get('/api/prices/bars', requireAuth, getBarsHandler);
   app.get('/api/plans', requireAuth, listPlansHandler);
   app.get('/api/plans/:id', requireAuth, getPlanHandler);
   app.get('/api/regime/current', requireAuth, getCurrentRegimeHandler);

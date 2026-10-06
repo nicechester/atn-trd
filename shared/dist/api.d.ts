@@ -316,18 +316,21 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             minIntervalHours?: number | undefined;
         }>>;
         jobSchedules: z.ZodDefault<z.ZodObject<{
+            priceBackfill: z.ZodDefault<z.ZodString>;
             signalCollection: z.ZodDefault<z.ZodString>;
             regimeDetection: z.ZodDefault<z.ZodString>;
             weeklyPlanner: z.ZodDefault<z.ZodString>;
             trancheExecutor: z.ZodDefault<z.ZodString>;
             snapshot: z.ZodDefault<z.ZodString>;
         }, "strip", z.ZodTypeAny, {
+            priceBackfill: string;
             signalCollection: string;
             regimeDetection: string;
             weeklyPlanner: string;
             trancheExecutor: string;
             snapshot: string;
         }, {
+            priceBackfill?: string | undefined;
             signalCollection?: string | undefined;
             regimeDetection?: string | undefined;
             weeklyPlanner?: string | undefined;
@@ -707,6 +710,7 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             minIntervalHours: number;
         };
         jobSchedules: {
+            priceBackfill: string;
             signalCollection: string;
             regimeDetection: string;
             weeklyPlanner: string;
@@ -875,6 +879,7 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             minIntervalHours?: number | undefined;
         } | undefined;
         jobSchedules?: {
+            priceBackfill?: string | undefined;
             signalCollection?: string | undefined;
             regimeDetection?: string | undefined;
             weeklyPlanner?: string | undefined;
@@ -1046,6 +1051,7 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             minIntervalHours: number;
         };
         jobSchedules: {
+            priceBackfill: string;
             signalCollection: string;
             regimeDetection: string;
             weeklyPlanner: string;
@@ -1217,6 +1223,7 @@ export declare const GetSettingsResponseSchema: z.ZodObject<{
             minIntervalHours?: number | undefined;
         } | undefined;
         jobSchedules?: {
+            priceBackfill?: string | undefined;
             signalCollection?: string | undefined;
             regimeDetection?: string | undefined;
             weeklyPlanner?: string | undefined;

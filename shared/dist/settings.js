@@ -94,6 +94,7 @@ export const SettingsSchema = z.object({
         path: ['cron'],
     }).default({}),
     jobSchedules: z.object({
+        priceBackfill: z.string().default('55 15 * * 1-5'),
         signalCollection: z.string().default('0 16 * * 1-5'),
         regimeDetection: z.string().default('5 16 * * 1-5'),
         weeklyPlanner: z.string().default('10 16 * * 1'),
@@ -262,6 +263,7 @@ export const DEFAULT_SETTINGS = {
         minIntervalHours: 12,
     },
     jobSchedules: {
+        priceBackfill: '55 15 * * 1-5',
         signalCollection: '0 16 * * 1-5',
         regimeDetection: '5 16 * * 1-5',
         weeklyPlanner: '10 16 * * 1',

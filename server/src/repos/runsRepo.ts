@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3';
 export type RunTrigger =
   | 'scheduled'
   | 'manual'
+  | 'price_backfill'
   | 'signal_collection'
   | 'plan_review'
   | 'tranche_execution'

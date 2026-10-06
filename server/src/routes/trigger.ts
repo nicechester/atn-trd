@@ -41,6 +41,7 @@ import { runSignalCollectionJob } from '../scheduler/jobs/signalCollection.js';
 import { runPlanReviewJob } from '../scheduler/jobs/planReviewJob.js';
 import { runTrancheExecutorJob } from '../scheduler/jobs/trancheExecutor.js';
 import { runWatchlistCuration, backfillSectors } from '../services/watchlistCurationService.js';
+import { runPriceBackfillJob } from '../scheduler/jobs/priceBackfill.js';
 import { JOB_REGISTRY, resolveExecutionOrder } from '@atn-trd/shared';
 import { emitProgress } from '../services/runProgress.js';
 
@@ -379,7 +380,11 @@ export async function triggerRunSelectedHandler(
         let jobRunId: string | undefined;
 
         // Map job ID to handler and execute
-        if (job.id === 'signal-collection') {
+        if (job.id === 'price-backfill') {
+          await runPriceBackfillJob(db, { days: 7 }, 'price_backfill');
+          const latestRun = runsRepo.listByTrigger('price_backfill', 1)[0];
+          jobRunId = latestRun?.id;
+        } else if (job.id === 'signal-collection') {
           await runSignalCollectionJob(db, 'signal_collection');
           const latestRun = runsRepo.listByTrigger('signal_collection', 1)[0];
           jobRunId = latestRun?.id;

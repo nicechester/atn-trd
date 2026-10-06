@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { runs as runsApi, type RunDetailData, type AgentRunRow, type DecisionRow, type AgentMessageRow, type ResearchArtifactRow, type RunCoverageData, type PlanReviewSummary, type SignalCollectionSummary, type WatchlistCurationSummary, type TrancheExecutionSummary, type ScreenerSelectionRow, type SignalSnapshotRow } from '../api/client';
+import { runs as runsApi, prices as pricesApi, type RunDetailData, type AgentRunRow, type DecisionRow, type AgentMessageRow, type ResearchArtifactRow, type RunCoverageData, type PlanReviewSummary, type SignalCollectionSummary, type WatchlistCurationSummary, type TrancheExecutionSummary, type ScreenerSelectionRow, type SignalSnapshotRow, type PriceBackfillSummary } from '../api/client';
 import { centsToUSD, formatTimestamp, formatDuration, formatQty } from '../lib/format';
 import { useToast } from '../context/ToastContext';
 import CoverageHeatmap from '../components/CoverageHeatmap';
 import { RejectedDecisions } from '../components/RejectedDecisions';
+import { Sparkline } from '../components/Sparkline';
 import styles from './RunDetail.module.css';
 
-type JobType = 'trading_cycle' | 'signal_collection' | 'plan_review' | 'tranche_execution' | 'watchlist_curation';
+type JobType = 'trading_cycle' | 'signal_collection' | 'plan_review' | 'tranche_execution' | 'watchlist_curation' | 'price_backfill';
 
 const JOB_TYPE_LABELS: Record<JobType, string> = {
   trading_cycle: 'Trading Cycle',
@@ -15,9 +16,11 @@ const JOB_TYPE_LABELS: Record<JobType, string> = {
   plan_review: 'Plan Review',
   tranche_execution: 'Tranche Execution',
   watchlist_curation: 'Watchlist Curation',
+  price_backfill: 'Price Backfill',
 };
 
 function inferJobType(run: AgentRunRow): JobType {
+  if (run.trigger === 'price_backfill') return 'price_backfill';
   if (run.trigger === 'signal_collection') return 'signal_collection';
   if (run.trigger === 'plan_review') return 'plan_review';
   if (run.trigger === 'tranche_execution') return 'tranche_execution';
@@ -25,6 +28,7 @@ function inferJobType(run: AgentRunRow): JobType {
   if (run.summaryJson) {
     try {
       const summary = JSON.parse(run.summaryJson);
+      if ('bars' in summary && 'startDate' in summary) return 'price_backfill';
       if ('symbolsUpdated' in summary && 'symbols' in summary && !('regime' in summary)) return 'signal_collection';
       if ('plansCreated' in summary || 'watchlistCount' in summary) return 'plan_review';
       if ('tranchesExecuted' in summary) return 'tranche_execution';
@@ -220,10 +224,44 @@ function renderTrancheExecutionSummary(s: TrancheExecutionSummary) {
   );
 }
 
+function renderPriceBackfillSummary(s: PriceBackfillSummary, priceBars: Record<string, number[]>) {
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-md)' }}>
+        <div><div className={styles.fieldLabel}>Total Symbols</div><div className={styles.fieldValue}>{s.total}</div></div>
+        <div><div className={styles.fieldLabel}>Succeeded</div><div className={styles.fieldValue}>{s.succeeded}</div></div>
+        <div><div className={styles.fieldLabel}>Bars Fetched</div><div className={styles.fieldValue}>{s.bars.toLocaleString()}</div></div>
+        <div><div className={styles.fieldLabel}>Start Date</div><div className={styles.fieldValue}>{s.startDate}</div></div>
+      </div>
+      {s.symbols && s.symbols.length > 0 && (
+        <div style={{ marginTop: 'var(--spacing-md)' }}>
+          <div className={styles.fieldLabel} style={{ marginBottom: 'var(--spacing-sm)' }}>Price Charts (5 days)</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--spacing-sm)' }}>
+            {s.symbols.map(sym => {
+              const data = priceBars[sym] || [];
+              const lastPrice = data.length > 0 ? data[data.length - 1] : null;
+              return (
+                <div key={sym} style={{ padding: 'var(--spacing-sm)', background: 'var(--color-bg-secondary)', borderRadius: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontWeight: 500, fontSize: '0.875rem' }}>{sym}</span>
+                    {lastPrice !== null && <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>${lastPrice.toFixed(2)}</span>}
+                  </div>
+                  <Sparkline data={data} width={120} height={28} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function RunDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [detail, setDetail] = useState<RunDetailData | null>(null);
   const [coverage, setCoverage] = useState<RunCoverageData | null>(null);
+  const [priceBars, setPriceBars] = useState<Record<string, number[]>>({});
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [detailsBeforePrint, setDetailsBeforePrint] = useState<Set<string>>(new Set());
@@ -233,7 +271,20 @@ export default function RunDetailPage() {
   useEffect(() => {
     if (!id) return;
     runsApi.get(id)
-      .then(res => setDetail(res.data))
+      .then(res => {
+        setDetail(res.data);
+        // Fetch price bars if this is a price_backfill run
+        if (res.data.run.trigger === 'price_backfill' && res.data.run.summaryJson) {
+          try {
+            const summary = JSON.parse(res.data.run.summaryJson) as PriceBackfillSummary;
+            if (summary.symbols?.length > 0) {
+              pricesApi.bars(summary.symbols, 5)
+                .then(r => setPriceBars(r.bars))
+                .catch(e => console.warn('Failed to load price bars:', e));
+            }
+          } catch {}
+        }
+      })
       .catch(e => addToast(e instanceof Error ? e.message : 'Failed to load run', 'error'))
       .finally(() => setLoading(false));
 
@@ -621,7 +672,7 @@ export default function RunDetailPage() {
   let tokenUsage: Record<string, unknown> | null = null;
   try { if (run.tokenUsageJson) tokenUsage = JSON.parse(run.tokenUsageJson); } catch {}
 
-  let summary: PlanReviewSummary | SignalCollectionSummary | WatchlistCurationSummary | TrancheExecutionSummary | null = null;
+  let summary: PlanReviewSummary | SignalCollectionSummary | WatchlistCurationSummary | TrancheExecutionSummary | PriceBackfillSummary | null = null;
   try { if (run.summaryJson) summary = JSON.parse(run.summaryJson); } catch {}
 
   // Group messages by symbol
@@ -733,6 +784,7 @@ export default function RunDetailPage() {
           {jobType === 'signal_collection' && renderSignalCollectionSummary(summary as SignalCollectionSummary, signalSnapshots)}
           {jobType === 'watchlist_curation' && renderWatchlistCurationSummary(summary as WatchlistCurationSummary, screenerSelections)}
           {jobType === 'tranche_execution' && renderTrancheExecutionSummary(summary as TrancheExecutionSummary)}
+          {jobType === 'price_backfill' && renderPriceBackfillSummary(summary as PriceBackfillSummary, priceBars)}
         </div>
       )}
 

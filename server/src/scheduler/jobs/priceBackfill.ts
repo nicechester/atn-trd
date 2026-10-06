@@ -11,7 +11,9 @@ import type Database from 'better-sqlite3';
 import { logger } from '../../lib/logger.js';
 import { PricesRepo } from '../../repos/pricesRepo.js';
 import { WatchlistRepo } from '../../repos/watchlistRepo.js';
+import { RunsRepo, type RunTrigger } from '../../repos/runsRepo.js';
 import { getStaticSymbols } from '../../config/staticSymbols.js';
+import { getSettings } from '../../config/settingsService.js';
 import { HttpClient } from '../../datasources/http.js';
 
 const log = logger.child({ component: 'price-backfill' });
@@ -117,42 +119,85 @@ export function getAllTrackedSymbols(db: Database.Database): string[] {
   return Array.from(all).sort();
 }
 
+export interface PriceBackfillSummary {
+  total: number;
+  succeeded: number;
+  bars: number;
+  symbols: string[];
+  startDate: string;
+}
+
 /**
  * Run the price backfill job.
  */
 export async function runPriceBackfillJob(
   db: Database.Database,
-  options: { days?: number; startDate?: string; symbols?: string[] } = {}
-): Promise<{ total: number; succeeded: number; bars: number }> {
+  options: { days?: number; startDate?: string; symbols?: string[] } = {},
+  trigger: RunTrigger = 'price_backfill'
+): Promise<PriceBackfillSummary> {
+  const settings = getSettings();
+  const runsRepo = new RunsRepo(db);
+
   // Calculate start date: use explicit startDate, or days back from today
   const startDate = options.startDate ?? 
     new Date(Date.now() - (options.days ?? BACKFILL_DAYS) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const symbols = options.symbols ?? getAllTrackedSymbols(db);
   const pricesRepo = new PricesRepo(db);
 
-  const http = createAlpacaClient();
-  if (!http) {
-    log.error('ALPACA_API_KEY/SECRET not configured, cannot backfill');
-    return { total: 0, succeeded: 0, bars: 0 };
-  }
+  const summary: PriceBackfillSummary = {
+    total: symbols.length,
+    succeeded: 0,
+    bars: 0,
+    symbols: [],
+    startDate,
+  };
 
-  log.info('starting price backfill', { symbolCount: symbols.length, startDate });
+  // Create run record
+  const runId = runsRepo.create({
+    trigger,
+    status: 'running',
+    startedAt: Date.now(),
+    finishedAt: null,
+    model: null,
+    settingsSnapshot: JSON.stringify(settings),
+    error: null,
+    tokenUsageJson: null,
+    skipReason: null,
+    summaryJson: null,
+  });
 
-  let succeeded = 0;
-  let totalBars = 0;
-
-  for (const symbol of symbols) {
-    const bars = await backfillSymbol(symbol, pricesRepo, startDate, http);
-    if (bars > 0) {
-      succeeded++;
-      totalBars += bars;
-      log.debug('backfilled symbol', { symbol, bars });
+  try {
+    const http = createAlpacaClient();
+    if (!http) {
+      const error = 'ALPACA_API_KEY/SECRET not configured, cannot backfill';
+      log.error(error);
+      runsRepo.setSkipped(runId, error);
+      return summary;
     }
-    // Small delay to be nice to API
-    await new Promise(r => setTimeout(r, 300));
+
+    log.info('starting price backfill', { symbolCount: symbols.length, startDate });
+
+    for (const symbol of symbols) {
+      const bars = await backfillSymbol(symbol, pricesRepo, startDate, http);
+      if (bars > 0) {
+        summary.succeeded++;
+        summary.bars += bars;
+        summary.symbols.push(symbol);
+        log.debug('backfilled symbol', { symbol, bars });
+      }
+      // Small delay to be nice to API
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    runsRepo.updateStatus(runId, 'succeeded');
+    runsRepo.updateSummary(runId, JSON.stringify(summary));
+
+    log.info('price backfill complete', { total: summary.total, succeeded: summary.succeeded, bars: summary.bars });
+
+    return summary;
+  } catch (err) {
+    runsRepo.updateStatus(runId, 'failed', err instanceof Error ? err.message : String(err));
+    log.error('price backfill job failed', { error: err instanceof Error ? err.message : String(err) });
+    throw err;
   }
-
-  log.info('price backfill complete', { total: symbols.length, succeeded, bars: totalBars });
-
-  return { total: symbols.length, succeeded, bars: totalBars };
 }
