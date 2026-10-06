@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --outfile=dist/main.js --format=esm --packages=external && cp -r src/db/migrations dist/db/ && cp -r src/config dist/ && cp src/config/staticSymbols.json dist/",
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --outfile=dist/main.js --format=esm --external:better-sqlite3 --external:@huggingface/transformers --external:@alpacahq/alpaca-trade-api --external:express --external:cookie-parser --external:jsonwebtoken --external:dotenv --external:croner --external:rss-parser --external:yahoo-finance2 --external:zod --external:@langchain/* --external:vite --external:react-router-dom && cp -r src/db/migrations dist/db/ && cp -r src/config dist/ && cp src/config/staticSymbols.json dist/",
     "typecheck": "tsc --noEmit",
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
