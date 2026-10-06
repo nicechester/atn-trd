@@ -28,7 +28,46 @@ jobs:
             echo "Only docs changed, skipping build/deploy"
           fi
 
-      - name: Deploy to VM
+      - name: Setup Node.js
+        if: steps.changes.outputs.code_changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies and build
+        if: steps.changes.outputs.code_changed == 'true'
+        run: |
+          npm ci
+          npm run build
+
+      - name: Create deployment tarball
+        if: steps.changes.outputs.code_changed == 'true'
+        run: |
+          # Remove dev dependencies, keep only production
+          rm -rf node_modules
+          npm ci --omit=dev
+          
+          # Create tarball with only what's needed to run
+          tar -czf atn-trd.tar.gz \
+            node_modules \
+            server/dist \
+            server/public \
+            shared/dist \
+            web/dist \
+            package.json \
+            package-lock.json
+
+      - name: Copy tarball to VM
+        if: steps.changes.outputs.code_changed == 'true'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          source: "atn-trd.tar.gz"
+          target: "~/"
+
+      - name: Extract and restart service
         if: steps.changes.outputs.code_changed == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -36,10 +75,13 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            cd ~/atn-trd
-            git pull
-            npm install --omit=dev
-            sudo systemctl restart atn-trd
+            cd ~
+            sudo systemctl stop atn-trd
+            rm -rf atn-trd
+            mkdir atn-trd
+            tar -xzf atn-trd.tar.gz -C atn-trd
+            rm atn-trd.tar.gz
+            sudo systemctl start atn-trd
 
       - name: Wait for FinBERT ready
         if: steps.changes.outputs.code_changed == 'true'
