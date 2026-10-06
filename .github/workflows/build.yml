@@ -57,17 +57,39 @@ jobs:
             package.json \
             package-lock.json
 
-      - name: Deploy to VM
+      - name: Authenticate to GCP
         if: steps.changes.outputs.code_changed == 'true'
-        uses: appleboy/scp-action@v0.1.7
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        if: steps.changes.outputs.code_changed == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Upload tarball to GCS
+        if: steps.changes.outputs.code_changed == 'true'
+        run: gsutil cp atn-trd.tar.gz gs://atn-trd-backups/deploy/atn-trd.tar.gz
+
+      - name: Stop service on VM
+        if: steps.changes.outputs.code_changed == 'true'
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
-          source: "atn-trd.tar.gz"
-          target: "~/"
+          script: sudo systemctl stop atn-trd || true
 
-      - name: Extract and restart service
+      - name: Download tarball on VM
+        if: steps.changes.outputs.code_changed == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: gsutil cp gs://atn-trd-backups/deploy/atn-trd.tar.gz ~/
+
+      - name: Extract tarball on VM
         if: steps.changes.outputs.code_changed == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -75,11 +97,18 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            sudo systemctl stop atn-trd
             rm -rf ~/atn-trd/node_modules ~/atn-trd/server/dist ~/atn-trd/shared/dist ~/atn-trd/web/dist
             tar -xzf ~/atn-trd.tar.gz -C ~/atn-trd
             rm ~/atn-trd.tar.gz
-            sudo systemctl start atn-trd
+
+      - name: Start service on VM
+        if: steps.changes.outputs.code_changed == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: sudo systemctl start atn-trd
 
       - name: Wait for FinBERT ready
         if: steps.changes.outputs.code_changed == 'true'
