@@ -1,5 +1,5 @@
--- ATN-TRD Complete Schema (v25)
--- Generated from migrations 001-025
+-- ATN-TRD Complete Schema (v30)
+-- Generated from migrations 001-030
 -- Use this for fresh database installs
 
 -- ============================================================================
@@ -51,7 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
 
 CREATE TABLE IF NOT EXISTS agent_runs (
   id TEXT PRIMARY KEY,
-  trigger TEXT NOT NULL CHECK(trigger IN ('scheduled', 'manual', 'signal_collection', 'plan_review', 'tranche_execution', 'watchlist_curation', 'regime_detection', 'snapshot')),
+  trigger TEXT NOT NULL CHECK(trigger IN ('scheduled', 'manual', 'price_backfill', 'signal_collection', 'plan_review', 'tranche_execution', 'watchlist_curation', 'regime_detection', 'snapshot', 'weekly_planner')),
   status TEXT NOT NULL CHECK(status IN ('running', 'succeeded', 'failed', 'skipped')),
   started_at INTEGER NOT NULL,
   finished_at INTEGER,
@@ -555,4 +555,7 @@ INSERT INTO schema_migrations (version, applied_at) VALUES
   (24, strftime('%s', 'now') * 1000),
   (25, strftime('%s', 'now') * 1000),
   (26, strftime('%s', 'now') * 1000),
-  (27, strftime('%s', 'now') * 1000);
+  (27, strftime('%s', 'now') * 1000),
+  (28, strftime('%s', 'now') * 1000),
+  (29, strftime('%s', 'now') * 1000),
+  (30, strftime('%s', 'now') * 1000);

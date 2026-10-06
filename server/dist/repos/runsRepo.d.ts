@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-export type RunTrigger = 'scheduled' | 'manual' | 'signal_collection' | 'plan_review' | 'tranche_execution' | 'watchlist_curation' | 'regime_detection' | 'snapshot' | 'weekly_planner';
+export type RunTrigger = 'scheduled' | 'manual' | 'price_backfill' | 'signal_collection' | 'plan_review' | 'tranche_execution' | 'watchlist_curation' | 'regime_detection' | 'snapshot' | 'weekly_planner';
 export interface AgentRunRow {
     id: string;
     trigger: RunTrigger;

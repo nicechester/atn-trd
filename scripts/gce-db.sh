@@ -2,6 +2,9 @@
 # Query atn-trd SQLite database from local
 # Usage: ./scripts/gce-db.sh "SELECT * FROM assessments LIMIT 5;"
 
+# Ensure correct project context
+gcloud config set project autonomous-trader-506715 --quiet 2>/dev/null
+
 if [ -z "$1" ]; then
   echo "Usage: $0 \"SQL query\""
   echo "Example: $0 \"SELECT COUNT(*) FROM assessments;\""
