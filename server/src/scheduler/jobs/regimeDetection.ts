@@ -7,11 +7,13 @@ import type Database from 'better-sqlite3';
 
 import { logger } from '../../lib/logger.js';
 import { detectRegime } from '../../services/regimeDetectionService.js';
+import { writeMarketSummary } from '../../services/marketSummaryService.js';
 import { MarketRegimeRepo } from '../../repos/marketRegimeRepo.js';
 import { RunsRepo } from '../../repos/runsRepo.js';
 import { dataSourceRegistry } from '../../datasources/registry.js';
 import type { MacroDataSource } from '../../datasources/macro/index.js';
 import { getSettings } from '../../config/settingsService.js';
+import { DATA_DIR } from '../../config/paths.js';
 
 const log = logger.child({ component: 'regime-detection-job' });
 
@@ -64,6 +66,8 @@ export async function runRegimeDetectionJob(db: Database.Database): Promise<void
       riskScore: result.riskScore,
       confirmedStreak: result.confirmedStreak,
     });
+
+    writeMarketSummary(db, DATA_DIR);
 
     runsRepo.updateStatus(runId, 'succeeded');
   } catch (err) {

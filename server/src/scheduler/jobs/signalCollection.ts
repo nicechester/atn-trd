@@ -8,6 +8,7 @@ import type Database from 'better-sqlite3';
 
 import { logger } from '../../lib/logger.js';
 import { runSignalCollection } from '../../services/signalCollectionService.js';
+import { writeMarketSummary } from '../../services/marketSummaryService.js';
 import { SignalSnapshotsRepo } from '../../repos/signalSnapshotsRepo.js';
 import { PricesRepo } from '../../repos/pricesRepo.js';
 import { WatchlistRepo } from '../../repos/watchlistRepo.js';
@@ -18,6 +19,7 @@ import type { NewsDataSource } from '../../datasources/news/index.js';
 import type { OptionsDataSource } from '../../datasources/options/index.js';
 import type { FundamentalsDataSource } from '../../datasources/fundamentals/index.js';
 import { getSettings } from '../../config/settingsService.js';
+import { DATA_DIR } from '../../config/paths.js';
 
 const log = logger.child({ component: 'signal-collection-job' });
 
@@ -89,6 +91,8 @@ export async function runSignalCollectionJob(
 
     runsRepo.updateStatus(runId, 'succeeded');
     runsRepo.updateSummary(runId, JSON.stringify(summary));
+
+    writeMarketSummary(db, DATA_DIR);
 
     // Track token usage if LLM was used
     if (summary.tokensUsed > 0) {

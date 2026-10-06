@@ -1,6 +1,7 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import path from 'path';
+import { DATA_DIR } from './config/paths.js';
 import { AppError, ValidationError } from './lib/errors.js';
 import { logger } from './lib/logger.js';
 import { requireAuth, requireWrite } from './middleware/auth.js';
@@ -65,6 +66,9 @@ export function createApp(options: AppOptions = {}): Express {
 
   // ── Public routes (no auth) ─────────────────────────────────────────────────
   app.get('/api/health', healthHandler);
+  app.get('/market-summary.html', (_req, res) => {
+    res.sendFile(path.join(DATA_DIR, 'market-summary.html'));
+  });
   app.post('/api/auth/login', loginHandler);
   app.post('/api/auth/logout', logoutHandler);
 
