@@ -20,6 +20,7 @@ import type { OptionsDataSource } from '../../datasources/options/index.js';
 import type { FundamentalsDataSource } from '../../datasources/fundamentals/index.js';
 import { getSettings } from '../../config/settingsService.js';
 import { DATA_DIR } from '../../config/paths.js';
+import { createLlmTelemetry } from '../../llm/costCalculator.js';
 
 const log = logger.child({ component: 'signal-collection-job' });
 
@@ -94,13 +95,13 @@ export async function runSignalCollectionJob(
 
     writeMarketSummary(db, DATA_DIR);
 
-    // Track token usage if LLM was used
-    if (summary.tokensUsed > 0) {
-      runsRepo.updateTokenUsage(runId, JSON.stringify({
-        total_tokens: summary.tokensUsed,
-        prompt_tokens: Math.round(summary.tokensUsed * 0.8),
-        completion_tokens: Math.round(summary.tokensUsed * 0.2),
-      }));
+    // Track token usage and cost if LLM was used
+    if (summary.tokensUsed > 0 && settings.signals.useLlm) {
+      const telemetry = createLlmTelemetry(
+        model || 'unknown',
+        summary.tokensUsed
+      );
+      runsRepo.updateTokenUsage(runId, JSON.stringify(telemetry));
     }
 
     log.info('signal collection job complete', { ok: summary.symbolsUpdated, errors: summary.errors });

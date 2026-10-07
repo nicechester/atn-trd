@@ -43,3 +43,5 @@ yarn-error.log*
 models/
 cookies.txt
 .claude/
+
+.python-version

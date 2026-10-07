@@ -13,8 +13,9 @@ interface LlmTelemetry {
   latency_ms: { analyst: number; portfolioManager?: number; screener?: number; total: number };
 }
 
-interface DailyCost {
-  date: string;
+interface WeeklyCost {
+  weekStart: string;
+  weekEnd: string;
   total: number;
 }
 
@@ -22,7 +23,7 @@ export default function LlmUsagePane(): JSX.Element | null {
   const [strategicMode, setStrategicMode] = useState<boolean | null>(null);
   const [signalsUseLlm, setSignalsUseLlm] = useState<boolean>(true);
   const [llmModel, setLlmModel] = useState<string | null>(null);
-  const [dailyCosts, setDailyCosts] = useState<DailyCost[]>([]);
+  const [weeklyCosts, setWeeklyCosts] = useState<WeeklyCost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,11 +39,11 @@ export default function LlmUsagePane(): JSX.Element | null {
         setLlmModel(model);
         setSignalsUseLlm(useLlm);
 
-        // Fetch last 100 runs to get telemetry data
-        const res = await api.runs.list(100, 0);
+        // Fetch last 200 runs to get telemetry data (covers ~4 weeks)
+        const res = await api.runs.list(200, 0);
         const runs = res.data;
 
-        const costByDate: Record<string, { total: number }> = {};
+        const costByWeek: Record<string, { total: number; weekStart: Date; weekEnd: Date }> = {};
 
         for (const run of runs) {
           if (!run.tokenUsageJson) continue;
@@ -54,28 +55,42 @@ export default function LlmUsagePane(): JSX.Element | null {
             continue;
           }
 
-          if (!telemetry) continue;
+          if (!telemetry || !telemetry.cost) continue;
 
-          // Aggregate costs by date
-          if (telemetry.cost && run.finishedAt) {
-            const date = new Date(run.finishedAt).toISOString().split('T')[0];
-            if (!costByDate[date]) {
-              costByDate[date] = { total: 0 };
+          // Aggregate costs by week
+          if (run.finishedAt) {
+            const runDate = new Date(run.finishedAt);
+            // Get Monday of this week (weekStart)
+            const dayOfWeek = runDate.getUTCDay();
+            const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            const weekStart = new Date(runDate);
+            weekStart.setUTCDate(runDate.getUTCDate() - daysSinceMonday);
+            weekStart.setUTCHours(0, 0, 0, 0);
+
+            // Sunday is end of week
+            const weekEnd = new Date(weekStart);
+            weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
+            weekEnd.setUTCHours(23, 59, 59, 999);
+
+            const weekKey = weekStart.toISOString().split('T')[0];
+            if (!costByWeek[weekKey]) {
+              costByWeek[weekKey] = { total: 0, weekStart, weekEnd };
             }
-            costByDate[date].total += telemetry.cost.total || 0;
+            costByWeek[weekKey].total += telemetry.cost.total || 0;
           }
         }
 
-        // Convert costByDate to sorted array (last 7 days)
-        const sorted = Object.entries(costByDate)
-          .map(([date, costs]) => ({
-            date,
+        // Convert costByWeek to sorted array (last 4 weeks)
+        const sorted = Object.entries(costByWeek)
+          .map(([, costs]) => ({
+            weekStart: costs.weekStart.toISOString().split('T')[0],
+            weekEnd: costs.weekEnd.toISOString().split('T')[0],
             total: costs.total,
           }))
-          .sort((a, b) => a.date.localeCompare(b.date))
-          .slice(-7);
+          .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
+          .slice(-4);
 
-        setDailyCosts(sorted);
+        setWeeklyCosts(sorted);
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -136,16 +151,16 @@ export default function LlmUsagePane(): JSX.Element | null {
           </div>
         </Card>
 
-        <Card title="Daily LLM Cost">
+        <Card title="Weekly LLM Cost">
           <div style={{ fontSize: '0.875rem' }}>
-            {dailyCosts.length === 0 ? (
+            {weeklyCosts.length === 0 ? (
               <p style={{ color: 'var(--color-text-muted)' }}>No LLM costs recorded</p>
             ) : (
               <div>
-                {dailyCosts.map(day => (
-                  <div key={day.date} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span>{day.date}</span>
-                    <span>${day.total.toFixed(4)}</span>
+                {weeklyCosts.map(week => (
+                  <div key={week.weekStart} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.8rem' }}>{week.weekStart} → {week.weekEnd}</span>
+                    <span>${week.total.toFixed(4)}</span>
                   </div>
                 ))}
                 <p style={{ color: 'var(--color-text-muted)', marginTop: 'var(--spacing-sm)', fontSize: '0.75rem' }}>
@@ -197,24 +212,24 @@ export default function LlmUsagePane(): JSX.Element | null {
         </div>
       </Card>
 
-      <Card title="Daily LLM Cost">
+      <Card title="Weekly LLM Cost">
         <div style={{ fontSize: '0.875rem' }}>
-          {dailyCosts.length === 0 ? (
+          {weeklyCosts.length === 0 ? (
             <p style={{ color: 'var(--color-text-muted)' }}>No cost data</p>
           ) : (
             (() => {
-              const maxCost = Math.max(...dailyCosts.map(d => d.total));
+              const maxCost = Math.max(...weeklyCosts.map(w => w.total));
               return (
                 <div>
-                  {dailyCosts.map(day => (
-                    <div key={day.date} style={{ marginBottom: '8px' }}>
+                  {weeklyCosts.map(week => (
+                    <div key={week.weekStart} style={{ marginBottom: '8px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', fontWeight: 500 }}>
-                        <span>{day.date}</span>
-                        <span>${day.total.toFixed(4)}</span>
+                        <span style={{ fontSize: '0.8rem' }}>{week.weekStart}</span>
+                        <span>${week.total.toFixed(4)}</span>
                       </div>
                       <div
                         style={{
-                          width: `${(day.total / maxCost) * 100}%`,
+                          width: `${(week.total / maxCost) * 100}%`,
                           background: 'var(--color-info)',
                           height: '12px',
                           borderRadius: '2px',
