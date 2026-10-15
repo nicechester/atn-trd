@@ -11,6 +11,8 @@ import { logger } from '../lib/logger.js';
 import type { PlanTranchesRepo, PlanTrancheRow, TrancheStatus } from '../repos/planTranchesRepo.js';
 import type { StrategicPlansRepo } from '../repos/strategicPlansRepo.js';
 import type { OrdersRepo, OrderRow } from '../repos/ordersRepo.js';
+import type { FillsRepo } from '../repos/fillsRepo.js';
+import type { Broker } from '../brokers/types.js';
 
 const log = logger.child({ component: 'tranche-sync' });
 
@@ -18,6 +20,8 @@ export interface TrancheSyncDeps {
   planTranchesRepo: PlanTranchesRepo;
   strategicPlansRepo: StrategicPlansRepo;
   ordersRepo: OrdersRepo;
+  broker?: Broker;       // Optional, needed to refresh order state from broker
+  fillsRepo?: FillsRepo; // Optional, fill rows give actual qty and price
 }
 
 export interface SyncResult {
@@ -31,13 +35,12 @@ export interface SyncResult {
 
 /**
  * Map broker order status to tranche status.
+ * Pending, accepted and partially_filled orders keep the tranche PENDING.
  */
 function mapOrderStatus(orderStatus: OrderRow['status']): TrancheStatus {
   switch (orderStatus) {
     case 'filled':
       return 'FILLED';
-    case 'partially_filled':
-      return 'PARTIAL';
     case 'rejected':
     case 'expired':
       return 'FAILED';
@@ -49,7 +52,21 @@ function mapOrderStatus(orderStatus: OrderRow['status']): TrancheStatus {
 }
 
 /**
- * Sync a single tranche's order status from the broker.
+ * Sum fill rows for an order. Returns zero totals when no fills are recorded.
+ */
+function getFillTotals(deps: TrancheSyncDeps, orderId: string): { qty: number; costCents: number } {
+  const fills = deps.fillsRepo?.listByOrder(orderId) ?? [];
+  let qty = 0;
+  let costCents = 0;
+  for (const fill of fills) {
+    qty += fill.qty;
+    costCents += fill.qty * fill.priceCents;
+  }
+  return { qty, costCents: Math.round(costCents) };
+}
+
+/**
+ * Sync a single tranche's order status from local order and fill records.
  */
 export function syncTrancheStatus(
   deps: TrancheSyncDeps,
@@ -58,22 +75,8 @@ export function syncTrancheStatus(
   const { planTranchesRepo, strategicPlansRepo, ordersRepo } = deps;
 
   if (!tranche.orderId) {
-    // No order associated - mark as filled for paper trading
     if (tranche.orderStatus === 'PENDING') {
-      planTranchesRepo.updateStatus(
-        tranche.id,
-        'FILLED',
-        tranche.shares * tranche.priceCents,
-        Date.now()
-      );
-      return {
-        trancheId: tranche.id,
-        planId: tranche.planId,
-        previousStatus: 'PENDING',
-        newStatus: 'FILLED',
-        filledShares: tranche.shares,
-        totalCostCents: tranche.shares * tranche.priceCents,
-      };
+      log.debug('tranche has no linked order, leaving pending', { trancheId: tranche.id });
     }
     return null;
   }
@@ -84,7 +87,14 @@ export function syncTrancheStatus(
     return null;
   }
 
-  const newStatus = mapOrderStatus(order.status);
+  const fills = getFillTotals(deps, order.id);
+  const hasFills = fills.qty > 0;
+
+  // A canceled or expired order with a partial fill counts as filled for the filled quantity
+  const isFilledOutcome =
+    order.status === 'filled' ||
+    ((order.status === 'canceled' || order.status === 'expired') && hasFills);
+  const newStatus: TrancheStatus = isFilledOutcome ? 'FILLED' : mapOrderStatus(order.status);
   if (newStatus === tranche.orderStatus) {
     return null; // No change
   }
@@ -92,15 +102,26 @@ export function syncTrancheStatus(
   const previousStatus = tranche.orderStatus;
 
   if (newStatus === 'FILLED') {
-    // Full fill - update tranche and plan
-    const totalCostCents = order.qty * (order.limitPriceCents ?? tranche.priceCents);
+    // Actual fill figures from fill rows, falling back to order qty at planned price
+    const filledShares = hasFills ? fills.qty : order.qty;
+    const totalCostCents = hasFills ? fills.costCents : filledShares * tranche.priceCents;
+
+    if (filledShares < tranche.shares) {
+      planTranchesRepo.updateShares(tranche.id, filledShares);
+    }
     planTranchesRepo.updateStatus(tranche.id, 'FILLED', totalCostCents, Date.now());
-    strategicPlansRepo.recordTrancheExecution(tranche.planId, order.qty);
+    strategicPlansRepo.recordTrancheExecution(tranche.planId, filledShares);
+
+    const plan = strategicPlansRepo.get(tranche.planId);
+    if (plan && plan.status === 'ACTIVE' && plan.tranchesExecuted >= plan.trancheCount) {
+      strategicPlansRepo.updateStatus(tranche.planId, 'COMPLETED');
+      log.info('plan completed', { planId: tranche.planId });
+    }
 
     log.info('tranche filled', {
       trancheId: tranche.id,
       planId: tranche.planId,
-      shares: order.qty,
+      shares: filledShares,
       totalCostCents,
     });
 
@@ -109,27 +130,8 @@ export function syncTrancheStatus(
       planId: tranche.planId,
       previousStatus,
       newStatus: 'FILLED',
-      filledShares: order.qty,
+      filledShares,
       totalCostCents,
-    };
-  }
-
-  if (newStatus === 'PARTIAL') {
-    // Partial fill - update tranche with partial info
-    // Note: In a real implementation, we'd get filled_qty from the broker
-    // For now, we just mark as partial and let the next sync handle it
-    planTranchesRepo.updateStatus(tranche.id, 'PARTIAL');
-
-    log.info('tranche partially filled', {
-      trancheId: tranche.id,
-      planId: tranche.planId,
-    });
-
-    return {
-      trancheId: tranche.id,
-      planId: tranche.planId,
-      previousStatus,
-      newStatus: 'PARTIAL',
     };
   }
 
@@ -153,6 +155,58 @@ export function syncTrancheStatus(
   }
 
   return null;
+}
+
+/**
+ * Refresh local order and fill records for pending tranches from the broker.
+ * Run before syncAllPendingTranches so the sync reads up-to-date local state.
+ */
+export async function refreshTrancheOrdersFromBroker(deps: TrancheSyncDeps): Promise<void> {
+  const { planTranchesRepo, ordersRepo, broker, fillsRepo } = deps;
+  if (!broker) return;
+
+  for (const tranche of planTranchesRepo.listPending()) {
+    if (!tranche.orderId) continue;
+
+    try {
+      const order = ordersRepo.get(tranche.orderId);
+      if (!order?.brokerOrderId) continue;
+
+      const state = await broker.getOrder(order.brokerOrderId);
+      if (!state) continue;
+
+      if (state.status !== order.status) {
+        ordersRepo.updateStatus(order.id, state.status, state.id);
+      }
+
+      const isTerminal = state.status === 'filled' || state.status === 'canceled'
+        || state.status === 'rejected' || state.status === 'expired';
+      const hasPartialFill = isTerminal && (state.filledQty ?? 0) > 0;
+      const hasFill = state.status === 'filled' || hasPartialFill;
+
+      if (fillsRepo && hasFill) {
+        if (!state.fillPriceCents) {
+          log.warn('filled order has no fill price, skipping fill record', { orderId: order.id });
+        } else if (fillsRepo.listByOrder(order.id).length === 0) {
+          const filledAt = state.updatedAt || Date.now();
+          fillsRepo.create({
+            orderId: order.id,
+            qty: state.filledQty ?? order.qty,
+            priceCents: state.fillPriceCents,
+            feeCents: 0,
+            filledAt,
+            barDate: new Date(filledAt).toISOString().split('T')[0],
+          });
+        }
+      }
+    } catch (err) {
+      log.warn('failed to refresh tranche order from broker', {
+        trancheId: tranche.id,
+        orderId: tranche.orderId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 }
 
 /**

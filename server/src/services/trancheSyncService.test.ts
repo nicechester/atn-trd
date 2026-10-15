@@ -5,10 +5,13 @@ import { runMigrations } from '../db/migrate.js';
 import { StrategicPlansRepo } from '../repos/strategicPlansRepo.js';
 import { PlanTranchesRepo } from '../repos/planTranchesRepo.js';
 import { OrdersRepo } from '../repos/ordersRepo.js';
+import { FillsRepo } from '../repos/fillsRepo.js';
+import type { Broker, OrderState } from '../brokers/types.js';
 import {
   syncTrancheStatus,
   syncAllPendingTranches,
   createFollowUpTranche,
+  refreshTrancheOrdersFromBroker,
   type TrancheSyncDeps,
 } from './trancheSyncService.js';
 import path from 'node:path';
@@ -23,6 +26,44 @@ function createDeps(db: Database.Database): TrancheSyncDeps {
     planTranchesRepo: new PlanTranchesRepo(db),
     strategicPlansRepo: new StrategicPlansRepo(db),
     ordersRepo: new OrdersRepo(db),
+    fillsRepo: new FillsRepo(db),
+  };
+}
+
+function createPlanRow(deps: TrancheSyncDeps, id = 'plan1', trancheCount = 4): void {
+  deps.strategicPlansRepo.create({
+    id, symbol: 'AAPL', direction: 'ACCUMULATE',
+    targetShares: 100, targetWeight: null, targetBudgetCents: null,
+    trancheCount, minDaysBetween: 5,
+    entryCompositeScore: 0.75, convictionAtCreation: 0.8,
+    status: 'ACTIVE', pauseReason: null, creationNotes: null, createdAt: Date.now(),
+  });
+}
+
+function createLinkedOrder(deps: TrancheSyncDeps, clientOrderId: string, status: 'pending' | 'partially_filled' | 'filled' | 'canceled' | 'expired', qty = 25): string {
+  return deps.ordersRepo.create({
+    clientOrderId, decisionId: null, runId: null,
+    broker: 'paper', brokerOrderId: null, mode: 'paper',
+    symbol: 'AAPL', side: 'buy', qty, type: 'market',
+    limitPriceCents: null, tif: 'day', status,
+    rejectReason: null, submittedAt: Date.now(),
+  });
+}
+
+function createStubBroker(state: OrderState | null): Broker {
+  return {
+    id: 'paper',
+    supportsFractionalShares: false,
+    getOrder: async () => state,
+  } as unknown as Broker;
+}
+
+function makeBrokerState(overrides: Partial<OrderState>): OrderState {
+  return {
+    id: 'broker-1', clientOrderId: 'co1', symbol: 'AAPL', side: 'buy', qty: 25,
+    type: 'market', limitPriceCents: null, fillPriceCents: 15100, tif: 'day',
+    status: 'filled', rejectReason: null, submittedAt: Date.now(), updatedAt: Date.now(),
+    filledQty: 25, ...overrides,
   };
 }
 
@@ -73,6 +114,10 @@ describe('TrancheSyncService', () => {
       const updated = deps.planTranchesRepo.listByPlan('plan1')[0];
       assert.equal(updated.orderStatus, 'FILLED');
       assert.ok(updated.filledAt);
+
+      const plan = deps.strategicPlansRepo.get('plan1');
+      assert.equal(plan?.tranchesExecuted, 1);
+      assert.equal(plan?.executedShares, 25);
     });
 
     it('marks tranche as FAILED when order is rejected', () => {
@@ -110,7 +155,7 @@ describe('TrancheSyncService', () => {
       assert.equal(updated.orderStatus, 'FAILED');
     });
 
-    it('marks paper tranche as FILLED when no orderId', () => {
+    it('leaves tranche PENDING when no orderId', () => {
       const deps = createDeps(db);
 
       deps.strategicPlansRepo.create({
@@ -131,9 +176,8 @@ describe('TrancheSyncService', () => {
       const tranche = deps.planTranchesRepo.listByPlan('plan1')[0];
       const result = syncTrancheStatus(deps, tranche);
 
-      assert.ok(result);
-      assert.equal(result.newStatus, 'FILLED');
-      assert.equal(result.filledShares, 25);
+      assert.equal(result, null);
+      assert.equal(deps.planTranchesRepo.listByPlan('plan1')[0].orderStatus, 'PENDING');
     });
   });
 
@@ -149,15 +193,16 @@ describe('TrancheSyncService', () => {
         status: 'ACTIVE', pauseReason: null, creationNotes: null, createdAt: Date.now(),
       });
 
-      // Create multiple pending tranches (paper mode, no orders)
+      const orderId1 = createLinkedOrder(deps, 'co1', 'filled');
+      const orderId2 = createLinkedOrder(deps, 'co2', 'filled');
       deps.planTranchesRepo.create({
         id: 't1', planId: 'plan1', trancheNumber: 1,
-        shares: 25, priceCents: 15000, orderId: null,
+        shares: 25, priceCents: 15000, orderId: orderId1,
         compositeScore: 0.75, regime: 'RISK_ON', executedAt: Date.now(),
       });
       deps.planTranchesRepo.create({
         id: 't2', planId: 'plan1', trancheNumber: 2,
-        shares: 25, priceCents: 15500, orderId: null,
+        shares: 25, priceCents: 15500, orderId: orderId2,
         compositeScore: 0.72, regime: 'RISK_ON', executedAt: Date.now(),
       });
 
@@ -165,6 +210,105 @@ describe('TrancheSyncService', () => {
 
       assert.equal(results.length, 2);
       assert.ok(results.every(r => r.newStatus === 'FILLED'));
+    });
+  });
+
+  describe('fill-based sync and broker refresh', () => {
+    it('uses fill rows for actual qty and cost', () => {
+      const deps = createDeps(db);
+      createPlanRow(deps);
+      const orderId = createLinkedOrder(deps, 'co1', 'filled', 25);
+      deps.fillsRepo!.create({ orderId, qty: 25, priceCents: 15100, feeCents: 0, filledAt: Date.now(), barDate: '2026-10-14' });
+      deps.planTranchesRepo.create({
+        id: 't1', planId: 'plan1', trancheNumber: 1,
+        shares: 25, priceCents: 15000, orderId,
+        compositeScore: 0.75, regime: 'RISK_ON', executedAt: Date.now(),
+      });
+
+      const result = syncTrancheStatus(deps, deps.planTranchesRepo.listByPlan('plan1')[0]);
+
+      assert.equal(result?.newStatus, 'FILLED');
+      assert.equal(result?.filledShares, 25);
+      assert.equal(result?.totalCostCents, 377500);
+    });
+
+    it('keeps tranche PENDING while order is partially filled', () => {
+      const deps = createDeps(db);
+      createPlanRow(deps);
+      const orderId = createLinkedOrder(deps, 'co1', 'partially_filled', 25);
+      deps.planTranchesRepo.create({
+        id: 't1', planId: 'plan1', trancheNumber: 1,
+        shares: 25, priceCents: 15000, orderId,
+        compositeScore: 0.75, regime: 'RISK_ON', executedAt: Date.now(),
+      });
+
+      const result = syncTrancheStatus(deps, deps.planTranchesRepo.listByPlan('plan1')[0]);
+
+      assert.equal(result, null);
+      assert.equal(deps.planTranchesRepo.listByPlan('plan1')[0].orderStatus, 'PENDING');
+    });
+
+    it('treats canceled order with partial fill as FILLED with actual shares', () => {
+      const deps = createDeps(db);
+      createPlanRow(deps);
+      const orderId = createLinkedOrder(deps, 'co1', 'canceled', 25);
+      deps.fillsRepo!.create({ orderId, qty: 10, priceCents: 15100, feeCents: 0, filledAt: Date.now(), barDate: '2026-10-14' });
+      deps.planTranchesRepo.create({
+        id: 't1', planId: 'plan1', trancheNumber: 1,
+        shares: 25, priceCents: 15000, orderId,
+        compositeScore: 0.75, regime: 'RISK_ON', executedAt: Date.now(),
+      });
+
+      const result = syncTrancheStatus(deps, deps.planTranchesRepo.listByPlan('plan1')[0]);
+
+      assert.equal(result?.newStatus, 'FILLED');
+      assert.equal(result?.filledShares, 10);
+      assert.equal(deps.planTranchesRepo.listByPlan('plan1')[0].shares, 10);
+      assert.equal(deps.strategicPlansRepo.get('plan1')?.executedShares, 10);
+    });
+
+    it('completes plan when final tranche fills', () => {
+      const deps = createDeps(db);
+      createPlanRow(deps, 'plan1', 1);
+      const orderId = createLinkedOrder(deps, 'co1', 'filled', 25);
+      deps.planTranchesRepo.create({
+        id: 't1', planId: 'plan1', trancheNumber: 1,
+        shares: 25, priceCents: 15000, orderId,
+        compositeScore: 0.75, regime: 'RISK_ON', executedAt: Date.now(),
+      });
+
+      syncTrancheStatus(deps, deps.planTranchesRepo.listByPlan('plan1')[0]);
+
+      assert.equal(deps.strategicPlansRepo.get('plan1')?.status, 'COMPLETED');
+    });
+
+    it('refreshTrancheOrdersFromBroker updates status and creates exactly one fill row', async () => {
+      const deps = createDeps(db);
+      createPlanRow(deps);
+      const orderId = deps.ordersRepo.create({
+        clientOrderId: 'co1', decisionId: null, runId: null,
+        broker: 'paper', brokerOrderId: 'broker-1', mode: 'paper',
+        symbol: 'AAPL', side: 'buy', qty: 25, type: 'market',
+        limitPriceCents: null, tif: 'day', status: 'accepted',
+        rejectReason: null, submittedAt: Date.now(),
+      });
+      deps.planTranchesRepo.create({
+        id: 't1', planId: 'plan1', trancheNumber: 1,
+        shares: 25, priceCents: 15000, orderId,
+        compositeScore: 0.75, regime: 'RISK_ON', executedAt: Date.now(),
+      });
+
+      const syncDeps: TrancheSyncDeps = {
+        ...deps,
+        broker: createStubBroker(makeBrokerState({ status: 'filled', filledQty: 25, fillPriceCents: 15100 })),
+      };
+
+      await refreshTrancheOrdersFromBroker(syncDeps);
+      assert.equal(deps.ordersRepo.get(orderId)?.status, 'filled');
+      assert.equal(deps.fillsRepo!.listByOrder(orderId).length, 1);
+
+      await refreshTrancheOrdersFromBroker(syncDeps);
+      assert.equal(deps.fillsRepo!.listByOrder(orderId).length, 1);
     });
   });
 

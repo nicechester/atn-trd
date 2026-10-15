@@ -280,6 +280,7 @@ export class MockBroker implements Broker {
       type: order.type,
       limitPriceCents: order.limitPriceCents ?? null,
       fillPriceCents: order.fillPriceCents ?? null,
+      filledQty: order.status === 'filled' ? order.qty : null,
       fillDate: order.fillDate ?? null,
       tif: order.tif,
       status: order.status,

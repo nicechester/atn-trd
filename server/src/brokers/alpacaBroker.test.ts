@@ -481,6 +481,7 @@ describe('AlpacaBroker', () => {
       const order = await broker.getOrder('order-123');
 
       assert.equal(order?.status, 'partially_filled');
+      assert.equal(order?.filledQty, 5);
     });
 
     it('maps filled to filled', async () => {

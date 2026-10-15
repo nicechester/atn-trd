@@ -225,6 +225,12 @@ export class AlpacaBroker implements Broker {
         : alpacaOrder.filled_avg_price)
       : null;
 
+    const filledQty = alpacaOrder.filled_qty
+      ? (typeof alpacaOrder.filled_qty === 'string'
+        ? parseFloat(alpacaOrder.filled_qty)
+        : alpacaOrder.filled_qty)
+      : 0;
+
     // Handle timestamps (may be Date objects or ISO strings)
     const createdAt = alpacaOrder.created_at instanceof Date
       ? alpacaOrder.created_at.getTime()
@@ -243,6 +249,7 @@ export class AlpacaBroker implements Broker {
       type: alpacaOrder.type as 'market' | 'limit',
       limitPriceCents: limitPrice ? Math.round(limitPrice * 100) : null,
       fillPriceCents: filledAvgPrice ? Math.round(filledAvgPrice * 100) : null,
+      filledQty,
       tif: alpacaOrder.time_in_force as 'day' | 'gtc',
       status,
       rejectReason: null,  // Alpaca doesn't provide reject reasons in this format
