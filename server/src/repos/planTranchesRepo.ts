@@ -87,4 +87,10 @@ export class PlanTranchesRepo {
       .prepare(`UPDATE plan_tranches SET shares = ? WHERE id = ?`)
       .run(shares, id);
   }
+
+  setOrderId(id: string, orderId: string): void {
+    this.db
+      .prepare(`UPDATE plan_tranches SET order_id = ? WHERE id = ?`)
+      .run(orderId, id);
+  }
 }

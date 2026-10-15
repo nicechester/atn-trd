@@ -9,6 +9,8 @@ import { MarketRegimeRepo } from '../repos/marketRegimeRepo.js';
 import { PortfolioRepo } from '../repos/portfolioRepo.js';
 import { PricesRepo } from '../repos/pricesRepo.js';
 import { PositionsRepo } from '../repos/positionsRepo.js';
+import { OrdersRepo } from '../repos/ordersRepo.js';
+import type { Broker, OrderState } from '../brokers/types.js';
 import {
   createPlan,
   pausePlan,
@@ -314,6 +316,68 @@ describe('StrategicPlanService', () => {
       const final = deps.strategicPlansRepo.get(plan.id);
       assert.equal(final?.status, 'COMPLETED');
       assert.equal(final?.tranchesExecuted, 4);
+    });
+  });
+
+  describe('Tranche order linkage', () => {
+    function createBrokerStub(status: OrderState['status']): Broker {
+      return {
+        id: 'paper',
+        supportsFractionalShares: false,
+        submitOrder: async (req: { clientOrderId: string; symbol: string; side: 'buy' | 'sell'; qty: number; type: 'market' | 'limit'; tif: 'day' | 'gtc' }) => ({
+          id: 'broker-1',
+          clientOrderId: req.clientOrderId,
+          symbol: req.symbol,
+          side: req.side,
+          qty: req.qty,
+          type: req.type,
+          limitPriceCents: null,
+          fillPriceCents: null,
+          tif: req.tif,
+          status,
+          rejectReason: null,
+          submittedAt: Date.now(),
+          updatedAt: Date.now(),
+        }),
+      } as unknown as Broker;
+    }
+
+    it('links tranche to local order after broker submit', async () => {
+      const deps = { ...createDeps(db), broker: createBrokerStub('accepted'), ordersRepo: new OrdersRepo(db) };
+      const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 40 });
+
+      const result = await executeTranche(deps, plan, 15000, 1000000);
+
+      assert.ok(result?.orderId);
+      const tranches = deps.planTranchesRepo.listByPlan(plan.id);
+      assert.equal(tranches[0].orderId, result.orderId);
+      assert.equal(tranches[0].orderStatus, 'PENDING');
+    });
+
+    it('blocks new tranche while a linked tranche order is pending', async () => {
+      const deps = { ...createDeps(db), broker: createBrokerStub('accepted'), ordersRepo: new OrdersRepo(db) };
+      const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 40 });
+
+      await executeTranche(deps, plan, 15000, 1000000);
+
+      const current = deps.strategicPlansRepo.get(plan.id)!;
+      const result = shouldExecuteTranche(deps, current);
+      assert.equal(result.execute, false);
+      assert.equal(result.reason, 'tranche order still pending fill');
+    });
+
+    it('allows execution when only an unlinked PENDING tranche exists', () => {
+      const deps = createDeps(db);
+      const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 40 });
+
+      deps.planTranchesRepo.create({
+        id: 't1', planId: plan.id, trancheNumber: 1,
+        shares: 10, priceCents: 15000, orderId: null,
+        compositeScore: null, regime: null, executedAt: Date.now(),
+      });
+
+      const current = deps.strategicPlansRepo.get(plan.id)!;
+      assert.equal(shouldExecuteTranche(deps, current).execute, true);
     });
   });
 

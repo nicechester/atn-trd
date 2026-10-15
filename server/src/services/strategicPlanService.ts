@@ -163,9 +163,25 @@ function daysSince(timestamp: number | null): number {
   return Math.floor((Date.now() - timestamp) / 86_400_000);
 }
 
+/** Mark plan COMPLETED once every tranche has executed. */
+function completePlanIfDone(deps: StrategicPlanDeps, planId: string): void {
+  const updatedPlan = deps.strategicPlansRepo.get(planId);
+  if (updatedPlan && updatedPlan.tranchesExecuted >= updatedPlan.trancheCount) {
+    completePlan(deps, planId);
+  }
+}
+
 export function shouldExecuteTranche(deps: StrategicPlanDeps, plan: StrategicPlanRow): { execute: boolean; reason?: string } {
-  const { signalSnapshotsRepo, getSettings } = deps;
+  const { signalSnapshotsRepo, planTranchesRepo, getSettings } = deps;
   const settings = getSettings();
+
+  // Do not stack a new tranche while a previous broker order is still awaiting fill
+  const hasInFlightOrder = planTranchesRepo
+    .listByPlan(plan.id)
+    .some(t => t.orderStatus === 'PENDING' && t.orderId !== null);
+  if (hasInFlightOrder) {
+    return { execute: false, reason: 'tranche order still pending fill' };
+  }
 
   // Check minimum days between tranches
   const daysSinceLastTranche = daysSince(plan.lastTrancheAt);
@@ -325,24 +341,36 @@ export async function executeTranche(
     try {
       const orderState = await deps.broker.submitOrder(orderReq);
 
-      // Store order in local database
-      deps.ordersRepo.create({
-        clientOrderId: orderState.clientOrderId,
-        decisionId: null,
-        runId: null,
-        broker: 'alpaca',
-        brokerOrderId: orderState.id,
-        mode: 'paper',
-        symbol: plan.symbol,
-        side: orderReq.side,
-        qty: shares,
-        type: 'market',
-        limitPriceCents: null,
-        tif: 'day',
-        status: orderState.status,
-        rejectReason: orderState.rejectReason,
-        submittedAt: orderState.submittedAt,
-      });
+      // Store order in local database and link it to the tranche
+      let localOrderId: string | undefined;
+      try {
+        localOrderId = deps.ordersRepo.create({
+          clientOrderId: orderState.clientOrderId,
+          decisionId: null,
+          runId: null,
+          broker: 'alpaca',
+          brokerOrderId: orderState.id,
+          mode: 'paper',
+          symbol: plan.symbol,
+          side: orderReq.side,
+          qty: shares,
+          type: 'market',
+          limitPriceCents: null,
+          tif: 'day',
+          status: orderState.status,
+          rejectReason: orderState.rejectReason,
+          submittedAt: orderState.submittedAt,
+        });
+        planTranchesRepo.setOrderId(trancheId, localOrderId);
+      } catch (persistErr) {
+        log.error('tranche order submitted but local persistence failed', {
+          planId: plan.id,
+          symbol: plan.symbol,
+          trancheId,
+          brokerOrderId: orderState.id,
+          error: persistErr instanceof Error ? persistErr.message : String(persistErr),
+        });
+      }
 
       // Update tranche with order info
       planTranchesRepo.updateStatus(trancheId, 'PENDING', undefined, Date.now());
@@ -358,8 +386,14 @@ export async function executeTranche(
 
       // If order filled immediately, update tranche status
       if (orderState.status === 'filled') {
-        planTranchesRepo.updateStatus(trancheId, 'FILLED', shares * priceCents, Date.now());
-        strategicPlansRepo.recordTrancheExecution(plan.id, shares);
+        const filledQty = orderState.filledQty ?? shares;
+        const totalCostCents = filledQty * (orderState.fillPriceCents ?? priceCents);
+        if (filledQty < shares) {
+          planTranchesRepo.updateShares(trancheId, filledQty);
+        }
+        planTranchesRepo.updateStatus(trancheId, 'FILLED', totalCostCents, Date.now());
+        strategicPlansRepo.recordTrancheExecution(plan.id, filledQty);
+        completePlanIfDone(deps, plan.id);
       }
 
       return {
@@ -368,6 +402,7 @@ export async function executeTranche(
         shares,
         priceCents,
         trancheNumber,
+        orderId: localOrderId,
       };
     } catch (err) {
       log.error('failed to submit tranche order to Alpaca', {
@@ -386,10 +421,7 @@ export async function executeTranche(
   strategicPlansRepo.recordTrancheExecution(plan.id, shares);
 
   // Check if plan is now complete
-  const updatedPlan = strategicPlansRepo.get(plan.id);
-  if (updatedPlan && updatedPlan.tranchesExecuted >= updatedPlan.trancheCount) {
-    completePlan(deps, plan.id);
-  }
+  completePlanIfDone(deps, plan.id);
 
   log.info('tranche executed', {
     planId: plan.id,

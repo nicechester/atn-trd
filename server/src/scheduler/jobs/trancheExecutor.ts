@@ -16,6 +16,7 @@ import { PricesRepo } from '../../repos/pricesRepo.js';
 import { PositionsRepo } from '../../repos/positionsRepo.js';
 import { SymbolCategoriesRepo } from '../../repos/symbolCategoriesRepo.js';
 import { OrdersRepo } from '../../repos/ordersRepo.js';
+import { FillsRepo } from '../../repos/fillsRepo.js';
 import { RunsRepo, type RunTrigger } from '../../repos/runsRepo.js';
 import { AlpacaBroker } from '../../brokers/alpacaBroker.js';
 import {
@@ -30,6 +31,11 @@ import {
   cancelPlan,
   type StrategicPlanDeps,
 } from '../../services/strategicPlanService.js';
+import {
+  refreshTrancheOrdersFromBroker,
+  syncAllPendingTranches,
+  type TrancheSyncDeps,
+} from '../../services/trancheSyncService.js';
 import { getCurrentRegime } from '../../services/regimeDetectionService.js';
 import { getSettings } from '../../config/settingsService.js';
 
@@ -39,6 +45,7 @@ export interface TrancheExecutionSummary {
   regime: string;
   activePlans: number;
   tranchesExecuted: number;
+  tranchesSynced?: number;
   tranchesSkipped: Array<{ symbol: string; planId: string; reason: string }>;
   plansPaused: number;
   plansResumed: number;
@@ -116,6 +123,21 @@ export async function runTrancheExecutorJob(
       broker,
       getSettings,
     };
+
+    // 0. Refresh in-flight tranche orders from broker, then sync tranche status
+    try {
+      const syncDeps: TrancheSyncDeps = {
+        planTranchesRepo,
+        strategicPlansRepo,
+        ordersRepo,
+        broker,
+        fillsRepo: new FillsRepo(db),
+      };
+      await refreshTrancheOrdersFromBroker(syncDeps);
+      summary.tranchesSynced = syncAllPendingTranches(syncDeps).length;
+    } catch (err) {
+      log.warn('tranche sync failed', { error: err instanceof Error ? err.message : String(err) });
+    }
 
     // 1. Check regime and pause/resume plans accordingly
     summary.plansPaused = checkAndPausePlansForRegime(deps);
