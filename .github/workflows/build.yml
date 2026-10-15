@@ -43,6 +43,12 @@ jobs:
         if: steps.changes.outputs.code_changed == 'true'
         run: npm run build
 
+      - name: Copy frontend build into server/public
+        if: steps.changes.outputs.code_changed == 'true'
+        run: |
+          rm -rf server/public
+          cp -r web/dist server/public
+
       - name: Create deployment tarball
         if: steps.changes.outputs.code_changed == 'true'
         run: |

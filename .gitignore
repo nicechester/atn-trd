@@ -8,6 +8,8 @@ yarn.lock
 build/
 *.tsbuildinfo
 dist/
+# Frontend build copied in by CI (.github/workflows/build.yml)
+/server/public/
 
 # Environment
 .env
