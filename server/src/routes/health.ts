@@ -8,13 +8,19 @@ import { isFinBERTReady } from '../services/finbertService.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function getAppVersion(): string {
-  try {
-    const pkgPath = path.join(__dirname, '..', '..', '..', 'package.json');
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { version?: string };
-    return pkg.version ?? 'unknown';
-  } catch {
-    return 'unknown';
+  const candidates = [
+    path.join(process.cwd(), 'package.json'),           // root when run from project
+    path.join(process.cwd(), 'server', 'package.json'), // server workspace
+    path.join(__dirname, '..', 'package.json'),         // bundled: dist/../package.json
+    path.join(__dirname, '..', '..', 'package.json'),   // dev: src/routes/../../package.json
+  ];
+  for (const pkgPath of candidates) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { version?: string };
+      if (pkg.version) return pkg.version;
+    } catch { /* try next */ }
   }
+  return 'unknown';
 }
 
 function getBuildInfo(): { commit: string; buildTime: string; buildNumber?: number } | null {
