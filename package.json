@@ -1,6 +1,6 @@
 {
   "name": "atn-trd",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Autonomous LLM-driven stock research and paper-trading app",
   "type": "module",
   "private": true,
