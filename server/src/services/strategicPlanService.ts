@@ -106,6 +106,25 @@ export function createPlan(deps: StrategicPlanDeps, params: CreatePlanParams): S
 // ── Conviction-Scaled Tranche Sizing ──────────────────────────────────────────
 
 /**
+ * Scale a base tranche size by conviction. The last tranche is not scaled so the
+ * plan can reach its target shares. Result is never more than the remaining shares.
+ */
+export function applyConvictionScaling(
+  baseShares: number,
+  score: number,
+  remainingShares: number,
+  remainingTranches: number
+): number {
+  if (remainingTranches <= 1) return remainingShares;
+
+  // Scale by conviction: score 0.5 = 0x, score 0.75 = 0.5x, score 1.0 = 1.0x
+  const convictionMultiplier = Math.max(0.2, Math.min(1.5, (score - 0.5) / 0.5));
+  const result = Math.max(1, Math.ceil(baseShares * convictionMultiplier));
+
+  return Math.min(result, remainingShares);
+}
+
+/**
  * Compute conviction-scaled tranche size.
  * Higher conviction = larger tranches, lower conviction = smaller tranches.
  * Base size is scaled by (currentScore - 0.5) / 0.5, clamped to [0.2, 1.5].
@@ -115,19 +134,17 @@ export function computeConvictionScaledTranche(
   currentScore: number | null
 ): number {
   const remainingShares = plan.targetShares - plan.executedShares;
-  const remainingTranches = plan.trancheCount - plan.tranchesExecuted;
+  if (remainingShares <= 0) return 0;
 
-  if (remainingTranches <= 0) return 0;
+  // Count exhausted but target still short: run a catch-up tranche
+  const remainingTranches = Math.max(1, plan.trancheCount - plan.tranchesExecuted);
 
   const baseSize = remainingShares / remainingTranches;
 
   // If no current score, use base size
-  if (currentScore === null) return Math.ceil(baseSize);
+  if (currentScore === null) return Math.min(Math.ceil(baseSize), remainingShares);
 
-  // Scale by conviction: score 0.5 = 0x, score 0.75 = 0.5x, score 1.0 = 1.0x
-  const convictionMultiplier = Math.max(0.2, Math.min(1.5, (currentScore - 0.5) / 0.5));
-
-  return Math.max(1, Math.ceil(baseSize * convictionMultiplier));
+  return applyConvictionScaling(baseSize, currentScore, remainingShares, remainingTranches);
 }
 
 // ── Plan Status Management ────────────────────────────────────────────────────
@@ -163,12 +180,40 @@ function daysSince(timestamp: number | null): number {
   return Math.floor((Date.now() - timestamp) / 86_400_000);
 }
 
-/** Mark plan COMPLETED once every tranche has executed. */
+const MAX_TRANCHE_FACTOR = 2;
+
+/** Share plans are met once executed shares reach target. Budget plans have no share target. */
+export function isPlanTargetMet(plan: StrategicPlanRow): boolean {
+  return plan.targetShares > 0
+    ? plan.executedShares >= plan.targetShares
+    : plan.tranchesExecuted >= plan.trancheCount;
+}
+
+function maxTranches(plan: StrategicPlanRow): number {
+  return plan.trancheCount * MAX_TRANCHE_FACTOR;
+}
+
+/** Share plans complete on target shares, or when the tranche cap is hit. Budget plans complete on tranche count. */
+export function shouldCompletePlan(plan: StrategicPlanRow): boolean {
+  if (plan.targetShares > 0) {
+    return isPlanTargetMet(plan) || plan.tranchesExecuted >= maxTranches(plan);
+  }
+  return plan.tranchesExecuted >= plan.trancheCount;
+}
+
+/** Mark plan COMPLETED once its completion rule is met. */
 function completePlanIfDone(deps: StrategicPlanDeps, planId: string): void {
   const updatedPlan = deps.strategicPlansRepo.get(planId);
-  if (updatedPlan && updatedPlan.tranchesExecuted >= updatedPlan.trancheCount) {
-    completePlan(deps, planId);
+  if (!updatedPlan || !shouldCompletePlan(updatedPlan)) return;
+
+  if (updatedPlan.targetShares > 0 && !isPlanTargetMet(updatedPlan)) {
+    log.warn('plan completed short of target shares', {
+      planId,
+      executedShares: updatedPlan.executedShares,
+      targetShares: updatedPlan.targetShares,
+    });
   }
+  completePlan(deps, planId);
 }
 
 export function shouldExecuteTranche(deps: StrategicPlanDeps, plan: StrategicPlanRow): { execute: boolean; reason?: string } {
@@ -189,8 +234,15 @@ export function shouldExecuteTranche(deps: StrategicPlanDeps, plan: StrategicPla
     return { execute: false, reason: `only ${daysSinceLastTranche} days since last tranche (min: ${plan.minDaysBetween})` };
   }
 
-  // Check if all tranches executed
-  if (plan.tranchesExecuted >= plan.trancheCount) {
+  // Check completion: share plans stop at target shares or the tranche cap, budget plans at tranche count
+  if (plan.targetShares > 0) {
+    if (isPlanTargetMet(plan)) {
+      return { execute: false, reason: 'target shares reached' };
+    }
+    if (plan.tranchesExecuted >= maxTranches(plan)) {
+      return { execute: false, reason: 'max tranches reached' };
+    }
+  } else if (plan.tranchesExecuted >= plan.trancheCount) {
     return { execute: false, reason: 'all tranches executed' };
   }
 
@@ -222,11 +274,12 @@ export function computeTrancheSize(plan: StrategicPlanRow, currentScore?: number
 
   // Default: equal-weight tranches
   const remainingShares = plan.targetShares - plan.executedShares;
-  const remainingTranches = plan.trancheCount - plan.tranchesExecuted;
+  if (remainingShares <= 0) return 0;
 
-  if (remainingTranches <= 0) return 0;
+  // Count exhausted but target still short: run a catch-up tranche
+  const remainingTranches = Math.max(1, plan.trancheCount - plan.tranchesExecuted);
 
-  return Math.ceil(remainingShares / remainingTranches);
+  return Math.min(Math.ceil(remainingShares / remainingTranches), remainingShares);
 }
 
 /**
@@ -239,23 +292,26 @@ export function computeTrancheSizeWithBudget(
   availableCashCents: number
 ): { shares: number; reason?: string } {
   const remainingTranches = plan.trancheCount - plan.tranchesExecuted;
-  if (remainingTranches <= 0) return { shares: 0, reason: 'all tranches executed' };
+  const remainingShares = plan.targetShares - plan.executedShares;
+  const isShareBased = !plan.targetBudgetCents;
+  if (isShareBased ? remainingShares <= 0 : remainingTranches <= 0) {
+    return { shares: 0, reason: 'all tranches executed' };
+  }
 
-  let trancheBudget: number;
+  let desired: number;
 
   if (plan.targetBudgetCents) {
     // Budget-based: divide remaining budget by remaining tranches
     const executedBudget = plan.executedShares * priceCents; // Approximate
     const remainingBudget = plan.targetBudgetCents - executedBudget;
-    trancheBudget = Math.max(0, remainingBudget / remainingTranches);
+    const trancheBudget = Math.max(0, remainingBudget / remainingTranches);
+    desired = Math.floor(trancheBudget / priceCents);
   } else {
-    // Share-based: compute budget from remaining shares
-    const remainingShares = plan.targetShares - plan.executedShares;
-    trancheBudget = (remainingShares / remainingTranches) * priceCents;
+    // Share-based: divide remaining shares by remaining tranches, catch-up when count is exhausted
+    desired = Math.min(Math.ceil(remainingShares / Math.max(1, remainingTranches)), remainingShares);
   }
 
   const maxAffordable = Math.floor(availableCashCents / priceCents);
-  const desired = Math.floor(trancheBudget / priceCents);
 
   if (maxAffordable < 1) {
     return { shares: 0, reason: 'insufficient cash for 1 whole share' };
@@ -295,9 +351,20 @@ export async function executeTranche(
 
     // Apply conviction scaling if enabled
     if (settings.execution.trancheStyle === 'conviction_scaled' && currentScore !== null) {
-      const convictionMultiplier = Math.max(0.2, Math.min(1.5, (currentScore - 0.5) / 0.5));
-      shares = Math.max(1, Math.ceil(shares * convictionMultiplier));
+      if (plan.targetShares > 0) {
+        shares = applyConvictionScaling(
+          shares,
+          currentScore,
+          plan.targetShares - plan.executedShares,
+          Math.max(1, plan.trancheCount - plan.tranchesExecuted)
+        );
+      } else {
+        const convictionMultiplier = Math.max(0.2, Math.min(1.5, (currentScore - 0.5) / 0.5));
+        shares = Math.max(1, Math.ceil(shares * convictionMultiplier));
+      }
     }
+    // Scaling can exceed the cash available for this order (last tranche takes all remaining shares)
+    shares = Math.min(shares, Math.floor(availableCashCents / priceCents));
   } else {
     shares = computeTrancheSize(plan, currentScore, settings.execution.trancheStyle);
     if (shares === 0) {

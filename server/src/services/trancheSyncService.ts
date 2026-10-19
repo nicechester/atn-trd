@@ -13,6 +13,7 @@ import type { StrategicPlansRepo } from '../repos/strategicPlansRepo.js';
 import type { OrdersRepo, OrderRow } from '../repos/ordersRepo.js';
 import type { FillsRepo } from '../repos/fillsRepo.js';
 import type { Broker } from '../brokers/types.js';
+import { isPlanTargetMet, shouldCompletePlan } from './strategicPlanService.js';
 
 const log = logger.child({ component: 'tranche-sync' });
 
@@ -113,7 +114,14 @@ export function syncTrancheStatus(
     strategicPlansRepo.recordTrancheExecution(tranche.planId, filledShares);
 
     const plan = strategicPlansRepo.get(tranche.planId);
-    if (plan && plan.status === 'ACTIVE' && plan.tranchesExecuted >= plan.trancheCount) {
+    if (plan && plan.status === 'ACTIVE' && shouldCompletePlan(plan)) {
+      if (plan.targetShares > 0 && !isPlanTargetMet(plan)) {
+        log.warn('plan completed short of target shares', {
+          planId: tranche.planId,
+          executedShares: plan.executedShares,
+          targetShares: plan.targetShares,
+        });
+      }
       strategicPlansRepo.updateStatus(tranche.planId, 'COMPLETED');
       log.info('plan completed', { planId: tranche.planId });
     }

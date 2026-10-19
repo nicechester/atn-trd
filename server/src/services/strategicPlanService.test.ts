@@ -180,6 +180,62 @@ describe('StrategicPlanService', () => {
 
       assert.equal(result.shares, 1);
     });
+
+    it('sizes share plan tranches from remaining shares over remaining tranches', () => {
+      const deps = createDeps(db);
+      const plan = createPlan(deps, {
+        symbol: 'AAPL',
+        direction: 'ACCUMULATE',
+        targetShares: 3,
+        trancheCount: 4,
+      });
+
+      // ceil(3 / 4) = 1 share
+      const result = computeTrancheSizeWithBudget(plan, 15000, 10000000);
+
+      assert.equal(result.shares, 1);
+    });
+  });
+
+  describe('shouldExecuteTranche - Completion Rule', () => {
+    it('allows catch-up tranche when tranche count is exhausted but target shares are short', () => {
+      const deps = createDeps(db);
+      const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 10, trancheCount: 4 });
+
+      const current = { ...plan, tranchesExecuted: 4, executedShares: 4, lastTrancheAt: null };
+      assert.equal(shouldExecuteTranche(deps, current).execute, true);
+    });
+
+    it('blocks execution at the tranche cap', () => {
+      const deps = createDeps(db);
+      const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 10, trancheCount: 4 });
+
+      const current = { ...plan, tranchesExecuted: 8, executedShares: 4, lastTrancheAt: null };
+      assert.equal(shouldExecuteTranche(deps, current).execute, false);
+    });
+
+    it('blocks execution once target shares are reached', () => {
+      const deps = createDeps(db);
+      const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 10, trancheCount: 4 });
+
+      const current = { ...plan, tranchesExecuted: 4, executedShares: 10, lastTrancheAt: null };
+      const result = shouldExecuteTranche(deps, current);
+      assert.equal(result.execute, false);
+      assert.equal(result.reason, 'target shares reached');
+    });
+
+    it('blocks budget plan once tranche count is reached', () => {
+      const deps = createDeps(db);
+      const plan = createPlan(deps, {
+        symbol: 'BRK.A',
+        direction: 'ACCUMULATE',
+        targetBudgetCents: 1000000,
+        trancheCount: 4,
+      });
+
+      const current = { ...plan, tranchesExecuted: 4, lastTrancheAt: null };
+      assert.equal(shouldExecuteTranche(deps, current).execute, false);
+    });
   });
 
   describe('shouldExecuteTranche - Hysteresis', () => {
@@ -299,7 +355,7 @@ describe('StrategicPlanService', () => {
       assert.equal(result, null);
     });
 
-    it('completes plan after all tranches executed', () => {
+    it('completes plan after all tranches executed', async () => {
       const deps = createDeps(db);
       const plan = createPlan(deps, {
         symbol: 'AAPL',
@@ -310,12 +366,80 @@ describe('StrategicPlanService', () => {
 
       for (let i = 0; i < 4; i++) {
         const currentPlan = deps.strategicPlansRepo.get(plan.id)!;
-        executeTranche(deps, currentPlan, 15000, 1000000);
+        await executeTranche(deps, currentPlan, 15000, 1000000);
       }
 
       const final = deps.strategicPlansRepo.get(plan.id);
       assert.equal(final?.status, 'COMPLETED');
       assert.equal(final?.tranchesExecuted, 4);
+    });
+
+    it('completes conviction-scaled plan at target shares with low score', async () => {
+      const deps = createDeps(db, {
+        execution: { ...DEFAULT_SETTINGS.execution, trancheStyle: 'conviction_scaled' },
+      });
+      const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 10, trancheCount: 4 });
+
+      deps.signalSnapshotsRepo.insert(makeSnapshot({
+        id: 'sig1',
+        symbol: 'AAPL',
+        snapshotDate: new Date().toISOString().split('T')[0],
+        priceCents: 15000,
+        compositeScore: 0.60,
+        compositeEwma: 0.60,
+        createdAt: Date.now(),
+      }));
+
+      for (let i = 0; i < 8; i++) {
+        const freshPlan = deps.strategicPlansRepo.get(plan.id)!;
+        if (freshPlan.status !== 'ACTIVE') break;
+        await executeTranche(deps, freshPlan, 15000, 1000000);
+      }
+
+      const final = deps.strategicPlansRepo.get(plan.id);
+      assert.equal(final?.executedShares, 10);
+      assert.equal(final?.status, 'COMPLETED');
+      assert.ok((final?.tranchesExecuted ?? 0) <= 8);
+    });
+
+    it('completes conviction-scaled plan at target shares with high score', async () => {
+      const deps = createDeps(db, {
+        execution: { ...DEFAULT_SETTINGS.execution, trancheStyle: 'conviction_scaled' },
+      });
+      const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 10, trancheCount: 4 });
+
+      deps.signalSnapshotsRepo.insert(makeSnapshot({
+        id: 'sig1',
+        symbol: 'AAPL',
+        snapshotDate: new Date().toISOString().split('T')[0],
+        priceCents: 15000,
+        compositeScore: 1.0,
+        compositeEwma: 1.0,
+        createdAt: Date.now(),
+      }));
+
+      for (let i = 0; i < 8; i++) {
+        const freshPlan = deps.strategicPlansRepo.get(plan.id)!;
+        if (freshPlan.status !== 'ACTIVE') break;
+        await executeTranche(deps, freshPlan, 15000, 1000000);
+      }
+
+      const final = deps.strategicPlansRepo.get(plan.id);
+      assert.equal(final?.executedShares, final?.targetShares);
+      assert.equal(final?.status, 'COMPLETED');
+    });
+
+    it('does not complete on tranche count alone while target shares are short', () => {
+      const deps = createDeps(db);
+      const plan = createPlan(deps, { symbol: 'AAPL', direction: 'ACCUMULATE', targetShares: 10, trancheCount: 2 });
+
+      deps.strategicPlansRepo.recordTrancheExecution(plan.id, 2);
+      deps.strategicPlansRepo.recordTrancheExecution(plan.id, 2);
+
+      const final = deps.strategicPlansRepo.get(plan.id);
+      assert.equal(final?.status, 'ACTIVE');
+      assert.equal(final?.executedShares, 4);
+      assert.equal(final?.targetShares, 10);
     });
   });
 
