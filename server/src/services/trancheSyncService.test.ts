@@ -30,10 +30,10 @@ function createDeps(db: Database.Database): TrancheSyncDeps {
   };
 }
 
-function createPlanRow(deps: TrancheSyncDeps, id = 'plan1', trancheCount = 4): void {
+function createPlanRow(deps: TrancheSyncDeps, id = 'plan1', trancheCount = 4, targetShares = 100): void {
   deps.strategicPlansRepo.create({
     id, symbol: 'AAPL', direction: 'ACCUMULATE',
-    targetShares: 100, targetWeight: null, targetBudgetCents: null,
+    targetShares, targetWeight: null, targetBudgetCents: null,
     trancheCount, minDaysBetween: 5,
     entryCompositeScore: 0.75, convictionAtCreation: 0.8,
     status: 'ACTIVE', pauseReason: null, creationNotes: null, createdAt: Date.now(),
@@ -269,7 +269,7 @@ describe('TrancheSyncService', () => {
 
     it('completes plan when final tranche fills', () => {
       const deps = createDeps(db);
-      createPlanRow(deps, 'plan1', 1);
+      createPlanRow(deps, 'plan1', 1, 25);
       const orderId = createLinkedOrder(deps, 'co1', 'filled', 25);
       deps.planTranchesRepo.create({
         id: 't1', planId: 'plan1', trancheNumber: 1,
