@@ -10,8 +10,7 @@ export default function PortfolioPage() {
   const [loading, setLoading] = useState(true);
   const [transferAmount, setTransferAmount] = useState('');
   const [transferring, setTransferring] = useState(false);
-  const [seedAmount, setSeedAmount] = useState('10000');
-  const [initializing, setInitializing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [marketOpen, setMarketOpen] = useState<boolean | null>(null);
   const { addToast } = useToast();
   const { canWrite } = useAuth();
@@ -72,21 +71,16 @@ export default function PortfolioPage() {
     }
   }
 
-  async function handleInit() {
-    const amount = parseFloat(seedAmount);
-    if (isNaN(amount) || amount <= 0) {
-      addToast('Enter a valid amount', 'error');
-      return;
-    }
-    setInitializing(true);
+  async function handleSyncFromAlpaca() {
+    setSyncing(true);
     try {
-      await portfolioApi.init(Math.round(amount * 100));
-      addToast(`Portfolio initialized with ${centsToUSD(Math.round(amount * 100))}`, 'success');
+      const result = await portfolioApi.initFromAlpaca();
+      addToast(`Portfolio synced from Alpaca: ${centsToUSD(result.data.cashCents)} cash, ${result.data.positionsSynced} positions`, 'success');
       loadPortfolio();
     } catch (e) {
-      addToast(e instanceof Error ? e.message : 'Init failed', 'error');
+      addToast(e instanceof Error ? e.message : 'Sync failed', 'error');
     } finally {
-      setInitializing(false);
+      setSyncing(false);
     }
   }
 
@@ -154,25 +148,14 @@ export default function PortfolioPage() {
         <p className={styles.muted}>Portfolio not initialized.</p>
         {canWrite && (
           <div className={styles.initSection}>
-            <div className={styles.transferRow}>
-              <span className={styles.dollarSign}>$</span>
-              <input
-                type="number"
-                className={styles.transferInput}
-                placeholder="10000"
-                value={seedAmount}
-                onChange={e => setSeedAmount(e.target.value)}
-                min="0"
-                step="1000"
-              />
-              <button
-                className={styles.depositBtn}
-                onClick={handleInit}
-                disabled={initializing || !seedAmount}
-              >
-                {initializing ? 'Initializing...' : 'Initialize Portfolio'}
-              </button>
-            </div>
+            <p className={styles.muted}>Uses your Alpaca account's cash and positions.</p>
+            <button
+              className={styles.depositBtn}
+              onClick={handleSyncFromAlpaca}
+              disabled={syncing}
+            >
+              {syncing ? 'Syncing...' : 'Sync from Alpaca'}
+            </button>
           </div>
         )}
       </div>
