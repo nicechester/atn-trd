@@ -487,6 +487,9 @@ export const portfolio = {
       body: JSON.stringify({ seedCents }),
     });
   },
+  initFromAlpaca(): Promise<{ ok: boolean; data: { cashCents: number; positionsSynced: number } }> {
+    return request('/portfolio/init-from-alpaca', { method: 'POST' });
+  },
   transfer(amountCents: number, type: 'deposit' | 'withdraw'): Promise<{ ok: boolean; data: { cashCents: number } }> {
     return request('/portfolio/transfer', {
       method: 'POST',

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import type Database from 'better-sqlite3';
 import { getDatabase } from '../db/index.js';
 import { PositionsRepo } from '../repos/positionsRepo.js';
 import { PortfolioRepo } from '../repos/portfolioRepo.js';
@@ -10,7 +11,8 @@ import { CashFlowsRepo } from '../repos/cashFlowsRepo.js';
 import { PriceService } from '../services/priceService.js';
 import { PortfolioServiceImpl } from '../services/portfolioService.js';
 import { AlpacaBroker } from '../brokers/alpacaBroker.js';
-import { ValidationError } from '../lib/errors.js';
+import type { Account, Broker, BrokerPosition } from '../brokers/types.js';
+import { AppError, ValidationError, UpstreamError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
 import { isMarketHours, nextSessionOpen, nextSessionClose } from '../scheduler/marketCalendar.js';
 
@@ -148,6 +150,102 @@ export function initPortfolioHandler(req: Request, res: Response, next: NextFunc
     cashFlowsRepo.insertFlow('deposit', seedCents, now, 'Initial seed deposit');
 
     res.json({ ok: true, data: { cashCents: seedCents } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Initialize the portfolio and positions from the broker account.
+ * Fetches account and positions before any write; all writes run in one transaction.
+ */
+export async function initPortfolioFromBroker(
+  db: Database.Database,
+  broker: Broker
+): Promise<{ cashCents: number; positionsSynced: number }> {
+  const portfolioRepo = new PortfolioRepo(db);
+  const positionsRepo = new PositionsRepo(db);
+  const cashFlowsRepo = new CashFlowsRepo(db);
+
+  if (portfolioRepo.read()) {
+    throw new ValidationError('Portfolio already initialized');
+  }
+
+  let account: Account;
+  let alpacaPositions: BrokerPosition[];
+  try {
+    account = await broker.getAccount();
+    alpacaPositions = await broker.getPositions();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log.error('failed to fetch account from Alpaca', { error: msg });
+    throw new UpstreamError(`Failed to fetch account from Alpaca: ${msg}`, 'alpaca');
+  }
+
+  const now = Date.now();
+  db.transaction(() => {
+    portfolioRepo.write({
+      cashCents: account.cashCents,
+      startingCashCents: account.cashCents,
+      startedAt: now,
+      resetAt: null,
+      baseCurrency: 'USD',
+    });
+
+    if (account.cashCents > 0) {
+      cashFlowsRepo.insertFlow('deposit', account.cashCents, now, 'Initial sync from Alpaca');
+    }
+
+    // Replace semantics: local positions missing from Alpaca are zeroed, not deleted
+    const alpacaSymbols = new Set(alpacaPositions.map(p => p.symbol));
+    for (const localPos of positionsRepo.listAll()) {
+      if (!alpacaSymbols.has(localPos.symbol)) {
+        positionsRepo.upsert({ ...localPos, qty: 0, updatedAt: now });
+      }
+    }
+
+    for (const pos of alpacaPositions) {
+      const existing = positionsRepo.get(pos.symbol);
+      positionsRepo.upsert({
+        symbol: pos.symbol,
+        qty: pos.qty,
+        avgCostCents: pos.avgCostCents,
+        realizedPnlCents: existing?.realizedPnlCents ?? 0,
+        openedAt: existing?.openedAt ?? now,
+        updatedAt: now,
+      });
+    }
+  })();
+
+  log.info('portfolio initialized from Alpaca', {
+    cashCents: account.cashCents,
+    positionsSynced: alpacaPositions.length,
+  });
+
+  return { cashCents: account.cashCents, positionsSynced: alpacaPositions.length };
+}
+
+/** POST /api/portfolio/init-from-alpaca — initialize portfolio from Alpaca account and positions */
+export async function syncInitPortfolioHandler(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const apiKey = process.env.ALPACA_API_KEY;
+    const apiSecret = process.env.ALPACA_API_SECRET;
+    if (!apiKey || !apiSecret) {
+      throw new AppError(
+        'Alpaca is not configured. Set ALPACA_API_KEY and ALPACA_API_SECRET environment variables.',
+        503,
+        'ALPACA_NOT_CONFIGURED'
+      );
+    }
+    const broker = new AlpacaBroker({ apiKey, apiSecret, paperTrading: true });
+
+    const result = await initPortfolioFromBroker(getDatabase(), broker);
+
+    res.json({ ok: true, data: result });
   } catch (err) {
     next(err);
   }
