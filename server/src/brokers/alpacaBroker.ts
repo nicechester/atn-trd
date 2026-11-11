@@ -1,4 +1,4 @@
-import { Broker, BrokerPosition, Account, OrderRequest, OrderState, OrderStatus } from './types.js';
+import { Broker, BrokerPosition, Account, OrderRequest, OrderState, OrderStatus, PortfolioHistory } from './types.js';
 import { logger } from '../lib/logger.js';
 import { Alpaca } from '@alpacahq/alpaca-trade-api';
 
@@ -200,6 +200,41 @@ export class AlpacaBroker implements Broker {
       log.error('failed to fetch market clock from Alpaca', {
         error: err instanceof Error ? err.message : String(err),
         status: err instanceof Error && 'status' in err ? (err as any).status : undefined,
+      });
+      throw err;
+    }
+  }
+
+  async getPortfolioHistory(period = '3M', timeframe = '1D'): Promise<PortfolioHistory> {
+    try {
+      const history = await this.client.trading.portfolioHistory.getAccountPortfolioHistory({
+        period,
+        timeframe,
+      });
+
+      const data = history as any;
+      const timestamps: number[] = data.timestamp || [];
+      const equity: number[] = data.equity || [];
+      const profitLoss: number[] = data.profit_loss || [];
+      const profitLossPct: number[] = data.profit_loss_pct || [];
+
+      // Filter out zero-equity entries (before account was funded)
+      const points = timestamps
+        .map((ts, i) => ({
+          timestamp: ts,
+          equity: equity[i] || 0,
+          profitLoss: profitLoss[i] || 0,
+          profitLossPct: profitLossPct[i] || 0,
+        }))
+        .filter(p => p.equity > 0);
+
+      return {
+        baseValue: data.base_value || (points.length > 0 ? points[0].equity : 0),
+        points,
+      };
+    } catch (err) {
+      log.error('failed to fetch portfolio history from Alpaca', {
+        error: err instanceof Error ? err.message : String(err),
       });
       throw err;
     }

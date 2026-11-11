@@ -44,6 +44,18 @@ export interface Account {
   buyingPowerCents: number;
 }
 
+export interface PortfolioHistoryPoint {
+  timestamp: number;  // Unix seconds
+  equity: number;     // Dollar amount
+  profitLoss: number;
+  profitLossPct: number;
+}
+
+export interface PortfolioHistory {
+  baseValue: number;
+  points: PortfolioHistoryPoint[];
+}
+
 export interface Broker {
   readonly id: string;                                  // "paper"
   readonly supportsFractionalShares: boolean;
@@ -54,6 +66,8 @@ export interface Broker {
   listOrders(f: { status?: OrderStatus[]; since?: number }): Promise<OrderState[]>;
   cancelOrder(orderId: string): Promise<void>;
   getClock(): Promise<{ isOpen: boolean; nextOpen: number; nextClose: number }>;
+  /** Fetch portfolio equity history from broker. Optional. */
+  getPortfolioHistory?(period?: string, timeframe?: string): Promise<PortfolioHistory>;
   /**
    * Settle orders deferred to a future session. Optional — brokers that fill
    * synchronously or self-settle via their own API need not implement it.
