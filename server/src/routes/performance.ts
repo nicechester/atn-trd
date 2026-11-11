@@ -1,11 +1,4 @@
 import { Request, Response, NextFunction } from 'express';
-import { getDatabase } from '../db/index.js';
-import { SnapshotsRepo } from '../repos/snapshotsRepo.js';
-import { PositionsRepo } from '../repos/positionsRepo.js';
-import { PortfolioRepo } from '../repos/portfolioRepo.js';
-import { PricesRepo } from '../repos/pricesRepo.js';
-import { PriceService } from '../services/priceService.js';
-import { PortfolioServiceImpl } from '../services/portfolioService.js';
 import { AlpacaBroker } from '../brokers/alpacaBroker.js';
 import { logger } from '../lib/logger.js';
 
@@ -28,28 +21,61 @@ interface PerformanceMetrics {
 
 function calculateDrawdown(values: number[]): number {
   if (values.length === 0) return 0;
-
   let maxDrawdown = 0;
   let peak = values[0];
-
   for (const value of values) {
     if (value > peak) peak = value;
     const drawdown = (peak - value) / peak;
     if (drawdown > maxDrawdown) maxDrawdown = drawdown;
   }
-
   return maxDrawdown;
 }
 
-function calculateSharpeRatio(returns: number[], riskFreeRate: number = 0): number {
+function calculateSharpeRatio(returns: number[]): number {
   if (returns.length < 2) return 0;
-
   const meanReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
   const variance = returns.reduce((sum, r) => sum + Math.pow(r - meanReturn, 2), 0) / returns.length;
   const stdDev = Math.sqrt(variance);
-
   if (stdDev === 0) return 0;
-  return (meanReturn - riskFreeRate) / stdDev * Math.sqrt(252);
+  return (meanReturn / stdDev) * Math.sqrt(252);
+}
+
+async function fetchSPYPrices(
+  apiKey: string,
+  apiSecret: string,
+  startDate: string
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  let pageToken: string | null = null;
+
+  do {
+    const url = new URL('https://data.alpaca.markets/v2/stocks/SPY/bars');
+    url.searchParams.set('timeframe', '1Day');
+    url.searchParams.set('start', startDate);
+    url.searchParams.set('limit', '1000');
+    if (pageToken) url.searchParams.set('page_token', pageToken);
+
+    const res = await fetch(url.toString(), {
+      headers: {
+        'APCA-API-KEY-ID': apiKey,
+        'APCA-API-SECRET-KEY': apiSecret,
+      },
+    });
+
+    if (!res.ok) {
+      log.warn('failed to fetch SPY bars', { status: res.status });
+      break;
+    }
+
+    const data = await res.json();
+    for (const bar of data.bars || []) {
+      const date = bar.t.split('T')[0];
+      map.set(date, bar.c);
+    }
+    pageToken = data.next_page_token || null;
+  } while (pageToken);
+
+  return map;
 }
 
 /** GET /api/performance?fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD */
@@ -59,152 +85,98 @@ export async function getPerformanceHandler(
   next: NextFunction
 ): Promise<void> {
   try {
-    const db = getDatabase();
-    const snapshotsRepo = new SnapshotsRepo(db);
-    const pricesRepo = new PricesRepo(db);
-    const priceService = new PriceService(pricesRepo);
-    const positionsRepo = new PositionsRepo(db);
-    const portfolioRepo = new PortfolioRepo(db);
-
-    // Sync Alpaca data before calculating performance
     const apiKey = process.env.ALPACA_API_KEY;
     const apiSecret = process.env.ALPACA_API_SECRET;
-    if (apiKey && apiSecret) {
-      try {
-        const broker = new AlpacaBroker({ apiKey, apiSecret, paperTrading: true });
-        const alpacaAccount = await broker.getAccount();
-        const alpacaPositions = await broker.getPositions();
 
-        // Update local portfolio
-        const currentPortfolio = portfolioRepo.read();
-        if (currentPortfolio) {
-          portfolioRepo.write({
-            ...currentPortfolio,
-            cashCents: alpacaAccount.cashCents,
-          });
-        }
-
-        // Sync positions
-        const alpacaSymbols = new Set(alpacaPositions.map(p => p.symbol));
-        const localPositions = positionsRepo.listAll();
-        for (const localPos of localPositions) {
-          if (!alpacaSymbols.has(localPos.symbol) && localPos.qty !== 0) {
-            positionsRepo.upsert({ ...localPos, qty: 0, updatedAt: Date.now() });
-          }
-        }
-        for (const pos of alpacaPositions) {
-          const existing = positionsRepo.get(pos.symbol);
-          positionsRepo.upsert({
-            symbol: pos.symbol,
-            qty: pos.qty,
-            avgCostCents: pos.avgCostCents,
-            realizedPnlCents: existing?.realizedPnlCents ?? 0,
-            openedAt: existing?.openedAt ?? Date.now(),
-            updatedAt: Date.now(),
-          });
-        }
-      } catch (err) {
-        log.warn('failed to sync Alpaca data for performance', {
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+    if (!apiKey || !apiSecret) {
+      res.status(500).json({ ok: false, error: 'Alpaca credentials not configured' });
+      return;
     }
 
-    const portfolioService = new PortfolioServiceImpl(db, priceService, positionsRepo, portfolioRepo);
+    const broker = new AlpacaBroker({ apiKey, apiSecret, paperTrading: true });
 
-    const fromDate = (req.query.fromDate as string) || '';
-    const toDate = (req.query.toDate as string) || '';
+    // Fetch portfolio history from Alpaca
+    const history = await broker.getPortfolioHistory('3M', '1D');
 
-    let portfolioSnapshots;
-    let benchmarkSnapshots;
-
-    if (fromDate && toDate) {
-      portfolioSnapshots = snapshotsRepo.listPortfolioSnapshotsByDateRange(fromDate, toDate);
-      benchmarkSnapshots = snapshotsRepo.listBenchmarkSnapshotsByDateRange('SPY', fromDate, toDate);
-    } else {
-      portfolioSnapshots = snapshotsRepo.listPortfolioSnapshots(252);
-      benchmarkSnapshots = snapshotsRepo.listBenchmarkSnapshots('SPY', 252);
+    if (history.points.length === 0) {
+      res.json({
+        ok: true,
+        data: {
+          totalStrategyReturn: 0,
+          totalBenchmarkReturn: 0,
+          strategyMaxDrawdown: 0,
+          benchmarkMaxDrawdown: 0,
+          series: [],
+        },
+      });
+      return;
     }
 
-    log.info('fetched snapshots', { portfolio: portfolioSnapshots.length, benchmark: benchmarkSnapshots.length });
+    // Get date range from portfolio history
+    const firstDate = new Date(history.points[0].timestamp * 1000).toISOString().split('T')[0];
 
-    portfolioSnapshots.reverse();
-    benchmarkSnapshots.reverse();
+    // Fetch SPY benchmark data
+    const spyPrices = await fetchSPYPrices(apiKey, apiSecret, firstDate);
 
-    const benchmarkMap = new Map<string, (typeof benchmarkSnapshots)[0]>();
-    for (const snap of benchmarkSnapshots) {
-      benchmarkMap.set(snap.asOfDate, snap);
-    }
-
+    // Build series
     const series: PerformancePoint[] = [];
     const strategyValues: number[] = [];
     const benchmarkValues: number[] = [];
-    const dailyStrategyReturns: number[] = [];
+    const dailyReturns: number[] = [];
 
-    // Get cost base for performance calculation
-    const costBaseCents = portfolioService.getCostBase();
-    let initialStrategyValue: number | null = costBaseCents > 0 ? costBaseCents : null;
-    let initialBenchmarkValue: number | null = null;
+    const baseValue = history.points[0].equity;
+    let initialSPY: number | null = null;
 
-    for (const pSnapshot of portfolioSnapshots) {
-      const bSnapshot = benchmarkMap.get(pSnapshot.asOfDate);
-      if (!bSnapshot) {
-        log.debug('no benchmark for date', { date: pSnapshot.asOfDate });
-        continue;
-      }
+    // Apply date filters if provided
+    const fromDate = req.query.fromDate as string | undefined;
+    const toDate = req.query.toDate as string | undefined;
 
-      if (initialBenchmarkValue === null) {
-        initialBenchmarkValue = bSnapshot.adjCloseCents;
-        log.debug('initialized values', { costBase: initialStrategyValue, benchmark: initialBenchmarkValue });
-      }
+    for (const point of history.points) {
+      const date = new Date(point.timestamp * 1000).toISOString().split('T')[0];
 
-      // Use cost base for strategy return calculation
-      let strategyReturn = 0;
-      if (initialStrategyValue !== null && initialStrategyValue > 0) {
-        strategyReturn = (pSnapshot.totalValueCents - initialStrategyValue) / initialStrategyValue;
-      }
-      const benchmarkReturn = (bSnapshot.adjCloseCents - initialBenchmarkValue!) / initialBenchmarkValue!;
+      // Apply date filters
+      if (fromDate && date < fromDate) continue;
+      if (toDate && date > toDate) continue;
 
-      series.push({
-        date: pSnapshot.asOfDate,
-        strategyReturn,
-        benchmarkReturn,
-      });
+      const spyPrice = spyPrices.get(date);
+      if (!spyPrice) continue;
 
-      strategyValues.push(pSnapshot.totalValueCents);
-      benchmarkValues.push(bSnapshot.adjCloseCents);
+      if (initialSPY === null) initialSPY = spyPrice;
+
+      const strategyReturn = (point.equity - baseValue) / baseValue;
+      const benchmarkReturn = (spyPrice - initialSPY) / initialSPY;
+
+      series.push({ date, strategyReturn, benchmarkReturn });
+      strategyValues.push(point.equity);
+      benchmarkValues.push(spyPrice);
 
       if (strategyValues.length > 1) {
-        const dailyReturn =
-          (pSnapshot.totalValueCents - strategyValues[strategyValues.length - 2]) /
-          strategyValues[strategyValues.length - 2];
-        dailyStrategyReturns.push(dailyReturn);
+        const prevEquity = strategyValues[strategyValues.length - 2];
+        dailyReturns.push((point.equity - prevEquity) / prevEquity);
       }
     }
 
-    log.info('calculated series', { points: series.length });
-
-    const totalStrategyReturn =
-      initialStrategyValue !== null && strategyValues.length > 0
-        ? (strategyValues[strategyValues.length - 1] - initialStrategyValue) / initialStrategyValue
-        : 0;
-    const totalBenchmarkReturn =
-      initialBenchmarkValue !== null && benchmarkValues.length > 0
-        ? (benchmarkValues[benchmarkValues.length - 1] - initialBenchmarkValue) / initialBenchmarkValue
-        : 0;
-
-    const strategyMaxDrawdown = calculateDrawdown(strategyValues);
-    const benchmarkMaxDrawdown = calculateDrawdown(benchmarkValues);
-    const sharpeRatio = dailyStrategyReturns.length > 0 ? calculateSharpeRatio(dailyStrategyReturns) : undefined;
+    const totalStrategyReturn = series.length > 0
+      ? series[series.length - 1].strategyReturn
+      : 0;
+    const totalBenchmarkReturn = series.length > 0
+      ? series[series.length - 1].benchmarkReturn
+      : 0;
 
     const metrics: PerformanceMetrics = {
       totalStrategyReturn,
       totalBenchmarkReturn,
-      strategyMaxDrawdown,
-      benchmarkMaxDrawdown,
-      ...(sharpeRatio !== undefined && { sharpeRatio }),
+      strategyMaxDrawdown: calculateDrawdown(strategyValues),
+      benchmarkMaxDrawdown: calculateDrawdown(benchmarkValues),
+      sharpeRatio: calculateSharpeRatio(dailyReturns),
       series,
     };
+
+    log.info('performance calculated from Alpaca', {
+      points: series.length,
+      strategyReturn: `${(totalStrategyReturn * 100).toFixed(2)}%`,
+      benchmarkReturn: `${(totalBenchmarkReturn * 100).toFixed(2)}%`,
+    });
 
     res.json({ ok: true, data: metrics });
   } catch (err) {
